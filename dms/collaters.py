@@ -91,16 +91,15 @@ class OAMaskCollater(object):
 
         masked=[]
         for i,x in enumerate(tokenized):
-            # Ignoring pad
             num_pad = 0
+            #mask pad
             if not self.mask_pad: # if not masking pads ignore before creating mask_arr
                 x_pad = x.clone()
                 mask_pad = x_pad != self.tokenizer.pad_id
                 num_pad = len(x_pad) - mask_pad.sum()
                 x = x[mask_pad]
-            # Masking sequences
+            # Hoogeboom OARDM
             D = len(x) # sequence length determines D
-            #print("D", D)
             t = np.random.randint(0,D) # randomly sample timestep
             num_mask = D-t+1 # from OA-ARMS
             mask_arr = np.random.choice(D, num_mask, replace=False)
@@ -117,10 +116,10 @@ class OAMaskCollater(object):
 
         mask_id = torch.Tensor(self.tokenizer.tokenize([self.mask_id_letter]))
         if self.mask_type == 'single': # easier to visualize mask
-            mask_arr = mask_id
+            mask_arr = mask_id.to(torch.long)
         elif self.mask_type == 'random':
             if num_mask == 0:
-                mask_arr = mask_id
+                mask_arr = mask_id.to(torch.long)
             else:
                 mask_aa_arr = np.random.choice(self.tokenizer.vocab, num_mask)
                 mask_arr = torch.tensor([self.tokenizer.tokenize(each) for each in mask_aa_arr])
@@ -131,6 +130,9 @@ class OAMaskCollater(object):
         mask_arr = mask_arr.reshape(mask_arr.shape[0])
         x[mask] = mask_arr
         pad_array = torch.zeros(num_pad) +  self.tokenizer.pad_id
-        x = torch.concat([x, pad_array])
+
+        if pad_array.shape[0] > 0 :
+            x = torch.cat((x,pad_array.to(torch.long)), 0)
+
         return x
 
