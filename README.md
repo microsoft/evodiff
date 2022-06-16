@@ -10,6 +10,15 @@ As the maintainer of this project, please make a few updates:
 - Understanding the security reporting process in SECURITY.MD
 - Remove this section from the README
 
+
+### Installation
+```
+cd dms
+conda env create -f environment.yml
+conda activate dms
+pip install -e .
+```
+
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a

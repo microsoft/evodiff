@@ -1,0 +1,8 @@
+name: dms
+channels:
+  - defaults
+dependencies:
+  - python=3.6
+  - torch
+  - pandas
+  - numpy
