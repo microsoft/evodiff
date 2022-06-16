@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 class UNIREF50(Dataset):
     """
     Dataset stores samples and labels
-    Has been preprocessed w/ dms.data.read_fasta first to create an SEQ, INFO, INDEX file that contains
+    Has been preprocessed w/ dms.utils.read_fasta first to create an SEQ, INFO, INDEX file that contains
     sequences, headers, and indices from original dataset
     """
     def __init__(self, index_file, seq_file):
