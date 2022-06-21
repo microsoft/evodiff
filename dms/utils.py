@@ -1,5 +1,5 @@
 import numpy as np
-from dms.constants import ALL_AAS, SPECIALS, PAD
+from dms.constants import ALL_AAS, SPECIALS, PAD, MASK
 
 def read_fasta(fasta_path, seq_file, info_file, index_file):
     """
@@ -37,9 +37,10 @@ def parse_fasta(self, seq_file, idx):
 
 class Tokenizer(object):
     """Convert between strings and index"""
-    def __init__(self, all_aas=ALL_AAS, specials=SPECIALS, pad=PAD):
+    def __init__(self, all_aas=ALL_AAS, specials=SPECIALS, pad=PAD, mask=MASK):
         self.alphabet = sorted(set("".join(pad+all_aas+specials)))
         self.pad = pad
+        self.mask = mask
         self.vocab = sorted(set("".join(all_aas)))
         self.a_to_i = {u: i for i, u in enumerate(self.alphabet)}
         self.i_to_a = np.array(self.alphabet)
@@ -47,6 +48,10 @@ class Tokenizer(object):
     @property
     def pad_id(self):
         return self.alphabet.index(self.pad)
+
+    @property
+    def mask_id(self):
+        return self.alphabet.index(self.mask)
 
     def tokenize(self, seq):
         return np.array([self.a_to_i[a] for a in seq])
