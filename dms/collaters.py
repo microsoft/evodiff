@@ -1,3 +1,5 @@
+## TODO: FIX/IMPLEMENT KEVIN NOTES
+
 import numpy as np
 import torch
 from dms.utils import Tokenizer
@@ -73,11 +75,17 @@ class SimpleCollater(object):
 class OAMaskCollater(object):
     """
     OrderAgnosic Mask Collater for masking batch data according to Hoogeboom et al. OA ARDMS
-    D : possible permutations from 0.. max length
-    t : randomly selected timestep
+    inputs:
+        sequences : list of sequences
+    OA-ARM variables:
+        D : possible permutations from 0.. max length
+        t : randomly selected timestep
 
-    mask_type: "random" or "single" will mask sequences with either a single character or pull from a random dist
-    mask_pad: False to ignore pad characters during creation of mask
+    outputs:
+        src : source (input) to model, list of masked sequenes
+        timesteps: as a torch tensor (D-t+1) term
+        tokenized: tokenized sequences
+        masks: mask as int tensor
     """
     def __init__(self, simple_collater, mask_type='random', mask_id_letter='Y', mask_pad=False):
         self.simple_collater = simple_collater
@@ -88,51 +96,25 @@ class OAMaskCollater(object):
 
     def __call__(self, sequences):
         tokenized = self.simple_collater(sequences)
-
-        masked=[]
+        src=[]
+        timesteps = []
+        masks=[]
         for i,x in enumerate(tokenized):
             num_pad = 0
-            #mask pad
+            # TODO: padding order is inefficient, but buggy
             if not self.mask_pad: # if not masking pads ignore before creating mask_arr
                 x_pad = x.clone()
                 mask_pad = x_pad != self.tokenizer.pad_id
-                num_pad = len(x_pad) - mask_pad.sum()
                 x = x[mask_pad]
-            # Hoogeboom OARDM
-            D = len(x) # sequence length determines D
-            t = np.random.randint(0,D) # randomly sample timestep
-            num_mask = D-t+1 # from OA-ARMS
-            mask_arr = np.random.choice(D, num_mask, replace=False)
-            masked.append(self._mask(x, mask_arr, num_pad))
-        return masked
-
-    def _mask(self, x_0, mask_arr, num_pad):
-        x = torch.Tensor(x_0)
-        x = x.to(torch.long)
-        num_mask = len(mask_arr)
-
-        index_arr = np.arange(0, len(x))
-        mask = np.isin(index_arr,mask_arr, invert=False).reshape(index_arr.shape)
-
-        mask_id = torch.Tensor(self.tokenizer.tokenize([self.mask_id_letter]))
-        if self.mask_type == 'single': # easier to visualize mask
-            mask_arr = mask_id.to(torch.long)
-        elif self.mask_type == 'random':
-            if num_mask == 0:
-                mask_arr = mask_id.to(torch.long)
-            else:
-                mask_aa_arr = np.random.choice(self.tokenizer.vocab, num_mask)
-                mask_arr = torch.tensor([self.tokenizer.tokenize(each) for each in mask_aa_arr])
-        else:
-            print("you chose: ", self.mask_type)
-            print("must choose 'single' or 'random'")
-
-        mask_arr = mask_arr.reshape(mask_arr.shape[0])
-        x[mask] = mask_arr
-        pad_array = torch.zeros(num_pad) +  self.tokenizer.pad_id
-
-        if pad_array.shape[0] > 0 :
-            x = torch.cat((x,pad_array.to(torch.long)), 0)
-
-        return x
+            D = len(x) # D should have the same dimensions as each sequence length
+            t = np.random.randint(1,D) # randomly sample timestep
+            num_mask = (D-t+1) # from OA-ARMS
+            timesteps.append(num_mask)
+            mask_arr = np.random.choice(D, num_mask, replace=False) # Generates array of len num_mask
+            index_arr = np.arange(0, len(x))
+            mask = np.isin(index_arr, mask_arr, invert=False).reshape(index_arr.shape) # masks indices specified by mask_arr
+            mask = masks.append(mask)
+            x[mask] = torch.Tensor(self.tokenizer.tokenize([self.mask_id_letter]))
+            src.append(x)
+        return (src, torch.tensor(timesteps), tokenized, torch.tensor(masks))
 
