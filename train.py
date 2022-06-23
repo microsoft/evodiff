@@ -141,8 +141,8 @@ def train(gpu, args):
     #    collater = MLMCollater(PROTEIN_ALPHABET)
     #    causal = False
     print("Only using sarah collaters")
-    simple_collater = SimpleCollater(pad='Norm', backwards=False)
-    collater = OAMaskCollater(simple_collater, mask_type='random')
+    simple_collater = SimpleCollater(norm=True)
+    collater = OAMaskCollater(simple_collater, inputs_padded=True)
     causal = False
     #metadata = np.load(data_dir + 'lengths_and_offsets.npz')
     #ds_train = UniRefDataset(data_dir, 'train', structure=False)
@@ -175,7 +175,7 @@ def train(gpu, args):
     # USING 100 batches = 1000 samples/100 batch_size for testing
     train_size = 10000
     val_size = 10000
-    train_samples = 100
+    train_samples = 1
     sample_idx = np.random.randint(0,train_size,train_samples)
     train_sampler = SubsetRandomSampler(sample_idx)
 

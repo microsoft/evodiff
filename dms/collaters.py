@@ -29,12 +29,12 @@ def _normalize_seq_lengths(tokenized, seq_length, value):
     """
     batch_size = len(tokenized)
     output = torch.zeros((batch_size, seq_length)) + value
-
-    for i, t in enumerate(tokenized):
+    print(output.shape)
+    for row, t in enumerate(tokenized):
         if len(t) <= seq_length:
-            output[i, :len(t)] = t
+            output[row, :len(t)] = t
         else:
-            output[i, :seq_length] = t[:seq_length]
+            output[row, :seq_length] = t[:seq_length]
     return output
 
 class SimpleCollater(object):
@@ -46,11 +46,12 @@ class SimpleCollater(object):
     - Pad to "max" length in batch or pads to "normalized" length chosen by providing seq_length
     """
 
-    def __init__(self, pad='Norm', backwards=False, seq_length=512):
+    def __init__(self, pad=False, backwards=False, norm=False, seq_length=512):
         self.pad = pad
         self.seq_length = seq_length
         self.tokenizer = Tokenizer()
         self.backwards = backwards
+        self.norm = norm
 
     def __call__(self, batch):
         # for seq in batch:
@@ -64,12 +65,15 @@ class SimpleCollater(object):
 
         tokenized = [torch.LongTensor(self.tokenizer.tokenize(s)) for s in sequences]
 
-        if self.pad == 'Max':
-            tokenized = _pad(tokenized, self.tokenizer.pad_id)
-        elif self.pad == 'Norm':
+        if self.norm:
+            print("Truncating sequences to ", self.seq_length, "and padding")
             tokenized = _normalize_seq_lengths(tokenized, self.seq_length, self.tokenizer.pad_id)
-        else:
-            print("Must select 'Max' or 'Norm' for padding scheme")
+
+        if self.pad:
+            print("Padding sequences to max seq length")
+            tokenized = _pad(tokenized, self.tokenizer.pad_id)
+
+        print("Tokenizing sequences")
         return (tokenized)
 
 class OAMaskCollater(object):
@@ -77,40 +81,36 @@ class OAMaskCollater(object):
     OrderAgnosic Mask Collater for masking batch data according to Hoogeboom et al. OA ARDMS
     inputs:
         sequences : list of sequences
+        inputs_padded: if inputs are padded (due to truncation in Simple_Collater) set True (default False)
+
     OA-ARM variables:
         D : possible permutations from 0.. max length
         t : randomly selected timestep
 
     outputs:
-        src : source (input) to model, list of masked sequenes
-        timesteps: as a torch tensor (D-t+1) term
-        tokenized: tokenized sequences
-        masks: mask as int tensor
+        src : source  masked sequences (model input)
+        timesteps: (D-t+1) term
+        tokenized: tokenized sequences (target seq)
+        masks: masks used to generate src
     """
-    def __init__(self, simple_collater, mask_type='random', mask_id_letter='Y', mask_pad=False):
+    def __init__(self, simple_collater, inputs_padded=False):
         self.simple_collater = simple_collater
         self.tokenizer = Tokenizer()
-        self.mask_type = mask_type
-        self.mask_id_letter= mask_id_letter
-        self.mask_pad  = mask_pad
+        self.inputs_padded  = inputs_padded
 
     def __call__(self, sequences):
         tokenized = self.simple_collater(sequences)
         src=[]
         timesteps = []
         masks=[]
-        mask_id = torch.Tensor(self.tokenizer.tokenize([self.mask_id_letter]))
+        mask_id = torch.tensor(self.tokenizer.mask_id, dtype=torch.int64)
 
         for i,x in enumerate(tokenized):
-            num_pad = 0
-            #len_x = len(x)
-            # TODO: padding order is inefficient, but buggy keeping for now
-            # if not masking pads ignore before creating mask_arr
-            if not self.mask_pad:
-                x_pad = x.clone()
-                mask_pad = x_pad != self.tokenizer.pad_id
-                num_pad = len(x_pad) - mask_pad.sum()
-                x = x[mask_pad]
+            if self.inputs_padded: # if truncating to some length first, inputs will be padded
+                 x_pad = x.clone()
+                 mask_pad = x_pad != self.tokenizer.pad_id
+                 num_pad = len(x_pad) - mask_pad.sum()
+                 x = x[mask_pad].to(torch.int64)
             # Randomly generate timestep and indices to mask
             D = len(x) # D should have the same dimensions as each sequence length
             t = np.random.randint(1, D) # randomly sample timestep
@@ -121,29 +121,15 @@ class OAMaskCollater(object):
             mask_arr = np.random.choice(D, num_mask, replace=False) # Generates array of len num_mask
             index_arr = np.arange(0, len(x)) #index array [1...seq_len]
             mask = np.isin(index_arr, mask_arr, invert=False).reshape(index_arr.shape) # mask bools indices specified by mask_arr
-            #print(mask)
             # Mask inputs
             x[mask] = mask_id
             mask = torch.tensor(mask, dtype=torch.bool)
-            # Pad again if needed
-            pad_array = torch.zeros(num_pad) + self.tokenizer.pad_id
-            if pad_array.shape[0] > 0:
-                x = torch.cat((x.to(torch.long), pad_array.to(torch.long)), 0)
-                mask = torch.cat((mask, torch.zeros(num_pad, dtype=torch.bool)), 0)
-                #print(mask)
-            # Append masked input
-            src.append(x.to(torch.long))
-            # Append mask
+            src.append(x)
             masks.append(mask)
-        src = torch.stack(src, dim=0)
-        #timesteps = torch.tensor(timesteps, dtype=torch.float64)
-        #print("src", src.dtype)
-        #print(src.shape)
-        #print("timesteps", timesteps.dtype)
-        #print(timesteps[0])
-        #print("before masks", masks.dtype)
-        masks = torch.stack(masks, dim=0)
-        #print("after masks", masks.dtype)
-        #print(masks[0])
-        return (src, timesteps, tokenized.to(torch.long), masks.to(torch.long))
+        # PAD out
+        src = _pad(src, self.tokenizer.pad_id)
+        masks = _pad(masks*1, 0)
+        print(masks)
+        tokenized = _pad(tokenized, self.tokenizer.pad_id)
+        return (src.to(torch.long), timesteps, tokenized.to(torch.long), masks)
 
