@@ -1,5 +1,3 @@
-## TODO: FIX/IMPLEMENT KEVIN NOTES
-
 import numpy as np
 import torch
 from dms.utils import Tokenizer
