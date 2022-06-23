@@ -2,7 +2,7 @@ import pandas as pd
 from dms.utils import parse_fasta
 from torch.utils.data import Dataset
 
-
+# TODO: replace w/ Kevins sequence_models.datasets.FlatDataset
 class UNIREF50(Dataset):
     """
     Dataset stores samples and labels
@@ -18,6 +18,6 @@ class UNIREF50(Dataset):
         return len(index)
 
     def __getitem__(self, idx):
-        sequence = parse_fasta(self,self.seq_file, idx)
+        sequence = parse_fasta(self.seq_file, idx)
         return(sequence)
 

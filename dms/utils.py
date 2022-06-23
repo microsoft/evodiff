@@ -22,7 +22,7 @@ def read_fasta(fasta_path, seq_file, info_file, index_file):
             else:
                 current_seq += line[:-1]
 
-def parse_fasta(self, seq_file, idx):
+def parse_fasta(seq_file, idx):
     """
     Reads seq_file from processing steps, and will extract sequence at a given index
     """

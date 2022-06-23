@@ -23,4 +23,4 @@ MASK = '#'  # Useful for masked language model training
 START = '@'
 SPECIALS = STOP + GAP + MASK + START
 
-PROTEIN_ALPHABET = ALL_AAS + SPECIALS
+PROTEIN_ALPHABET = ALL_AAS + SPECIALS + PAD
