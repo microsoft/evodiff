@@ -125,7 +125,6 @@ class OAMaskCollater(object):
         # PAD out
         src = _pad(src, self.tokenizer.pad_id)
         masks = _pad(masks*1, 0)
-        print(masks)
         tokenized = _pad(tokenized, self.tokenizer.pad_id)
         return (src.to(torch.long), timesteps, tokenized.to(torch.long), masks)
 
