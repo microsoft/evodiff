@@ -31,11 +31,11 @@ class MaskedCrossEntropyLoss(CrossEntropyLoss):
         t = torch.masked_select(tgt, mask.squeeze())
         loss = super().forward(p,t)
         # Dot prod loss w/ reweighting term
-        timesteps = np.repeat(timesteps, timesteps, axis=0) # expand timesteps so dim matches loss
+        timesteps = np.repeat(timesteps, timesteps, axis=0) # expand timesteps so dim matches loss dim
         timesteps = torch.tensor(timesteps, dtype=torch.float64)
         timesteps = timesteps.to(loss.device)
         rwt_term = 1. / timesteps  # Hoogeboom OARDM
-        print(rwt_term.shape, loss.shape)
+        #print(rwt_term.shape, loss.shape)
         loss_rwt = torch.dot(rwt_term, loss.to(torch.float64)) # rwt has dim of batch size, loss is meaned over all mask
-        print(loss_rwt)
+        #print(loss_rwt)
         return loss_rwt

@@ -20,12 +20,12 @@ import torch.distributed as dist
 
 #from sequence_models.convolutional import ByteNetLM # TODO: FIGURE OUT BYTENET
 from model import ByteNetLM
-#from sequence_models.constants import PROTEIN_ALPHABET, PAD, MASK # to do update
-from dms.constants import PROTEIN_ALPHABET, PAD, MASK
+from sequence_models.constants import MASK
+from dms.constants import PROTEIN_ALPHABET, PAD
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler # TODO reimplement kevins sampler
 from torch.utils.data import SubsetRandomSampler
-#from sequence_models.datasets import UniRefDataset # TODO reimplement kevins dataset - faster
-from dms.data import UNIREF50
+from sequence_models.datasets import UniRefDataset
+#from dms.data import UNIREF50
 from dms.collaters import SimpleCollater, OAMaskCollater
 #from sequence_models.collaters import LMCollater, MLMCollater
 #from sequence_models.losses import MaskedCrossEntropyLoss
@@ -145,19 +145,11 @@ def train(gpu, args):
     collater = OAMaskCollater(simple_collater, inputs_padded=True)
     causal = False
     #metadata = np.load(data_dir + 'lengths_and_offsets.npz')
-    #ds_train = UniRefDataset(data_dir, 'train', structure=False)
+    ds_train = UniRefDataset(data_dir, 'train', structure=False)
+
     # ----------------------------------------------------------
     ### DATALOADER ###
     # ----------------------------------------------------------
-    #print(data_dir)
-    index_file = data_dir + 'INDEX.txt'
-    seq_file = data_dir + 'SEQ.txt'
-    data = UNIREF50(index_file, seq_file)
-
-    # TODO: make test/train split more efficient
-    #train_size = int(0.8 * len(data))
-    #val_size = len(data) - train_size
-    #ds_train, ds_valid = torch.utils.data.random_split(data, [train_size, val_size])
 
     #train_idx = ds_train.indices
     #len_train = metadata['ells'][train_idx]
@@ -173,14 +165,13 @@ def train(gpu, args):
 
     ## TODO: implement samplers
     # USING 100 batches = 1000 samples/100 batch_size for testing
-    train_size = 10000
-    val_size = 10000
-    train_samples = 1
+    train_size = len(ds_train)
+    train_samples = 1000
     sample_idx = np.random.randint(0,train_size,train_samples)
     train_sampler = SubsetRandomSampler(sample_idx)
 
-    print("Using simple sampler")
-    dl_train = DataLoader(data,
+    print("Using simple sampler on test data")
+    dl_train = DataLoader(ds_train,
                           sampler=train_sampler,
                           batch_size=max_batch_size, # batches = samples/batch_size
                           num_workers=16, # CPU
@@ -188,7 +179,7 @@ def train(gpu, args):
 
     # TODO: what to use for validation? using random split for now
     if rank == 0:
-        #ds_valid = UNIREF50(index_file, seq_file)
+        ds_valid = UniRefDataset(data_dir, 'valid', structure=False)
         #valid_idx = ds_valid.indices
         #len_valid = metadata['ells'][valid_idx]
         #valid_sortish_sampler = SortishSampler(len_valid, 1000, num_replicas=1, rank=0)
@@ -197,10 +188,11 @@ def train(gpu, args):
 
         ## TODO: implement samplers
         # USING 2 batches = 200 samples/100 batch_size for testing
-        val_samples = 1000
+        val_samples = 100
+        val_size = len(ds_valid)
         val_idx = np.random.randint(0,val_size,val_samples)
         valid_sampler = SubsetRandomSampler(val_idx)
-        dl_valid = DataLoader(dataset=data,
+        dl_valid = DataLoader(dataset=ds_valid,
                               sampler=valid_sampler,
                               batch_size = max_batch_size,
                               num_workers=8,

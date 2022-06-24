@@ -6,3 +6,5 @@ dependencies:
   - pytorch
   - pandas
   - numpy
+  - sequence-models
+  - python-lmdb

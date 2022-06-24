@@ -41,7 +41,7 @@ class SimpleCollater(object):
 
     Performs simple operations on batch of sequences contained in a list
     - Can reverse sequence orders
-    - Pad to "max" length in batch or pads to "normalized" length chosen by providing seq_length
+    - Pad to "max" length in batch or pads to "normalized" length chosen by providing seq_length (default 512)
     """
 
     def __init__(self, pad=False, backwards=False, norm=False, seq_length=512):
@@ -52,8 +52,6 @@ class SimpleCollater(object):
         self.norm = norm
 
     def __call__(self, batch):
-        # for seq in batch:
-        #     print("Length of sequence", len(seq))
         prepped = self._prep(batch)
         return prepped
 

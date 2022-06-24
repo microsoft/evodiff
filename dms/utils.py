@@ -1,5 +1,6 @@
 import numpy as np
-from dms.constants import ALL_AAS, SPECIALS, PAD, MASK
+from sequence_models.constants import ALL_AAS, SPECIALS, MASK
+from dms.constants import PAD
 
 def read_fasta(fasta_path, seq_file, info_file, index_file):
     """
@@ -54,7 +55,7 @@ class Tokenizer(object):
         return self.alphabet.index(self.mask)
 
     def tokenize(self, seq):
-        return np.array([self.a_to_i[a] for a in seq])
+        return np.array([self.a_to_i[a] for a in seq[0]]) # seq is a tuple with empty second dim
 
     def untokenize(self, x):
         if x.type() == 'torch.FloatTensor':
