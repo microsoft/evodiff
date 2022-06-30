@@ -2,9 +2,12 @@ name: dms
 channels:
   - defaults
 dependencies:
-  - python=3.6
+  - python=3.8
   - pytorch
   - pandas
   - numpy
-  - sequence-models
   - python-lmdb
+  - pip
+  - pip:
+      - sequence-models
+      - mlflow

@@ -1,3 +1,4 @@
+import blosum as bl
 import numpy as np
 from sequence_models.constants import ALL_AAS, SPECIALS, MASK
 from dms.constants import PAD
@@ -36,6 +37,9 @@ def parse_fasta(seq_file, idx):
                 break
     return sequence
 
+def tokenize_blosum(seq):
+    return tuple(Tokenizer().a_to_i[a] for a in seq) # use for blosum
+
 class Tokenizer(object):
     """Convert between strings and index"""
     def __init__(self, all_aas=ALL_AAS, specials=SPECIALS, pad=PAD, mask=MASK):
@@ -62,3 +66,20 @@ class Tokenizer(object):
             return "".join([self.i_to_a[int(t.item())] for t in x])
         else:
             return "".join([self.i_to_a[t] for t in x])
+
+class Blosum62(object):
+    "Generate a dictionary of tuples"
+    def __init__(self, tokenizer=Tokenizer(), matrix=bl.BLOSUM(62)):
+        self.tokenizer = tokenizer
+        self.matrix = matrix
+
+    @property
+    def matrix_dict(self):
+        return dict(self.matrix)
+
+    def blosum_dict(self):
+        blosum_dict = dict(self.matrix)
+        keys = [key for key in blosum_dict.keys()]
+        keys_tokenized = [tokenize_blosum(key) for key in keys]
+        d = dict(zip(keys_tokenized, blosum_dict.values()))
+        return d
