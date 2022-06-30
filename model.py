@@ -338,7 +338,7 @@ class ByteNetLM(nn.Module):
             self.last_norm = nn.Identity()
 
     def forward(self, x, input_mask=None):
-        print("embedder weight dim", len(self.embedder.embedder.weight))
+        #print("embedder weight dim", len(self.embedder.embedder.weight))
         e = self.embedder(x, input_mask=input_mask)
         e = self.last_norm(e)
         return self.decoder(e)

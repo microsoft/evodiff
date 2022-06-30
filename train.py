@@ -18,7 +18,7 @@ import torch.distributed as dist
 #from apex import amp
 # replace amp with pytorch mixed precision
 
-#from sequence_models.convolutional import ByteNetLM # TODO: FIGURE OUT BYTENET
+#from sequence_models.convolutional import ByteNetLM
 from model import ByteNetLM
 from sequence_models.constants import MASK
 from dms.constants import PROTEIN_ALPHABET, PAD
@@ -74,8 +74,8 @@ def train(gpu, args):
     _ = torch.manual_seed(0)
     if args.aml:
         args.nr = int(os.environ['OMPI_COMM_WORLD_RANK'])
+        print(args.nr)
     rank = args.nr * args.gpus + gpu
-    #print(rank)
     dist.init_process_group(
         backend='nccl',
         init_method='env://',
@@ -120,7 +120,7 @@ def train(gpu, args):
         data_dir = os.getenv('PT_DATA_DIR') + '/'
         ptjob = True
     except:
-        data_dir = home + '/scratch/github/DMs/data/'
+        data_dir = home + '/Desktop/DMs/data/'
         ptjob = False
     data_dir += config['dataset'] + '/'
     #print(data_dir)
@@ -170,11 +170,11 @@ def train(gpu, args):
     sample_idx = np.random.randint(0,train_size,train_samples)
     train_sampler = SubsetRandomSampler(sample_idx)
 
-    print("Using simple sampler on test data")
+    print("Using simple sampler")
     dl_train = DataLoader(ds_train,
                           sampler=train_sampler,
                           batch_size=max_batch_size, # batches = samples/batch_size
-                          num_workers=16, # CPU
+                          num_workers=8, # CPU
                           collate_fn=collater)
 
     # TODO: what to use for validation? using random split for now
@@ -195,7 +195,7 @@ def train(gpu, args):
         dl_valid = DataLoader(dataset=ds_valid,
                               sampler=valid_sampler,
                               batch_size = max_batch_size,
-                              num_workers=8,
+                              num_workers=1,
                               collate_fn=collater)
     else:
         print("this commented right now")
@@ -256,12 +256,13 @@ def train(gpu, args):
     #        amp.load_state_dict(sd['amp_state_dict'])
     #    else:
     #        amp.load_state_dict({'loss_scaler0': {'loss_scale': 512., 'unskipped': 0}})
-    loss_func = MaskedCrossEntropyLoss()
+    loss_func = MaskedCrossEntropyLoss(reweight=True)
     accu_func = MaskedAccuracy()
 
     def epoch(model, train, current_step=0, current_tokens=0):
         start_time = datetime.now()
         if train:
+            #print("model", model)
             model = model.train()
             loader = dl_train
             t = 'Training:'
@@ -366,12 +367,12 @@ def train(gpu, args):
         src = src.to(device)
         tgt = tgt.to(device)
         mask = mask.to(device)
+        #print(src.shape, tgt.shape, mask.shape, len(timestep))
         #timestep = timestep.to(device)
-        #input_mask = (src != PROTEIN_ALPHABET.index(PAD)).float()
-        input_mask = (src != PROTEIN_ALPHABET.index(MASK)).float()
+        input_mask = (src != PROTEIN_ALPHABET.index(PAD)).float()
         outputs = model(src, input_mask=input_mask.unsqueeze(-1))
         n_tokens = mask.sum()
-        print("n_tokens", n_tokens)
+        #print("n_tokens", n_tokens)
         n_processed = input_mask.sum()
         loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
         accu = accu_func(outputs, tgt, mask) * n_tokens # TODO: check that this works for your problem
@@ -404,12 +405,11 @@ def train(gpu, args):
         print('%d validation sequences' %val_samples)
     for e in range(initial_epoch, epochs):
         print("epoch ", e)
-        #train_sortish_sampler.set_epoch(e + 1) # NEEDED for DDP - ignoring for now?
+        # train_sortish_sampler.set_epoch(e + 1) # NEEDED for DDP - ignoring for now?
         s, t = epoch(model, True, current_step=total_steps, current_tokens=total_tokens)
         total_steps += s
         total_tokens += t
         print(total_steps, total_tokens)
-
 
 if __name__ == '__main__':
     main()
