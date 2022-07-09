@@ -23,8 +23,8 @@ from torch.cuda.amp import GradScaler
 from model import ByteNetLM
 #from sequence_models.constants import MASK
 from dms.constants import PROTEIN_ALPHABET, PAD
-#from sequence_models.samplers import SortishSampler, ApproxBatchSampler # TODO reimplement kevins sampler
-from torch.utils.data import SubsetRandomSampler
+from sequence_models.samplers import SortishSampler, ApproxBatchSampler
+#from torch.utils.data import SubsetRandomSampler
 from sequence_models.datasets import UniRefDataset
 #from dms.data import UNIREF50
 from dms.collaters import SimpleCollater, OAMaskCollater
@@ -147,64 +147,64 @@ def train(gpu, args):
     #    collater = MLMCollater(PROTEIN_ALPHABET)
     #    causal = False
     print("Only using sarah collaters")
-    simple_collater = SimpleCollater(norm=True)
-    collater = OAMaskCollater(simple_collater, inputs_padded=True)
+    simple_collater = SimpleCollater()
+    collater = OAMaskCollater(simple_collater, inputs_padded=False)
     causal = False
-    #metadata = np.load(data_dir + 'lengths_and_offsets.npz')
+    metadata = np.load(data_dir + 'lengths_and_offsets.npz')
     ds_train = UniRefDataset(data_dir, 'train', structure=False)
 
     # ----------------------------------------------------------
     ### DATALOADER ###
     # ----------------------------------------------------------
 
-    #train_idx = ds_train.indices
-    #len_train = metadata['ells'][train_idx]
-    # TODO: implement samplers for more efficient iterating
-    #train_sortish_sampler = SortishSampler(len_train, bucket_size, num_replicas=args.world_size, rank=rank)
-    #train_sampler = ApproxBatchSampler(train_sortish_sampler, max_tokens, max_batch_size, len_train)
-    #dl_train = DataLoader(dataset=ds_train,
-    #                      batch_sampler=train_sampler,
-    #                      num_workers=16,
-    #                      collate_fn=collater)
+    train_idx = ds_train.indices
+    len_train = metadata['ells'][train_idx]
+    train_sortish_sampler = SortishSampler(len_train, bucket_size, num_replicas=args.world_size, rank=rank)
+    train_sampler = ApproxBatchSampler(train_sortish_sampler, max_tokens, max_batch_size, len_train)
+
+    dl_train = DataLoader(dataset=ds_train,
+                          batch_sampler=train_sampler,
+                          num_workers=16,
+                          collate_fn=collater)
+
     # no of batches = num_samples/batch_size when using a subset sampler
     #sample_idx = np.random.randint(0, train_size, 1000)
 
-    ## TODO: implement samplers
     # USING 100 batches = 1000 samples/100 batch_size for testing
-    train_size = len(ds_train)
-    train_samples = 10000
-    sample_idx = np.random.randint(0,train_size,train_samples)
-    train_sampler = SubsetRandomSampler(sample_idx)
+    #train_size = len(ds_train)
+    #train_samples = 10000
+    #sample_idx = np.random.randint(0,train_size,train_samples)
+    #train_sampler = SubsetRandomSampler(sample_idx)
 
-    print("Using simple sampler")
-    dl_train = DataLoader(ds_train,
-                          sampler=train_sampler,
-                          batch_size=max_batch_size, # batches = samples/batch_size
-                          num_workers=8, # CPU
-                          collate_fn=collater)
+    #print("Using simple sampler")
+    # dl_train = DataLoader(ds_train,
+    #                       sampler=train_sampler,
+    #                       batch_size=max_batch_size, # batches = samples/batch_size
+    #                       num_workers=8, # CPU
+    #                       collate_fn=collater)
 
-    # TODO: what to use for validation? using random split for now
     if rank == 0:
         ds_valid = UniRefDataset(data_dir, 'valid', structure=False)
-        #valid_idx = ds_valid.indices
-        #len_valid = metadata['ells'][valid_idx]
-        #valid_sortish_sampler = SortishSampler(len_valid, 1000, num_replicas=1, rank=0)
-        #valid_sampler = ApproxBatchSampler(valid_sortish_sampler, max_tokens // 2, max_batch_size, len_valid)
-        #val_idx = np.random.randint(0, test_size, 2000)
-
-        ## TODO: implement samplers
-        # USING 2 batches = 200 samples/100 batch_size for testing
-        val_samples = 1000
-        val_size = len(ds_valid)
-        val_idx = np.random.randint(0,val_size,val_samples)
-        valid_sampler = SubsetRandomSampler(val_idx)
+        valid_idx = ds_valid.indices
+        len_valid = metadata['ells'][valid_idx]
+        valid_sortish_sampler = SortishSampler(len_valid, 1000, num_replicas=1, rank=0)
+        valid_sampler = ApproxBatchSampler(valid_sortish_sampler, max_tokens // 2, max_batch_size, len_valid)
         dl_valid = DataLoader(dataset=ds_valid,
-                              sampler=valid_sampler,
-                              batch_size = max_batch_size,
-                              num_workers=1,
+                              batch_sampler=valid_sampler,
+                              num_workers=8,
                               collate_fn=collater)
-    else:
-        print("this commented right now")
+
+        # USING 2 batches = 200 samples/100 batch_size for testing
+        # val_samples = 1000
+        # val_size = len(ds_valid)
+        # val_idx = np.random.randint(0,val_size,val_samples)
+        # valid_sampler = SubsetRandomSampler(val_idx)
+        # dl_valid = DataLoader(dataset=ds_valid,
+        #                       sampler=valid_sampler,
+        #                       batch_size = max_batch_size,
+        #                       num_workers=1,
+        #                       collate_fn=collater)
+    #else:
     #     valid_sampler = DistributedSampler(ds_valid, num_replicas=args.world_size, rank=rank, shuffle=False)
     #     dl_valid = DataLoader(dataset=ds_valid, batch_size=64, num_workers=8, collate_fn=collater,
     #                           drop_last=True, sampler=valid_sampler)
@@ -232,23 +232,20 @@ def train(gpu, args):
     #            if epoch > last_epoch:
     #                args.state_dict = args.out_fpath + output
     #                last_epoch = epoch
-    #if args.state_dict is not None:
-    #    print('Loading weights from ' + args.state_dict + '...')
-    #    sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
-    #    msd = sd['model_state_dict']
-    #    msd = {k.split('module.')[1]: v for k, v in msd.items()}
-    #    model.load_state_dict(msd)
-    #    optimizer.load_state_dict(sd['optimizer_state_dict'])
-    #    initial_epoch = sd['epoch'] + 1
-    #    total_steps = sd['step']
-    #    total_tokens = sd['tokens']
-    #else:
-    #    initial_epoch = 0
-    #    total_steps = 0
-    #    total_tokens = 0
-    initial_epoch=0
-    total_steps=0
-    total_tokens=0
+    if args.state_dict is not None:
+       print('Loading weights from ' + args.state_dict + '...')
+       sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
+       msd = sd['model_state_dict']
+       msd = {k.split('module.')[1]: v for k, v in msd.items()}
+       model.load_state_dict(msd)
+       optimizer.load_state_dict(sd['optimizer_state_dict'])
+       initial_epoch = sd['epoch'] + 1
+       total_steps = sd['step']
+       total_tokens = sd['tokens']
+    else:
+       initial_epoch = 0
+       total_steps = 0
+       total_tokens = 0
     model = model.to(device)
     #optimizer.state = {}
     #model, optimizer = amp.initialize(model, optimizer, opt_level=opt_level)
@@ -288,9 +285,9 @@ def train(gpu, args):
         n_seen = 0
         tokens_trained = current_tokens
         if train:
-            n_total = train_samples
+            n_total = len(ds_train)
         else:
-            n_total = val_samples
+            n_total = len(ds_valid)
         for i, batch in enumerate(loader):
             print("Batch", i)
             # This is for restarting from a checkpoint
@@ -378,7 +375,7 @@ def train(gpu, args):
         src = src.to(device)
         tgt = tgt.to(device)
         mask = mask.to(device)
-        #print("shapes",src.shape, tgt.shape, mask.shape, len(timestep))
+        print("shapes",src.shape, tgt.shape, mask.shape, len(timestep))
         #timestep = timestep.to(device)
         input_mask = (src != PROTEIN_ALPHABET.index(PAD)).float()
         #print("input mask",input_mask.shape, input_mask)
@@ -395,7 +392,7 @@ def train(gpu, args):
                 #outputs = model(src)
                 #print("src", src.shape, src)
                 outputs = model(src, input_mask=input_mask.unsqueeze(-1))
-                #print("outputs", outputs.shape, outputs, "target", tgt.shape, tgt)
+                print("outputs", outputs.shape) #, outputs, "target", tgt.shape, tgt)
                 loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
                 #loss = loss_func(outputs, tgt)
                 accu = accu_func(outputs, tgt, mask) * n_tokens
@@ -439,11 +436,11 @@ def train(gpu, args):
     n_parameters = sum(p.numel() for p in model.parameters())
     if rank == 0:
         print('%d model parameters' %n_parameters)
-        print('%d training sequences' %train_samples)
-        print('%d validation sequences' %val_samples)
+        print('%d training sequences' %len(len_train))
+        print('%d validation sequences' %len(len_valid))
     for e in range(initial_epoch, epochs):
         print("epoch ", e)
-        #train_sortish_sampler.set_epoch(e + 1) # NEEDED for DDP - ignoring for now?
+        train_sortish_sampler.set_epoch(e + 1)
         s, t = epoch(model, True, current_step=total_steps, current_tokens=total_tokens)
         total_steps += s
         total_tokens += t

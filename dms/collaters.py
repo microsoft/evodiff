@@ -155,21 +155,21 @@ class OAMaskCollater(object):
         tokenized: tokenized sequences (target seq)
         masks: masks used to generate src
     """
-    def __init__(self, simple_collater, inputs_padded=False, seq_length=512):
+    def __init__(self, simple_collater, inputs_padded=False):
         self.simple_collater = simple_collater
         self.tokenizer = Tokenizer()
         self.inputs_padded  = inputs_padded
-        self.seq_length = seq_length
 
     def __call__(self, sequences):
         tokenized = self.simple_collater(sequences)
+        max_len = max(len(t) for t in tokenized)
+        #print("max len", max_len)
         src=[]
         timesteps = []
         masks=[]
         mask_id = torch.tensor(self.tokenizer.mask_id, dtype=torch.int64)
 
-        batch_size = len(tokenized)
-        max_len = max(len(t) for t in tokenized)
+        #batch_size = len(tokenized)
 
         for i,x in enumerate(tokenized):
             if self.inputs_padded: # if truncating seqs to some length first in SimpleCollater, inputs will be padded
@@ -306,7 +306,7 @@ class DMsMaskCollater(object):
             masks = _pad(masks*1, 0)
             #tokenized = _pad(tokenized, self.tokenizer.pad_id)
             x_tgt = _pad(x_tgt, self.tokenizer.pad_id)
-            #print("src shape",src.shape, "mask shape",masks.shape)
+            print("src shape",src.shape, "mask shape",masks.shape)
             return (src.to(torch.long), timesteps, x_tgt.to(torch.long), masks)
 
         else:
