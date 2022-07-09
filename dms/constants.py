@@ -1,9 +1,12 @@
 from sequence_models.constants import ALL_AAS, SPECIALS
 
+ROUND=5 #rounding q matrix
+
 PAD = '!'
 
 PROTEIN_ALPHABET = ALL_AAS + SPECIALS + PAD
 
+BLOSUM62_ALPHABET = 'ARNDCQEGHILKMFPSTWYVBZX' # In order of BLOSUM indices for matrix creation
 
 ### CONSTANTS RELEVANT TO PROTEIN VOCAB ###
 # CAN_AAS = 'ACDEFGHIKLMNPQRSTVWY'

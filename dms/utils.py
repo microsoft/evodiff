@@ -1,7 +1,18 @@
 import blosum as bl
 import numpy as np
 from sequence_models.constants import ALL_AAS, SPECIALS, MASK
-from dms.constants import PAD
+from dms.constants import PAD, BLOSUM62_ALPHABET, ROUND
+
+def softmax(x):
+    return np.exp(x)/np.sum(np.exp(x),axis=0)
+
+def norm_q(q):
+    "Normalize transition matrix, ensures that rows sum to 1"
+    q_norm = np.zeros(q.shape)
+    for i in range(q.shape[0]):
+        _norm = q[i]/q[i].sum()
+        q_norm[i] = _norm.round(ROUND)
+    return q_norm
 
 def read_fasta(fasta_path, seq_file, info_file, index_file):
     """
@@ -68,14 +79,33 @@ class Tokenizer(object):
             return "".join([self.i_to_a[t] for t in x])
 
 class Blosum62(object):
-    "Generate a dictionary of tuples"
-    def __init__(self, tokenizer=Tokenizer(), matrix=bl.BLOSUM(62)):
+    """
+    Tokenizer for Blosum62 - Order of BLOSUM matrices controls one hot indexing
+    diff that AA alphabet -- but probably can combine these two at some point. No need for
+    2 indexing schemes
+    """
+    def __init__(self, tokenizer=Tokenizer(), alphabet=BLOSUM62_ALPHABET, path_to_blosum="data/blosum62.mat", num_aas=23):
         self.tokenizer = tokenizer
-        self.matrix = matrix
+        self.alphabet=BLOSUM62_ALPHABET
+        self.matrix = bl.BLOSUM(path_to_blosum)
+        self.matrix_dict = dict(self.matrix)
+        self.b_to_i = {u: i for i, u in enumerate(self.alphabet)}
+        self.i_to_b = np.array([a for a in self.alphabet])
+        self.num_aas = num_aas
 
     @property
-    def matrix_dict(self):
-        return dict(self.matrix)
+    def q_blosum(self):
+        q = np.array([i for i in self.matrix_dict.values()])
+        q = q.reshape((self.num_aas, self.num_aas))
+        q = softmax(q)
+        q = norm_q(q)
+        return q
+
+    @property
+    def q_random(self):
+        q = np.eye(23) + 1 / 10 # arbitrary, set diagnoal to zero assign other transitions some prob
+        q = norm_q(q) # normalize so rows += 1
+        return q
 
     def blosum_dict(self):
         blosum_dict = dict(self.matrix)
@@ -83,3 +113,10 @@ class Blosum62(object):
         keys_tokenized = [tokenize_blosum(key) for key in keys]
         d = dict(zip(keys_tokenized, blosum_dict.values()))
         return d
+
+    def one_hot(self, seq):
+        x_onehot = np.zeros((len(seq), self.num_aas))
+        for i, a in enumerate(seq):
+            one_index = self.b_to_i[a]
+            x_onehot[i][one_index] = 1
+        return x_onehot

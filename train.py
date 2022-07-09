@@ -14,15 +14,16 @@ from torch.optim import Adam
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 import torch.distributed as dist
+from torch.cuda.amp import GradScaler
 #from apex.parallel import DistributedDataParallel as DDP
 #from apex import amp
 # replace amp with pytorch mixed precision
 
 #from sequence_models.convolutional import ByteNetLM
 from model import ByteNetLM
-from sequence_models.constants import MASK
+#from sequence_models.constants import MASK
 from dms.constants import PROTEIN_ALPHABET, PAD
-from sequence_models.samplers import SortishSampler, ApproxBatchSampler # TODO reimplement kevins sampler
+#from sequence_models.samplers import SortishSampler, ApproxBatchSampler # TODO reimplement kevins sampler
 from torch.utils.data import SubsetRandomSampler
 from sequence_models.datasets import UniRefDataset
 #from dms.data import UNIREF50
@@ -30,9 +31,14 @@ from dms.collaters import SimpleCollater, OAMaskCollater
 #from sequence_models.collaters import LMCollater, MLMCollater
 #from sequence_models.losses import MaskedCrossEntropyLoss
 from losses import MaskedCrossEntropyLoss
+#from torch.nn import MSELoss
 from sequence_models.metrics import MaskedAccuracy
 from sequence_models.utils import warmup, transformer_lr
 
+### SET RANDOM SEEDS ###
+random_seed = 1
+torch.random.manual_seed(random_seed)
+np.random.seed(random_seed)
 
 home = str(pathlib.Path.home())
 
@@ -166,7 +172,7 @@ def train(gpu, args):
     ## TODO: implement samplers
     # USING 100 batches = 1000 samples/100 batch_size for testing
     train_size = len(ds_train)
-    train_samples = 1000
+    train_samples = 10000
     sample_idx = np.random.randint(0,train_size,train_samples)
     train_sampler = SubsetRandomSampler(sample_idx)
 
@@ -188,7 +194,7 @@ def train(gpu, args):
 
         ## TODO: implement samplers
         # USING 2 batches = 200 samples/100 batch_size for testing
-        val_samples = 100
+        val_samples = 1000
         val_size = len(ds_valid)
         val_idx = np.random.randint(0,val_size,val_samples)
         valid_sampler = SubsetRandomSampler(val_idx)
@@ -247,16 +253,21 @@ def train(gpu, args):
     #optimizer.state = {}
     #model, optimizer = amp.initialize(model, optimizer, opt_level=opt_level)
     #model = DDP(model)
-    if args.decay:
-        scheduler = LambdaLR(optimizer, transformer_lr(warmup_steps))
-    else:
-        scheduler = LambdaLR(optimizer, warmup(0.1))
+    # Scaler ###
+    scaler = GradScaler()
+    # Warmup ###
+    scheduler = LambdaLR(optimizer, warmup(warmup_steps))
+    #if args.decay:
+    #    scheduler = LambdaLR(optimizer, transformer_lr(warmup_steps))
+    #else:
+    #    scheduler = LambdaLR(optimizer, warmup(0.1))
     #if args.state_dict is not None:
     #    if 'amp_state_dict' in sd:
     #        amp.load_state_dict(sd['amp_state_dict'])
     #    else:
     #        amp.load_state_dict({'loss_scaler0': {'loss_scale': 512., 'unskipped': 0}})
     loss_func = MaskedCrossEntropyLoss(reweight=True)
+    #loss_func = MSELoss
     accu_func = MaskedAccuracy()
 
     def epoch(model, train, current_step=0, current_tokens=0):
@@ -367,29 +378,56 @@ def train(gpu, args):
         src = src.to(device)
         tgt = tgt.to(device)
         mask = mask.to(device)
-        #print(src.shape, tgt.shape, mask.shape, len(timestep))
+        #print("shapes",src.shape, tgt.shape, mask.shape, len(timestep))
         #timestep = timestep.to(device)
         input_mask = (src != PROTEIN_ALPHABET.index(PAD)).float()
-        outputs = model(src, input_mask=input_mask.unsqueeze(-1))
+        #print("input mask",input_mask.shape, input_mask)
+        #outputs = model(src, input_mask=input_mask.unsqueeze(-1))
         n_tokens = mask.sum()
         #print("n_tokens", n_tokens)
         n_processed = input_mask.sum()
-        loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
-        accu = accu_func(outputs, tgt, mask) * n_tokens # TODO: check that this works for your problem
+        #loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
+        #accu = accu_func(outputs, tgt, mask) * n_tokens
+
         if train:
             optimizer.zero_grad() # reset gradients of model parameters
-            loss.backward() # backprop prediction loss
+            with torch.cuda.amp.autocast():
+                #outputs = model(src)
+                #print("src", src.shape, src)
+                outputs = model(src, input_mask=input_mask.unsqueeze(-1))
+                #print("outputs", outputs.shape, outputs, "target", tgt.shape, tgt)
+                loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
+                #loss = loss_func(outputs, tgt)
+                accu = accu_func(outputs, tgt, mask) * n_tokens
+
+            scaler.scale(loss).backward()
+            #model.float()
+            scaler.step(optimizer)
+            scale = scaler.get_scale()
+            scaler.update()
+            skip_scheduler = (scale > scaler.get_scale())
+            if not skip_scheduler:
+                scheduler.step()
+
+            #optimizer.step()  # adjust parameters by the gradients collected in backward pass
+            #scheduler.step()
+
+            #loss.backward() # backprop prediction loss
             #with amp.scale_loss(loss / max_tokens / 0.15, optimizer) as scaled_loss:
             #    scaled_loss.backward()
-            print("Clip grad norm", clip_grad_norm_(model.parameters(optimizer), max_norm=np.inf)) # clip gradients (norm computed over all gradients)
+            #print("Clip grad norm", clip_grad_norm_(model.parameters(optimizer), max_norm=np.inf)) # clip gradients (norm computed over all gradients)
+        else:
+            #outputs = model(src)
+            outputs = model(src, input_mask=input_mask.unsqueeze(-1))
+            loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
+            #loss = loss_func(outputs, tgt)
+            accu = accu_func(outputs, tgt, mask) * n_tokens
             #troubleshoot
             #for name, param in model.named_parameters():
             #    if param.requires_grad:
             #        print(name, param.data)
             # issue embedder.embedder.weight tensor
             #
-            optimizer.step() # adjust parameters by the gradients collected in backward pass
-            scheduler.step()
 
         n_seqs = torch.tensor(len(src), device=device)
         return loss, accu, n_tokens, n_seqs, n_processed
@@ -405,7 +443,7 @@ def train(gpu, args):
         print('%d validation sequences' %val_samples)
     for e in range(initial_epoch, epochs):
         print("epoch ", e)
-        # train_sortish_sampler.set_epoch(e + 1) # NEEDED for DDP - ignoring for now?
+        #train_sortish_sampler.set_epoch(e + 1) # NEEDED for DDP - ignoring for now?
         s, t = epoch(model, True, current_step=total_steps, current_tokens=total_tokens)
         total_steps += s
         total_tokens += t

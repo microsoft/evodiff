@@ -1,13 +1,20 @@
 name: dms
 channels:
   - defaults
+  #- pytorch
 dependencies:
-  - python=3.8
-  - pytorch
+  - python=3.8.5
   - pandas
   - numpy
   - python-lmdb
+  #- cudatoolkit=10.1
+  - pytorch
+  #- torchaudio
+  - torchvision
   - pip
   - pip:
       - sequence-models
       - mlflow
+      - scikit-learn
+      - blosum
+      - matplotlib
