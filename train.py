@@ -12,6 +12,7 @@ from torch.optim.lr_scheduler import LambdaLR
 #from apex.optimizers import FusedAdam
 from torch.optim import Adam
 from torch.nn.utils import clip_grad_norm_
+from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 import torch.distributed as dist
 from torch.cuda.amp import GradScaler
@@ -42,6 +43,7 @@ np.random.seed(random_seed)
 
 home = str(pathlib.Path.home())
 
+writer = SummaryWriter()
 
 def main():
     parser = argparse.ArgumentParser()
@@ -146,7 +148,7 @@ def train(gpu, args):
     #else:
     #    collater = MLMCollater(PROTEIN_ALPHABET)
     #    causal = False
-    print("Only using sarah collaters")
+    #print("Only using sarah collaters")
     simple_collater = SimpleCollater()
     collater = OAMaskCollater(simple_collater, inputs_padded=False)
     causal = False
@@ -264,7 +266,6 @@ def train(gpu, args):
     #    else:
     #        amp.load_state_dict({'loss_scaler0': {'loss_scale': 512., 'unskipped': 0}})
     loss_func = MaskedCrossEntropyLoss(reweight=True)
-    #loss_func = MSELoss
     accu_func = MaskedAccuracy()
 
     def epoch(model, train, current_step=0, current_tokens=0):
@@ -311,8 +312,12 @@ def train(gpu, args):
             if train:
                 nsteps = current_step + i + 1
                 tokens_trained += new_processed.item()
+                writer.add_scalar("Loss/train", rloss, e)
+                writer.add_scalar("Acc/train", raccu, e)
             else:
                 nsteps = i
+                writer.add_scalar("Loss/valid", rloss, e)
+                writer.add_scalar("Acc/valid", raccu, e)
             if rank == 0:
                 if ptjob:
                     end = '\n'
@@ -346,9 +351,10 @@ def train(gpu, args):
                                     'model_state_dict': model.state_dict(),
                                     'optimizer_state_dict': optimizer.state_dict(),
                                     'scheduler_state_dict': scheduler.state_dict(),
-                                    'epoch': e,
-                                    'amp_state_dict': amp.state_dict()
+                                    'epoch': e
+                                    #'amp_state_dict': amp.state_dict()
                                 }, ckpt_fpath)
+                                _ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
                                 _ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
                         chunk_time = datetime.now()
         if not train:
@@ -372,10 +378,11 @@ def train(gpu, args):
 
     def step(model, batch, train):
         src, timestep, tgt, mask = batch
+        print("Batchize", len(timestep))
         src = src.to(device)
         tgt = tgt.to(device)
         mask = mask.to(device)
-        print("shapes",src.shape, tgt.shape, mask.shape, len(timestep))
+        #print("shapes",src.shape, tgt.shape, mask.shape, len(timestep))
         #timestep = timestep.to(device)
         input_mask = (src != PROTEIN_ALPHABET.index(PAD)).float()
         #print("input mask",input_mask.shape, input_mask)
@@ -389,16 +396,13 @@ def train(gpu, args):
         if train:
             optimizer.zero_grad() # reset gradients of model parameters
             with torch.cuda.amp.autocast():
-                #outputs = model(src)
                 #print("src", src.shape, src)
                 outputs = model(src, input_mask=input_mask.unsqueeze(-1))
-                print("outputs", outputs.shape) #, outputs, "target", tgt.shape, tgt)
+                #print("outputs", outputs.shape) #, outputs, "target", tgt.shape, tgt)
                 loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
-                #loss = loss_func(outputs, tgt)
                 accu = accu_func(outputs, tgt, mask) * n_tokens
 
             scaler.scale(loss).backward()
-            #model.float()
             scaler.step(optimizer)
             scale = scaler.get_scale()
             scaler.update()
@@ -414,10 +418,8 @@ def train(gpu, args):
             #    scaled_loss.backward()
             #print("Clip grad norm", clip_grad_norm_(model.parameters(optimizer), max_norm=np.inf)) # clip gradients (norm computed over all gradients)
         else:
-            #outputs = model(src)
             outputs = model(src, input_mask=input_mask.unsqueeze(-1))
             loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
-            #loss = loss_func(outputs, tgt)
             accu = accu_func(outputs, tgt, mask) * n_tokens
             #troubleshoot
             #for name, param in model.named_parameters():
@@ -440,11 +442,14 @@ def train(gpu, args):
         print('%d validation sequences' %len(len_valid))
     for e in range(initial_epoch, epochs):
         print("epoch ", e)
-        train_sortish_sampler.set_epoch(e + 1)
+        #train_sortish_sampler.set_epoch(e + 1) # Needed when using DDP distributed mode
         s, t = epoch(model, True, current_step=total_steps, current_tokens=total_tokens)
         total_steps += s
         total_tokens += t
         print(total_steps, total_tokens)
+
+    writer.flush()
+    writer.close()
 
 if __name__ == '__main__':
     main()

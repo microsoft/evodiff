@@ -179,7 +179,10 @@ class OAMaskCollater(object):
                  x = x[mask_pad].to(torch.int64)
             # Randomly generate timestep and indices to mask
             D = len(x) # D should have the same dimensions as each sequence length
-            t = np.random.randint(1, D) # randomly sample timestep
+            if D <= 1:  # TODO: data set has sequences length = 1, probably should filter these out
+                t = 1
+            else:
+                t = np.random.randint(1, D) # randomly sample timestep
             num_mask = (D-t+1) # from OA-ARMS
             # Append timestep
             timesteps.append(num_mask)
