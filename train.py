@@ -225,6 +225,7 @@ def train(gpu, args):
     # Loss Function
     # ----------------------------------------------------------
     # TODO: add if statement args.warmup to warmup
+
     scheduler = LambdaLR(optimizer, warmup(warmup_steps))
     if args.mask == 'autoreg':
         loss_func = MaskedCrossEntropyLoss(reweight=True) # FOR ODARDMS
