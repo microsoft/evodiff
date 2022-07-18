@@ -1,7 +1,8 @@
-import blosum as bl
+#import blosum as bl
+from dms.data import loadMatrix
 import numpy as np
 from sequence_models.constants import ALL_AAS, SPECIALS, MASK
-from dms.constants import PAD, BLOSUM62_ALPHABET, ROUND
+from dms.constants import PAD, BLOSUM62_ALPHABET
 
 def softmax(x):
     return np.exp(x)/np.sum(np.exp(x),axis=0)
@@ -11,7 +12,7 @@ def norm_q(q):
     q_norm = np.zeros(q.shape)
     for i in range(q.shape[0]):
         _norm = q[i]/q[i].sum()
-        q_norm[i] = _norm.round(ROUND)
+        q_norm[i] = _norm
     return q_norm
 
 def read_fasta(fasta_path, seq_file, info_file, index_file):
@@ -86,12 +87,23 @@ class Blosum62(object):
     """
     def __init__(self, tokenizer=Tokenizer(), alphabet=BLOSUM62_ALPHABET, path_to_blosum="data/blosum62.mat", num_aas=23):
         self.tokenizer = tokenizer
-        self.alphabet=BLOSUM62_ALPHABET
-        self.matrix = bl.BLOSUM(path_to_blosum)
+        self.blosum_alphabet=alphabet+SPECIALS+PAD+MASK
+        self.matrix = loadMatrix(path_to_blosum)
         self.matrix_dict = dict(self.matrix)
-        self.b_to_i = {u: i for i, u in enumerate(self.alphabet)}
-        self.i_to_b = np.array([a for a in self.alphabet])
+        self.b_to_i = {u: i for i, u in enumerate(self.blosum_alphabet)}
+        self.i_to_b = np.array([a for a in self.blosum_alphabet])
         self.num_aas = num_aas
+        self.pad = PAD
+        self.mask = MASK
+
+    @property
+    def pad_id(self):
+        #print(self.blosum_alphabet)
+        return self.b_to_i[self.pad]
+
+    @property
+    def mask_id(self):
+        return self.b_to_i[self.mask]
 
     @property
     def q_blosum(self):
@@ -103,7 +115,7 @@ class Blosum62(object):
 
     @property
     def q_random(self):
-        q = np.eye(23) + 1 / 10 # arbitrary, set diagnoal to zero assign other transitions some prob
+        q = np.eye(23) + 1 / 10 # arbitrary, set diag to zero assign other transitions some prob
         q = norm_q(q) # normalize so rows += 1
         return q
 
@@ -120,3 +132,12 @@ class Blosum62(object):
             one_index = self.b_to_i[a]
             x_onehot[i][one_index] = 1
         return x_onehot
+
+    def tokenize(self, seq):
+        return np.array([self.b_to_i[a] for a in seq[0]])
+
+    def untokenize(self, x):
+        if x.type() == 'torch.FloatTensor':
+            return "".join([self.i_to_b[int(t.item())] for t in x])
+        else:
+            return "".join([self.i_to_b[t] for t in x])

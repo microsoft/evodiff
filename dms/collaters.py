@@ -1,8 +1,8 @@
 import numpy as np
 import torch
 from dms.utils import Tokenizer, Blosum62
-from sequence_models.constants import STOP
-from dms.constants import PROTEIN_ALPHABET, ROUND
+#from sequence_models.constants import STOP
+from dms.constants import BLOSUM62_ALPHABET
 
 def _pad(tokenized, value):
     """
@@ -49,10 +49,19 @@ def matrixMul(a, n):
     else:
         return np.matmul(matrixMul(a, n-1), a)
 
-def sample_transition_matrix(x_0, q, time):
+def random_sample(seq, p, alphabet):
+    sampled_seq = torch.zeros(len(seq))
+    #print(len(alphabet), alphabet)
+    for i in range(len(seq)):
+        aa_selected = np.random.choice(len(alphabet), p=p[i])
+        sampled_seq[i] = aa_selected
+    return sampled_seq
+
+def sample_transition_matrix(x_0, q, time, alphabet):
     "Sample a markov transition according to next_step = x_0 * q ^ time"
-    next_step = np.matmul(x_0, matrixMul(q, time))
-    return next_step.round(ROUND)
+    p_next_step = np.matmul(x_0, matrixMul(q, time))
+    next_step = random_sample(x_0, p_next_step, alphabet)
+    return next_step
 
 def _diff(a, b):
     return [i for i in range(len(a)) if a[i] != b[i]]
@@ -105,7 +114,7 @@ class SimpleCollater(object):
         self.pad = pad
         self.seq_length = seq_length
         self.tokenizer = Tokenizer()
-        #self.blosum = Blosum62()  #Blosum62 for one_hot
+        self.blosum = Blosum62()  #Blosum62 for one_hot
         self.backwards = backwards
         self.norm = norm
         self.one_hot=one_hot
@@ -118,9 +127,9 @@ class SimpleCollater(object):
         if self.backwards:
             sequences = [s[::-1] for s in sequences]
 
-        # if self.one_hot:
-        #     #print([len(s[0]) for s in sequences])
-        #     tokenized = [torch.LongTensor(self.blosum.one_hot(s[0])) for s in sequences]
+        if self.one_hot:
+             #print([len(s[0]) for s in sequences])
+             tokenized = [torch.LongTensor(self.blosum.one_hot(s[0])) for s in sequences]
         else:
             tokenized = [torch.LongTensor(self.tokenizer.tokenize(s)) for s in sequences]
             #print("called here2")
@@ -224,14 +233,18 @@ class DMsMaskCollater(object):
         tokenized: tokenized sequences (target seq)
         masks: masks used to generate src
     """
-    def __init__(self, simple_collater, masking_scheme="OA", inputs_padded=False):
+    def __init__(self, simple_collater, tokenizer=Tokenizer(), masking_scheme="OA", inputs_padded=False, num_timesteps=100):
         self.simple_collater = simple_collater
-        self.tokenizer = Tokenizer()
+        self.tokenizer = tokenizer
         self.inputs_padded  = inputs_padded
         self.masking_scheme = masking_scheme
+        self.num_timesteps = num_timesteps # Only needed for markov trans, doesnt depend on seq len
+        self.blosum = Blosum62()
+        self.alphabet = [self.blosum.b_to_i[a] for a in BLOSUM62_ALPHABET]
 
     def __call__(self, sequences):
-        tokenized = self.simple_collater(sequences)
+        tokenized = [torch.LongTensor(self.tokenizer.tokenize(s)) for s in sequences]
+        max_len = max(len(t) for t in tokenized)
         src=[]
         timesteps = []
         x_tgt = []
@@ -239,69 +252,69 @@ class DMsMaskCollater(object):
         mask_id = torch.tensor(self.tokenizer.mask_id, dtype=torch.int64)
 
         if self.masking_scheme == "OA":
-            for i,x in enumerate(tokenized):
-                if self.inputs_padded: # if truncating seqs to some length first in SimpleCollater, inputs will be padded
-                     x_pad = x.clone()
-                     mask_pad = x_pad != self.tokenizer.pad_id
-                     #num_pad = len(x_pad) - mask_pad.sum()
-                     x = x[mask_pad].to(torch.int64)
+            for i, x in enumerate(tokenized):
+                if self.inputs_padded:  # if truncating seqs to some length first in SimpleCollater, inputs will be padded
+                    x_pad = x.clone()
+                    mask_pad = x_pad != self.tokenizer.pad_id
+                    # num_pad = len(x_pad) - mask_pad.sum()
+                    x = x[mask_pad].to(torch.int64)
                 # Randomly generate timestep and indices to mask
-                D = len(x) # D should have the same dimensions as each sequence length
-                t = np.random.randint(1, D) # randomly sample timestep
-                num_mask = (D-t+1) # from OA-ARMS
+                D = len(x)  # D should have the same dimensions as each sequence length
+                if D <= 1:  # TODO: data set has sequences length = 1, probably should filter these out
+                    t = 1
+                else:
+                    t = np.random.randint(1, D)  # randomly sample timestep
+                num_mask = (D - t + 1)  # from OA-ARMS
                 # Append timestep
                 timesteps.append(num_mask)
                 # Generate mask
-                mask_arr = np.random.choice(D, num_mask, replace=False) # Generates array of len num_mask
-                index_arr = np.arange(0, len(x)) #index array [1...seq_len]
-                mask = np.isin(index_arr, mask_arr, invert=False).reshape(index_arr.shape) # mask bools indices specified by mask_arr
+                mask_arr = np.random.choice(D, num_mask, replace=False)  # Generates array of len num_mask
+                index_arr = np.arange(0, max_len)  # index array [1...seq_len]
+                mask = np.isin(index_arr, mask_arr, invert=False).reshape(
+                    index_arr.shape)  # mask bools indices specified by mask_arr
                 # Mask inputs
-                #x[mask] = mask_id # not appending correctly :(
                 mask = torch.tensor(mask, dtype=torch.bool)
                 masks.append(mask)
-                #mask = mask.to(torch.long)
-                #print(mask.dtype, x.dtype, mask_id.dtype)
-                x_t = ~mask * x + mask * mask_id
-                #mask = torch.tensor(mask, dtype=torch.bool)
+                x_t = ~mask[0:D] * x + mask[0:D] * mask_id
                 src.append(x_t)
-                #masks.append(mask)
             # PAD out
             src = _pad(src, self.tokenizer.pad_id)
-            masks = torch.tensor(masks*1)
+            masks = _pad(masks * 1, 0)  # , self.seq_length, 0)
             tokenized = _pad(tokenized, self.tokenizer.pad_id)
-            #print("src shape",src.shape, "mask shape",masks.shape)
             return (src.to(torch.long), timesteps, tokenized.to(torch.long), masks)
 
         elif self.masking_scheme == "BLOSUM" or self.masking_scheme == "RANDOM":
+            one_hot = [torch.LongTensor(self.blosum.one_hot(s[0])) for s in sequences]
             if self.masking_scheme == "BLOSUM":
-                q = Blosum62().q_blosum
+                q = self.blosum.q_blosum
             elif self.masking_scheme == "RANDOM":
-                q = Blosum62().q_random
-            else:
-                print("")
-            for i,x in enumerate(tokenized):
+                q = self.blosum.q_random
+            for i,x in enumerate(one_hot):
                 if self.inputs_padded: # if truncating seqs to some length first in SimpleCollater, inputs will be padded
                      x_pad = x.clone()
                      mask_pad = x_pad != self.tokenizer.pad_id
-                     #num_pad = len(x_pad) - mask_pad.sum()
                      x = x[mask_pad].to(torch.int64)
                 # Randomly generate timestep and indices to mask
                 D = len(x) # D should have the same dimensions as each sequence length
-                t = np.random.randint(1, D) # randomly sample timestep
-                num_mask = (D-t+1) # from OA-ARMS
+                t = np.random.randint(1, self.num_timesteps) # randomly sample timestep
+                #print("t", t)
+                #num_mask = (D-t+1) # from OA-ARMS
                 # Append timestep
-                timesteps.append(num_mask)
+                timesteps.append(t)
                 # Calculate target
-                x_next = sample_transition_matrix(x, q, t)
+                #print(x.shape, q.shape)
+                x_next = sample_transition_matrix(x, q, t, self.alphabet)
                 x_tgt.append(x_next)
                 # Mask from input and output
-                mask_arr = _diff(x,x_next)
-                index_arr = np.arange(0, len(x))  # index array [1...seq_len]
+                #print("here")
+                #print(tokenized[i], x_next)
+                mask_arr = _diff(tokenized[i],x_next)
+                index_arr = np.arange(0, max_len)  # index array [1...seq_len]
                 mask = np.isin(index_arr, mask_arr, invert=False).reshape(index_arr.shape)
                 mask = torch.tensor(mask, dtype=torch.bool)
                 masks.append(mask)
                 # Create src
-                x = ~mask * x + mask * mask_id
+                x = ~mask[0:D] * tokenized[i] + mask[0:D] * mask_id
                 src.append(x)
                 #masks.append(mask)
             # PAD out
@@ -309,7 +322,7 @@ class DMsMaskCollater(object):
             masks = _pad(masks*1, 0)
             #tokenized = _pad(tokenized, self.tokenizer.pad_id)
             x_tgt = _pad(x_tgt, self.tokenizer.pad_id)
-            print("src shape",src.shape, "mask shape",masks.shape)
+            #print("src shape",src.shape, "mask shape",masks.shape)
             return (src.to(torch.long), timesteps, x_tgt.to(torch.long), masks)
 
         else:

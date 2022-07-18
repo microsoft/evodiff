@@ -12,7 +12,6 @@ from torch.optim.lr_scheduler import LambdaLR
 #from apex.optimizers import FusedAdam
 from torch.optim import Adam
 from torch.nn.utils import clip_grad_norm_
-from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 import torch.distributed as dist
 from torch.cuda.amp import GradScaler
@@ -24,11 +23,12 @@ from torch.cuda.amp import GradScaler
 from model import ByteNetLM
 #from sequence_models.constants import MASK
 from dms.constants import PROTEIN_ALPHABET, PAD
+from dms.utils import Blosum62
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 #from torch.utils.data import SubsetRandomSampler
 from sequence_models.datasets import UniRefDataset
 #from dms.data import UNIREF50
-from dms.collaters import SimpleCollater, OAMaskCollater
+from dms.collaters import SimpleCollater, OAMaskCollater, DMsMaskCollater
 #from sequence_models.collaters import LMCollater, MLMCollater
 #from sequence_models.losses import MaskedCrossEntropyLoss
 from losses import MaskedCrossEntropyLoss
@@ -40,10 +40,9 @@ from sequence_models.utils import warmup, transformer_lr
 random_seed = 1
 torch.random.manual_seed(random_seed)
 np.random.seed(random_seed)
+torch.cuda.empty_cache() # empty caches
 
 home = str(pathlib.Path.home())
-
-writer = SummaryWriter()
 
 def main():
     parser = argparse.ArgumentParser()
@@ -66,6 +65,8 @@ def main():
     parser.add_argument('--zero_mask', action='store_true') # Set to true to use a masking scheme
     parser.add_argument('--decay', action='store_true')
     parser.add_argument('--final_norm', action='store_true')
+    parser.add_argument('--mini_run', action='store_true') # Set to True if running on subset of data
+    parser.add_argument('--mask', type=str, default='autoreg')  # Set to True if running on subset of data
 
 
     args = parser.parse_args()
@@ -89,10 +90,8 @@ def train(gpu, args):
         init_method='env://',
         world_size=args.world_size,
         rank=rank)
-    #print("Here")
     torch.cuda.set_device(gpu + args.offset)
     device = torch.device('cuda:' + str(gpu + args.offset))
-    #print(device)
     with open(args.config_fpath, 'r') as f:
         config = json.load(f)
     n_tokens = len(PROTEIN_ALPHABET)
@@ -131,36 +130,36 @@ def train(gpu, args):
         data_dir = home + '/Desktop/DMs/data/'
         ptjob = False
     data_dir += config['dataset'] + '/'
-    #print(data_dir)
-    # ----------------------------------------------------------
-    # Build datasets, samplers, and loaders
-    # ----------------------------------------------------------
-    #
+    if args.mini_run:
+        mini_size = 1000 # For troubleshooting
     # ----------------------------------------------------------
     ### DEFINE COLLATOR ###
     # ----------------------------------------------------------
-    #if config['task'] == 'lm':
-    #    collater = LMCollater(PROTEIN_ALPHABET)
-    #    causal = True
-    #elif config['task'] == 'rlm':
-    #    collater = LMCollater(PROTEIN_ALPHABET, backwards=True)
-    #    causal = True
-    #else:
-    #    collater = MLMCollater(PROTEIN_ALPHABET)
-    #    causal = False
-    #print("Only using sarah collaters")
-    simple_collater = SimpleCollater()
-    collater = OAMaskCollater(simple_collater, inputs_padded=False)
+    if args.mask == 'autoreg':
+        simple_collater = SimpleCollater()
+        collater = OAMaskCollater(simple_collater, inputs_padded=False)
+    elif args.mask == 'blosum':
+        simple_collater = SimpleCollater()
+        collater = DMsMaskCollater(simple_collater, tokenizer=Blosum62(), inputs_padded=False, masking_scheme="BLOSUM",
+                                num_timesteps=50)
+    elif args.mask == 'random':
+        print('not implemented yet')
+    else:
+        print("Using autoreg masking scheme")
+        simple_collater = SimpleCollater()
+        collater = OAMaskCollater(simple_collater, inputs_padded=False)
     causal = False
-    metadata = np.load(data_dir + 'lengths_and_offsets.npz')
-    ds_train = UniRefDataset(data_dir, 'train', structure=False)
-
     # ----------------------------------------------------------
     ### DATALOADER ###
     # ----------------------------------------------------------
+    metadata = np.load(data_dir + 'lengths_and_offsets.npz')
+    ds_train = UniRefDataset(data_dir, 'train', structure=False)
 
     train_idx = ds_train.indices
-    len_train = metadata['ells'][train_idx]
+    if args.mini_run:
+        len_train = np.sort(np.random.choice(metadata['ells'][train_idx], size=mini_size))[::-1]
+    else:
+        len_train = metadata['ells'][train_idx]
     train_sortish_sampler = SortishSampler(len_train, bucket_size, num_replicas=args.world_size, rank=rank)
     train_sampler = ApproxBatchSampler(train_sortish_sampler, max_tokens, max_batch_size, len_train)
 
@@ -169,47 +168,19 @@ def train(gpu, args):
                           num_workers=16,
                           collate_fn=collater)
 
-    # no of batches = num_samples/batch_size when using a subset sampler
-    #sample_idx = np.random.randint(0, train_size, 1000)
-
-    # USING 100 batches = 1000 samples/100 batch_size for testing
-    #train_size = len(ds_train)
-    #train_samples = 10000
-    #sample_idx = np.random.randint(0,train_size,train_samples)
-    #train_sampler = SubsetRandomSampler(sample_idx)
-
-    #print("Using simple sampler")
-    # dl_train = DataLoader(ds_train,
-    #                       sampler=train_sampler,
-    #                       batch_size=max_batch_size, # batches = samples/batch_size
-    #                       num_workers=8, # CPU
-    #                       collate_fn=collater)
-
     if rank == 0:
         ds_valid = UniRefDataset(data_dir, 'valid', structure=False)
         valid_idx = ds_valid.indices
-        len_valid = metadata['ells'][valid_idx]
+        if args.mini_run:
+            len_valid = np.sort(np.random.choice(metadata['ells'][valid_idx], size=mini_size))[::-1]
+        else:
+            len_valid = metadata['ells'][valid_idx]
         valid_sortish_sampler = SortishSampler(len_valid, 1000, num_replicas=1, rank=0)
         valid_sampler = ApproxBatchSampler(valid_sortish_sampler, max_tokens // 2, max_batch_size, len_valid)
         dl_valid = DataLoader(dataset=ds_valid,
                               batch_sampler=valid_sampler,
                               num_workers=8,
                               collate_fn=collater)
-
-        # USING 2 batches = 200 samples/100 batch_size for testing
-        # val_samples = 1000
-        # val_size = len(ds_valid)
-        # val_idx = np.random.randint(0,val_size,val_samples)
-        # valid_sampler = SubsetRandomSampler(val_idx)
-        # dl_valid = DataLoader(dataset=ds_valid,
-        #                       sampler=valid_sampler,
-        #                       batch_size = max_batch_size,
-        #                       num_workers=1,
-        #                       collate_fn=collater)
-    #else:
-    #     valid_sampler = DistributedSampler(ds_valid, num_replicas=args.world_size, rank=rank, shuffle=False)
-    #     dl_valid = DataLoader(dataset=ds_valid, batch_size=64, num_workers=8, collate_fn=collater,
-    #                           drop_last=True, sampler=valid_sampler)
 
     # ----------------------------------------------------------
     # Initiate model
@@ -223,22 +194,22 @@ def train(gpu, args):
     model = ByteNetLM(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
                       causal=causal, padding_idx=padding_idx, rank=weight_rank, dropout=args.dropout,
                       tie_weights=args.tie_weights, final_ln=args.final_norm, slim=slim, activation=activation)
-    #optimizer = FusedAdam(model.parameters(), lr=lr, weight_decay=args.weight_decay)
     optimizer = Adam(model.parameters(), lr=lr, weight_decay=args.weight_decay)
     outputs = os.listdir(args.out_fpath)
-    #if len(outputs) > 0:
-    #    last_epoch = 0
-    #    for output in outputs:
-    #        if 'checkpoint' in output:
-    #            epoch = int(output.split('checkpoint')[-1][:-4])
-    #            if epoch > last_epoch:
-    #                args.state_dict = args.out_fpath + output
-    #                last_epoch = epoch
+    if len(outputs) > 0:
+       last_epoch = 0
+       for output in outputs:
+           if 'checkpoint' in output:
+               epoch = int(output.split('checkpoint')[-1][:-4])
+               if epoch > last_epoch:
+                   args.state_dict = args.out_fpath + output
+                   last_epoch = epoch
     if args.state_dict is not None:
        print('Loading weights from ' + args.state_dict + '...')
        sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
        msd = sd['model_state_dict']
-       msd = {k.split('module.')[1]: v for k, v in msd.items()}
+       print([len(k.split('module.')) for k,v in msd.items()])
+       msd = {k.split('module.')[0]: v for k,v in msd.items()}
        model.load_state_dict(msd)
        optimizer.load_state_dict(sd['optimizer_state_dict'])
        initial_epoch = sd['epoch'] + 1
@@ -249,29 +220,25 @@ def train(gpu, args):
        total_steps = 0
        total_tokens = 0
     model = model.to(device)
-    #optimizer.state = {}
-    #model, optimizer = amp.initialize(model, optimizer, opt_level=opt_level)
-    #model = DDP(model)
-    # Scaler ###
     scaler = GradScaler()
-    # Warmup ###
+    # ----------------------------------------------------------
+    # Loss Function
+    # ----------------------------------------------------------
+    # TODO: add if statement args.warmup to warmup
     scheduler = LambdaLR(optimizer, warmup(warmup_steps))
-    #if args.decay:
-    #    scheduler = LambdaLR(optimizer, transformer_lr(warmup_steps))
-    #else:
-    #    scheduler = LambdaLR(optimizer, warmup(0.1))
-    #if args.state_dict is not None:
-    #    if 'amp_state_dict' in sd:
-    #        amp.load_state_dict(sd['amp_state_dict'])
-    #    else:
-    #        amp.load_state_dict({'loss_scaler0': {'loss_scale': 512., 'unskipped': 0}})
-    loss_func = MaskedCrossEntropyLoss(reweight=True)
+    if args.mask == 'autoreg':
+        loss_func = MaskedCrossEntropyLoss(reweight=True) # FOR ODARDMS
+    elif args.mask == 'blosum':
+        loss_func = MaskedCrossEntropyLoss(reduction='sum',reweight=False) # for markov
+    elif args.mask == 'random':
+        print('not working yet')
     accu_func = MaskedAccuracy()
-
+    # ----------------------------------------------------------
+    # Run functions
+    # ----------------------------------------------------------
     def epoch(model, train, current_step=0, current_tokens=0):
         start_time = datetime.now()
         if train:
-            #print("model", model)
             model = model.train()
             loader = dl_train
             t = 'Training:'
@@ -286,22 +253,18 @@ def train(gpu, args):
         n_seen = 0
         tokens_trained = current_tokens
         if train:
-            n_total = len(ds_train)
+            n_total = len(len_train) #len(ds_train)
         else:
-            n_total = len(ds_valid)
+            n_total = len(len_valid) #len(ds_valid)
         for i, batch in enumerate(loader):
             print("Batch", i)
-            # This is for restarting from a checkpoint
-            #if train and i == 1 and e == initial_epoch and args.state_dict is not None:
-            #    optimizer.load_state_dict(sd['optimizer_state_dict'])
-            #    scheduler.load_state_dict(sd['scheduler_state_dict'])
+            print("rank", rank)
+            # restarting from a checkpoint
+            if train and i == 1 and e == initial_epoch and args.state_dict is not None:
+                print("Restarting from checkpoint")
+                optimizer.load_state_dict(sd['optimizer_state_dict'])
+                scheduler.load_state_dict(sd['scheduler_state_dict'])
             new_loss, new_accu, new_n, new_seqs, new_processed = step(model, batch, train)
-            # Don't need reduce
-            #if train:
-            #    dist.reduce(new_loss, 0, op=dist.ReduceOp.SUM)
-            #    dist.reduce(new_accu, 0, op=dist.ReduceOp.SUM)
-            #    dist.reduce(new_n, 0, op=dist.ReduceOp.SUM)
-            #    dist.reduce(new_seqs, 0, op=dist.ReduceOp.SUM)
             losses.append(new_loss.item())
             accus.append(new_accu.item())
             ns.append(new_n.item())
@@ -312,12 +275,8 @@ def train(gpu, args):
             if train:
                 nsteps = current_step + i + 1
                 tokens_trained += new_processed.item()
-                writer.add_scalar("Loss/train", rloss, e)
-                writer.add_scalar("Acc/train", raccu, e)
             else:
                 nsteps = i
-                writer.add_scalar("Loss/valid", rloss, e)
-                writer.add_scalar("Acc/valid", raccu, e)
             if rank == 0:
                 if ptjob:
                     end = '\n'
@@ -332,15 +291,12 @@ def train(gpu, args):
                 losses = losses[-999:]
                 accus = accus[-999:]
                 ns = ns[-999:]
-                if datetime.now() - chunk_time > timedelta(hours=4):
+                if n_seen == n_total:
                     if rank == 0:
-                        if not ptjob:
-                            mlflow.log_metrics({'train_loss': rloss,
-                                                'train_accu': raccu,
-                                                'n_tokens': total_n},
-                                               step=nsteps)
-                        if not ptjob:
-                            print()
+                        with open(args.out_fpath + 'train-metrics.csv', 'a') as f:
+                            f.write(
+                                ','.join([str(rloss), str(raccu), str(int(current_tokens)), str(current_step), str(e)]))
+                            f.write('\n')
                         print('Training complete in ' + str(datetime.now() - chunk_time))
                         with torch.no_grad():
                             if rank == 0:
@@ -352,53 +308,34 @@ def train(gpu, args):
                                     'optimizer_state_dict': optimizer.state_dict(),
                                     'scheduler_state_dict': scheduler.state_dict(),
                                     'epoch': e
-                                    #'amp_state_dict': amp.state_dict()
                                 }, ckpt_fpath)
-                                _ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
                                 _ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
                         chunk_time = datetime.now()
         if not train:
             if rank == 0:
-                if not ptjob:
-                    print()
-                    mlflow.log_metrics({'valid_loss': rloss,
-                                        'valid_accu': raccu,
-                                        'n_tokens': current_tokens},
-                                       step=current_step)
-                with open(args.out_fpath + 'metrics.csv', 'a') as f:
-                    f.write(','.join([str(rloss), str(raccu), str(int(current_tokens)), str(current_step)]))
+                with open(args.out_fpath + 'valid-metrics.csv', 'a') as f:
+                    f.write(','.join([str(rloss), str(raccu), str(int(current_tokens)), str(current_step), str(e)]))
                     f.write('\n')
 
                 print('Validation complete in ' + str(datetime.now() - start_time))
         elif rank == 0:
-            if not ptjob:
-                print()
             print('Epoch complete in ' + str(datetime.now() - start_time))
         return i, tokens_trained
 
     def step(model, batch, train):
         src, timestep, tgt, mask = batch
-        print("Batchize", len(timestep))
+        print("Batchsize", len(timestep))
         src = src.to(device)
         tgt = tgt.to(device)
         mask = mask.to(device)
-        #print("shapes",src.shape, tgt.shape, mask.shape, len(timestep))
-        #timestep = timestep.to(device)
         input_mask = (src != PROTEIN_ALPHABET.index(PAD)).float()
-        #print("input mask",input_mask.shape, input_mask)
-        #outputs = model(src, input_mask=input_mask.unsqueeze(-1))
         n_tokens = mask.sum()
-        #print("n_tokens", n_tokens)
         n_processed = input_mask.sum()
-        #loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
-        #accu = accu_func(outputs, tgt, mask) * n_tokens
 
         if train:
             optimizer.zero_grad() # reset gradients of model parameters
             with torch.cuda.amp.autocast():
-                #print("src", src.shape, src)
                 outputs = model(src, input_mask=input_mask.unsqueeze(-1))
-                #print("outputs", outputs.shape) #, outputs, "target", tgt.shape, tgt)
                 loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
                 accu = accu_func(outputs, tgt, mask) * n_tokens
 
@@ -410,23 +347,10 @@ def train(gpu, args):
             if not skip_scheduler:
                 scheduler.step()
 
-            #optimizer.step()  # adjust parameters by the gradients collected in backward pass
-            #scheduler.step()
-
-            #loss.backward() # backprop prediction loss
-            #with amp.scale_loss(loss / max_tokens / 0.15, optimizer) as scaled_loss:
-            #    scaled_loss.backward()
-            #print("Clip grad norm", clip_grad_norm_(model.parameters(optimizer), max_norm=np.inf)) # clip gradients (norm computed over all gradients)
         else:
             outputs = model(src, input_mask=input_mask.unsqueeze(-1))
             loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
             accu = accu_func(outputs, tgt, mask) * n_tokens
-            #troubleshoot
-            #for name, param in model.named_parameters():
-            #    if param.requires_grad:
-            #        print(name, param.data)
-            # issue embedder.embedder.weight tensor
-            #
 
         n_seqs = torch.tensor(len(src), device=device)
         return loss, accu, n_tokens, n_seqs, n_processed
@@ -442,14 +366,10 @@ def train(gpu, args):
         print('%d validation sequences' %len(len_valid))
     for e in range(initial_epoch, epochs):
         print("epoch ", e)
-        #train_sortish_sampler.set_epoch(e + 1) # Needed when using DDP distributed mode
         s, t = epoch(model, True, current_step=total_steps, current_tokens=total_tokens)
         total_steps += s
         total_tokens += t
         print(total_steps, total_tokens)
-
-    writer.flush()
-    writer.close()
 
 if __name__ == '__main__':
     main()

@@ -1,7 +1,5 @@
 from sequence_models.constants import ALL_AAS, SPECIALS
 
-ROUND=5 #rounding q matrix
-
 PAD = '!'
 
 PROTEIN_ALPHABET = ALL_AAS + SPECIALS + PAD
