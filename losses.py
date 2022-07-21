@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, KLDivLoss
 
 class MaskedCrossEntropyLoss(CrossEntropyLoss):
     """Masked cross-entropy loss for sequences.
@@ -16,7 +16,6 @@ class MaskedCrossEntropyLoss(CrossEntropyLoss):
 
     Returns
     """
-
     def __init__(self, weight=None, reduction='none', reweight=True):
         self.reweight=reweight
         super().__init__(weight=weight, reduction=reduction)
@@ -33,16 +32,35 @@ class MaskedCrossEntropyLoss(CrossEntropyLoss):
         #print("pred, mask, tgt shape", pred.shape, mask.shape, tgt.shape)
         p = torch.masked_select(pred, mask).view(n, -1) # predictions for each mask
         t = torch.masked_select(tgt, mask.squeeze())
-        #print("p",p,"t",t)
         loss = super().forward(p, t)
-        #print("loss", loss)
-        if self.reweight:
-            # Dot prod loss w/ reweighting term
+        if self.reweight == True:
+            # Reweight for summation over t
             timesteps = np.repeat(timesteps, timesteps, axis=0) # expand timesteps so dim matches loss dim
             timesteps = torch.tensor(timesteps, dtype=torch.float64)
             timesteps = timesteps.to(loss.device)
             rwt_term = 1. / timesteps  # Hoogeboom OARDM
-            #print(rwt_term.shape, loss.shape)
-            loss = torch.dot(rwt_term, loss.to(torch.float64)) # rwt has dim of batch size, loss is meaned over all mask
-            #print("loss reweight", loss)
+            loss = torch.dot(rwt_term, loss.to(torch.float64))
+        else:
+            _lambda = 0.01  # TODO fix this
+            rwt_term = torch.tensor(np.repeat(_lambda, loss.shape[0], axis=0), dtype=torch.float64)
+            rwt_term = rwt_term.to(loss.device)
+            loss = torch.dot(rwt_term, loss.to(torch.float64))
+        return loss
+
+class AustinLoss(KLDivLoss):
+    def __init__(self, reduction='batchmean'):
+        super().__init__(reduction=reduction)
+    def forward(self, q, p, tgt, mask, timestep):
+        # KL divergence between q and p
+        p = p[:,:,0:26] # ignore specials char here - TODO: trouble shoot later
+        elbo_loss = super().forward(q, p) #input, target (note: reverse notation of documentation)
+        print(elbo_loss)
+        # Negative cross entropy
+        ce = MaskedCrossEntropyLoss(reweight=False)
+        loss_ce = ce(p, tgt, mask, timestep)
+        print(loss_ce)
+
+        # loss = -elbo.mean() + ce_term(lambda?) * ce.mean() # FROM austin github
+        loss = elbo_loss + loss_ce
+        # loss = -elbo.mean() + lambda(=0.01)*MaskedCrossEntropyLoss(reweight=True)
         return loss

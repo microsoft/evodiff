@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from dms.utils import Tokenizer
 #from sequence_models.constants import STOP
-from dms.constants import BLOSUM62_AAS
+from dms.constants import ALL_AAS
 
 def _pad(tokenized, value):
     """
@@ -15,7 +15,6 @@ def _pad(tokenized, value):
     max_len = max(len(t) for t in tokenized)
     output = torch.zeros((batch_size, max_len)) + value
     for row, t in enumerate(tokenized):
-        #print(t.shape)
         output[row, :len(t)] = t
     return output
 
@@ -50,10 +49,9 @@ def matrixMul(a, n):
         return np.matmul(matrixMul(a, n-1), a)
 
 def random_sample(seq, p, alphabet):
+    "Categorical sample from distribution"
     sampled_seq = torch.zeros(len(seq))
-    #print(len(alphabet), alphabet)
     for i in range(len(seq)):
-        #print(p[i].sum())
         aa_selected = np.random.choice(len(alphabet), p=p[i])
         sampled_seq[i] = aa_selected
     return sampled_seq
@@ -62,7 +60,7 @@ def sample_transition_matrix(x_0, q, time, alphabet):
     "Sample a markov transition according to next_step = x_0 * q ^ time"
     p_next_step = np.matmul(x_0, matrixMul(q, time))
     next_step = random_sample(x_0, p_next_step, alphabet)
-    return next_step
+    return next_step, p_next_step
 
 def _diff(a, b):
     return [i for i in range(len(a)) if a[i] != b[i]]
@@ -89,21 +87,9 @@ def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999):
         print("Must select a valid schedule; ['linear', 'quad', 'sigmoid', 'cosine']")
     return betas
 
-# def blosum_probability(tokenized):
-#     d = Blosum62().blosum_dict()
-#     out = torch.zeros((len(tokenized)))
-#     for i, x in enumerate(tokenized):
-#         if i < len(tokenized) - 1:
-#             _tuple = tuple(np.array(tokenized[i:i + 2]))
-#         else:
-#             end = tokenized[PROTEIN_ALPHABET.index(STOP)]
-#             _tuple = tuple(np.array((tokenized[i], end)))
-#         out[i] = d[_tuple]
-#     return out
-
-
 class SimpleCollater(object):
     """
+    TODO: probably can get rid of this
     Slightly altered from protein-sequence-models (K. Yang)
 
     Performs simple operations on batch of sequences contained in a list
@@ -150,6 +136,7 @@ class SimpleCollater(object):
 
 class OAMaskCollater(object):
     """
+    TODO: get rid of this
     OrderAgnosic Mask Collater for masking batch data according to Hoogeboom et al. OA ARDMS
     inputs:
         sequences : list of sequences
@@ -240,18 +227,16 @@ class DMsMaskCollater(object):
         self.inputs_padded  = inputs_padded
         self.masking_scheme = masking_scheme
         self.num_timesteps = num_timesteps # Only needed for markov trans, doesnt depend on seq len
-        #self.blosum = Blosum62()
-        #self.alphabet = [self.blosum.b_to_i[a] for a in BLOSUM62_ALPHABET]
-        self.alphabet = tokenizer.tokenize(BLOSUM62_AAS)
+        self.alphabet = tokenizer.tokenize([ALL_AAS])
 
     def __call__(self, sequences):
         tokenized = [torch.LongTensor(self.tokenizer.tokenize(s)) for s in sequences]
         max_len = max(len(t) for t in tokenized)
         src=[]
         timesteps = []
-        x_tgt = []
         masks=[]
         mask_id = torch.tensor(self.tokenizer.mask_id, dtype=torch.int64)
+        q_x = torch.zeros((len(tokenized), max_len, len(self.alphabet))) + self.tokenizer.pad_id
 
         if self.masking_scheme == "OA":
             for i, x in enumerate(tokenized):
@@ -286,7 +271,7 @@ class DMsMaskCollater(object):
             return (src.to(torch.long), timesteps, tokenized.to(torch.long), masks)
 
         elif self.masking_scheme == "BLOSUM" or self.masking_scheme == "RANDOM":
-            one_hot = [torch.LongTensor(self.blosum.one_hot(s[0])) for s in sequences]
+            one_hot = [torch.LongTensor(self.tokenizer.one_hot(s[0])) for s in sequences]
             if self.masking_scheme == "BLOSUM":
                 q = self.tokenizer.q_blosum_alpha_t(alpha_t=0.01)
             elif self.masking_scheme == "RANDOM":
@@ -299,33 +284,29 @@ class DMsMaskCollater(object):
                 # Randomly generate timestep and indices to mask
                 D = len(x) # D should have the same dimensions as each sequence length
                 t = np.random.randint(1, self.num_timesteps) # randomly sample timestep
-                #print("t", t)
-                #num_mask = (D-t+1) # from OA-ARMS
                 # Append timestep
                 timesteps.append(t)
                 # Calculate target
                 #print(x.shape, q.shape)
-                x_next = sample_transition_matrix(x, q, t, self.alphabet)
-                x_tgt.append(x_next)
+                x_next, q_x_t = sample_transition_matrix(x, q, t, self.alphabet)
                 # Mask from input and output
-                #print("here")
-                #print(tokenized[i], x_next)
                 mask_arr = _diff(tokenized[i],x_next)
                 index_arr = np.arange(0, max_len)  # index array [1...seq_len]
                 mask = np.isin(index_arr, mask_arr, invert=False).reshape(index_arr.shape)
                 mask = torch.tensor(mask, dtype=torch.bool)
                 masks.append(mask)
                 # Create src
-                x = ~mask[0:D] * tokenized[i] + mask[0:D] * mask_id
-                src.append(x)
-                #masks.append(mask)
+                x_t = ~mask[0:D] * tokenized[i] + mask[0:D] * mask_id
+                src.append(x_t)
+                #print(q_x_t.dtype)
+                #print(i, max_len, D)
+                #print(q_x_t.shape)
+                q_x[i, 0:D, :] = q_x_t
             # PAD out
             src = _pad(src, self.tokenizer.pad_id)
             masks = _pad(masks*1, 0)
-            #tokenized = _pad(tokenized, self.tokenizer.pad_id)
-            x_tgt = _pad(x_tgt, self.tokenizer.pad_id)
-            #print("src shape",src.shape, "mask shape",masks.shape)
-            return (src.to(torch.long), timesteps, x_tgt.to(torch.long), masks)
+            tokenized = _pad(tokenized, self.tokenizer.pad_id)
+            return (src.to(torch.long), timesteps, tokenized.to(torch.long), masks, q_x)
 
         else:
             return None

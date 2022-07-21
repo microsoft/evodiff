@@ -31,7 +31,7 @@ from sequence_models.datasets import UniRefDataset
 from dms.collaters import SimpleCollater, OAMaskCollater, DMsMaskCollater
 #from sequence_models.collaters import LMCollater, MLMCollater
 #from sequence_models.losses import MaskedCrossEntropyLoss
-from losses import MaskedCrossEntropyLoss
+from losses import MaskedCrossEntropyLoss, AustinLoss
 #from torch.nn import MSELoss
 from sequence_models.metrics import MaskedAccuracy
 from sequence_models.utils import warmup, transformer_lr
@@ -76,7 +76,7 @@ def main():
         pass
     else:
         os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = '8888'
+        os.environ['MASTER_PORT'] = '8889'
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
 
@@ -230,12 +230,13 @@ def train(gpu, args):
     if args.mask == 'autoreg':
         loss_func = MaskedCrossEntropyLoss(reweight=True) # FOR ODARDMS
     elif args.mask == 'blosum':
-        loss_func = MaskedCrossEntropyLoss(reduction='sum',reweight=False) # for markov
+        # loss_func = MaskedCrossEntropyLoss(reweight=False)
+        loss_func = AustinLoss() # for markov
     elif args.mask == 'random':
         print('not working yet')
     accu_func = MaskedAccuracy()
     # ----------------------------------------------------------
-    # Run functions
+    # Run
     # ----------------------------------------------------------
     def epoch(model, train, current_step=0, current_tokens=0):
         start_time = datetime.now()
@@ -326,12 +327,17 @@ def train(gpu, args):
         return i, tokens_trained
 
     def step(model, batch, train):
-        src, timestep, tgt, mask = batch
-        #print("Batchsize", len(timestep))
+        if args.mask == 'blosum':
+            src, timestep, tgt, mask,q_x = batch
+            q_x = q_x.to(device)
+            print(q_x.shape)
+        else:
+            src, timestep, tgt, mask = batch
+        print("Batchsize", len(timestep))
         src = src.to(device)
         tgt = tgt.to(device)
         mask = mask.to(device)
-        input_mask = (src != padding_idx).float() # TODO FIX
+        input_mask = (src != padding_idx).float()
         n_tokens = mask.sum()
         n_processed = input_mask.sum()
 
@@ -339,7 +345,11 @@ def train(gpu, args):
             optimizer.zero_grad() # reset gradients of model parameters
             with torch.cuda.amp.autocast():
                 outputs = model(src, input_mask=input_mask.unsqueeze(-1))
-                loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
+                print(outputs.shape)
+                if args.mask == 'blosum':
+                    loss = loss_func(q_x, outputs, tgt, mask, timestep) * n_tokens
+                else:
+                    loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
                 accu = accu_func(outputs, tgt, mask) * n_tokens
 
             scaler.scale(loss).backward()
@@ -353,7 +363,10 @@ def train(gpu, args):
         else:
             outputs = model(src, input_mask=input_mask.unsqueeze(-1))
             #print(outputs[0])
-            loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
+            if args.mask == 'blosum':
+                loss = loss_func(q_x, outputs, tgt, mask, timestep) * n_tokens
+            else:
+                loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
             accu = accu_func(outputs, tgt, mask) * n_tokens
 
         n_seqs = torch.tensor(len(src), device=device)

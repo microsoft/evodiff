@@ -52,17 +52,13 @@ def parse_fasta(seq_file, idx):
                 break
     return sequence
 
-def tokenize_blosum(seq):
-    return tuple(Tokenizer().a_to_i[a] for a in seq) # use for blosum
-
 class Tokenizer(object):
     """Convert between strings and index"""
-    def __init__(self, blosum_aas=BLOSUM62_AAS, all_aas=ALL_AAS, specials=SPECIALS, pad=PAD, mask=MASK,
+    def __init__(self, all_aas=ALL_AAS, specials=SPECIALS, pad=PAD, mask=MASK,
                  path_to_blosum=data_dir+"blosum62.mat"):
-        self.blosum_aas = list(blosum_aas)
         self.matrix = loadMatrix(path_to_blosum)
         self.matrix_dict = dict(self.matrix)
-        self.aas = list(all_aas)
+        self.all_aas = list(all_aas)
         self.alphabet = list("".join(all_aas+pad+specials))
         self.pad = pad
         self.mask = mask
@@ -72,30 +68,30 @@ class Tokenizer(object):
 
     @property
     def pad_id(self):
-         return self.alphabet.index(self.pad)
+         return self.tokenize(self.pad)[0]
 
     @property
     def mask_id(self):
-        return self.alphabet.index(self.mask)
+        return self.tokenize(self.mask)[0]
 
     @property
     def q_blosum(self):
         q = np.array([i for i in self.matrix_dict.values()])
-        q = q.reshape((len(self.blosum_aas, len(self.blosum_aas))))
+        q = q.reshape((len(self.all_aas), len(self.all_aas)))
         q = softmax(q)
         q = double_stochastic(q)
         return q
 
     @property
     def q_random(self):
-        q = np.eye(23) + 1 / 10  # arbitrary, set diag to zero assign other transitions some prob
+        q = np.eye(len(self.all_aas)) + 1 / 10  # arbitrary, set diag to zero assign other transitions some prob
         q = double_stochastic(q)  # normalize so rows += 1
         return q
 
     def q_blosum_alpha_t(self, alpha_t=0.03):
         q = self.q_blosum
-        q_diag = np.identity(23) * q
-        q_non_diag = (1 - np.identity(23)) * q
+        q_diag = np.identity(len(self.all_aas)) * q
+        q_non_diag = (1 - np.identity(len(self.all_aas))) * q
         q_alpha_t = double_stochastic((q_diag + np.dot(q_non_diag, np.array(alpha_t))))
         return q_alpha_t
 
@@ -110,7 +106,7 @@ class Tokenizer(object):
 
     def one_hot(self, seq):
         "one hot encode according to indexing"
-        x_onehot = np.zeros((len(seq), len(self.blosum_aas)))
+        x_onehot = np.zeros((len(seq), len(self.all_aas)))
         for i, a in enumerate(seq):
             one_index = self.a_to_i[a]
             x_onehot[i][one_index] = 1
