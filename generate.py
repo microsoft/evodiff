@@ -9,7 +9,11 @@ import json
 from dms.collaters import random_sample
 from dms.utils import Tokenizer
 
-# TODO add sampling as a function of what checkpoint
+### SET RANDOM SEEDS ###
+random_seed = 1
+torch.random.manual_seed(random_seed)
+np.random.seed(random_seed)
+torch.cuda.empty_cache() # empty caches
 
 def main():
     parser = argparse.ArgumentParser()
@@ -19,6 +23,7 @@ def main():
     parser.add_argument('--tie_weights', action='store_true')
     parser.add_argument('--final_norm', action='store_true')
     parser.add_argument('--mask', type=str, default='mask')
+    parser.add_argument('--seq_len', type=int, default=512)
     args = parser.parse_args()
 
     with open(args.config_fpath, 'r') as f:
@@ -42,6 +47,7 @@ def main():
         activation = config['activation']
     else:
         activation = 'relu'
+    seq_len = args.seq_len
     causal = False
     padding_idx = PROTEIN_ALPHABET.index(PAD)
 
@@ -67,19 +73,16 @@ def main():
     msd = {k.split('module.')[0]: v for k,v in msd.items()}
     model.load_state_dict(msd) # TODO: why is this not saving the same
 
-    generate_text(model, args.mask)
+    generate_text(model, args.mask, seq_len)
 
 
-def generate_text(model, initial_sample, tokenizer=Tokenizer(),):
+def generate_text(model, initial_sample, seq_len, tokenizer=Tokenizer()):
     # Generate a random start string and convert to tokens
     padding_idx = tokenizer.tokenize(PAD)[0]
     all_aas = tokenizer.tokenize([BLOSUM62_AAS])
     alphabet = tokenizer.tokenize([PROTEIN_ALPHABET])
     mask = tokenizer.tokenize(MASK)
-    seq_len = 512
-    #random_seq  = torch.LongTensor([np.random.choice(all_aas) for i in range(seq_len)])
-    #random_seq = random_seq.unsqueeze(0) # batchsize 1
-    #print(random_seq.shape)
+    # Start from mask or random array
     if initial_sample == 'mask':
         sample = torch.zeros((1,seq_len))+mask
         sample = sample.to(torch.long)
@@ -101,6 +104,7 @@ def generate_text(model, initial_sample, tokenizer=Tokenizer(),):
         prediction = model(sample, input_mask=input_mask)
         p = torch.nn.functional.softmax(prediction[0], dim=1).detach().numpy()
         p_sample = np.random.choice(alphabet, p=p[i])
+        #p_sample = alphabet[np.argmax(p[i])] # over samples alanine
         sample[0][i] = p_sample
         #print(x, i, sample)
     print(tokenizer.untokenize(sample[0]))
