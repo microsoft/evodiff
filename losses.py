@@ -52,13 +52,17 @@ class AustinLoss(KLDivLoss):
         super().__init__(reduction=reduction)
     def forward(self, q, p, tgt, mask, timestep):
         # KL divergence between q and p
-        p = p[:,:,0:26] # ignore specials char here - TODO: trouble shoot later
-        elbo_loss = super().forward(q, p) #input, target (note: reverse notation of documentation)
-        print(elbo_loss)
+        p_norm = torch.nn.functional.softmax(p[:,:,0:26], dim=2) # janky way to ignore specials char here - TODO: trouble shoot later
+        q = q[:,:,0:26]
+        #print("p", p.shape, "q", q.shape)
+        #print(p[0][0], "SUM", p[0][0].sum(), p[0][0].shape) # p/q probs must sum to 1
+        #print(q[0][0], "SUM", q[0][0].sum(), q[0][0].shape)
+        elbo_loss = super().forward(p_norm,q) #input, target (note: reverse notation of documentation b/c of DM model notation)
+        #print(elbo_loss)
         # Negative cross entropy
         ce = MaskedCrossEntropyLoss(reweight=False)
         loss_ce = ce(p, tgt, mask, timestep)
-        print(loss_ce)
+        #print(loss_ce)
 
         # loss = -elbo.mean() + ce_term(lambda?) * ce.mean() # FROM austin github
         loss = elbo_loss + loss_ce

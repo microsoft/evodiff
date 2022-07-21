@@ -330,7 +330,7 @@ def train(gpu, args):
         if args.mask == 'blosum':
             src, timestep, tgt, mask,q_x = batch
             q_x = q_x.to(device)
-            print(q_x.shape)
+            #print(q_x.shape)
         else:
             src, timestep, tgt, mask = batch
         print("Batchsize", len(timestep))
@@ -345,7 +345,7 @@ def train(gpu, args):
             optimizer.zero_grad() # reset gradients of model parameters
             with torch.cuda.amp.autocast():
                 outputs = model(src, input_mask=input_mask.unsqueeze(-1))
-                print(outputs.shape)
+                #print(outputs.shape)
                 if args.mask == 'blosum':
                     loss = loss_func(q_x, outputs, tgt, mask, timestep) * n_tokens
                 else:
