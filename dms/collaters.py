@@ -52,7 +52,7 @@ def random_sample(seq, p, alphabet):
     "Categorical sample from distribution"
     sampled_seq = torch.zeros(len(seq))
     for i in range(len(seq)):
-        aa_selected = np.random.choice(len(alphabet), p=p[i])
+        aa_selected = np.random.choice(alphabet, p=p[i])
         sampled_seq[i] = aa_selected
     return sampled_seq
 

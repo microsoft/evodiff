@@ -1,7 +1,5 @@
 from sequence_models.convolutional import ByteNetLM
 import numpy as np
-#from dms.utils import Blosum62
-import torch.multiprocessing as mp
 import argparse
 from dms.constants import PAD, PROTEIN_ALPHABET, BLOSUM62_AAS
 from sequence_models.constants import MASK
@@ -92,15 +90,20 @@ def generate_text(model, initial_sample, tokenizer=Tokenizer(),):
         print('flag --mask as mask or random')
     seq = tokenizer.untokenize(sample[0])
     print("input seq", seq)
-    # input_mask = (sample != padding_idx).bool()
-    # print(input_mask)
-    prediction = model(sample, input_mask=None)
-    #print(prediction)
-    p = torch.nn.functional.softmax(prediction[0], dim=1).detach().numpy()
-    p_sample = random_sample(sample[0].detach().numpy(), p, alphabet)
-    print("prediction",Tokenizer().untokenize(p_sample))
-    #print(tokenizer.untokenize(p_sample))
 
+    # Unmask 1 loc at a time randomly
+    loc = np.arange(len(seq))
+    np.random.shuffle(loc)
+    input_mask = torch.zeros(len(seq), dtype=bool)
+    #print(loc.dtype, input_mask.dtype)
+    for x,i in enumerate(loc):
+        input_mask[i] = 1
+        prediction = model(sample, input_mask=input_mask)
+        p = torch.nn.functional.softmax(prediction[0], dim=1).detach().numpy()
+        p_sample = np.random.choice(alphabet, p=p[i])
+        sample[0][i] = p_sample
+        #print(x, i, sample)
+    print(tokenizer.untokenize(sample[0]))
 
 if __name__ == '__main__':
     main()
