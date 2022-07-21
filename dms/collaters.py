@@ -1,8 +1,8 @@
 import numpy as np
 import torch
-from dms.utils import Tokenizer, Blosum62
+from dms.utils import Tokenizer
 #from sequence_models.constants import STOP
-from dms.constants import BLOSUM62_ALPHABET
+from dms.constants import BLOSUM62_AAS
 
 def _pad(tokenized, value):
     """
@@ -53,6 +53,7 @@ def random_sample(seq, p, alphabet):
     sampled_seq = torch.zeros(len(seq))
     #print(len(alphabet), alphabet)
     for i in range(len(seq)):
+        #print(p[i].sum())
         aa_selected = np.random.choice(len(alphabet), p=p[i])
         sampled_seq[i] = aa_selected
     return sampled_seq
@@ -66,27 +67,27 @@ def sample_transition_matrix(x_0, q, time, alphabet):
 def _diff(a, b):
     return [i for i in range(len(a)) if a[i] != b[i]]
 
-# def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999):
-#     """
-#     Variance schedule for adding noise as introduced by Nichol and Dhariwal and adapted by Hoogeboom et al
-#     Coined as uniform schedule in Austin et al.
-#     Start/End will control the magnitude of sigmoidal and cosine schedules..
-#     #TODO: Check that cosine matches Austin cosine schedule - I think theirs is slightly diff
-#     #TODO: add mutual information Beta_t introduced by Sohl Dickensen used by Austin
-#     """
-#     if schedule == 'linear':
-#         betas = torch.linspace(start, end, num_timesteps)
-#     elif schedule == "quad":
-#         betas = torch.linspace(start ** 0.5, end ** 0.5, num_timesteps) ** 2
-#     elif schedule == "sigmoid":
-#         betas = torch.linspace(-10, 10, num_timesteps)
-#         betas = torch.sigmoid(betas) * (end - start) + start
-#     elif schedule == "cosine":
-#         betas = torch.linspace(np.pi / 2, 0, num_timesteps)
-#         betas = torch.cos(betas) * (end - start) + start
-#     else:
-#         print("Must select a valid schedule; ['linear', 'quad', 'sigmoid', 'cosine']")
-#     return betas
+def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999):
+    """
+    Variance schedule for adding noise as introduced by Nichol and Dhariwal and adapted by Hoogeboom et al
+    Coined as uniform schedule in Austin et al.
+    Start/End will control the magnitude of sigmoidal and cosine schedules..
+    #TODO: Check that cosine matches Austin cosine schedule - I think theirs is slightly diff
+    #TODO: add mutual information Beta_t introduced by Sohl Dickensen used by Austin
+    """
+    if schedule == 'linear':
+        betas = torch.linspace(start, end, num_timesteps)
+    elif schedule == "quad":
+        betas = torch.linspace(start ** 0.5, end ** 0.5, num_timesteps) ** 2
+    elif schedule == "sigmoid":
+        betas = torch.linspace(-10, 10, num_timesteps)
+        betas = torch.sigmoid(betas) * (end - start) + start
+    elif schedule == "cosine":
+        betas = torch.linspace(np.pi / 2, 0, num_timesteps)
+        betas = torch.cos(betas) * (end - start) + start
+    else:
+        print("Must select a valid schedule; ['linear', 'quad', 'sigmoid', 'cosine']")
+    return betas
 
 # def blosum_probability(tokenized):
 #     d = Blosum62().blosum_dict()
@@ -114,7 +115,7 @@ class SimpleCollater(object):
         self.pad = pad
         self.seq_length = seq_length
         self.tokenizer = Tokenizer()
-        self.blosum = Blosum62()  #Blosum62 for one_hot
+        #self.blosum = Blosum62()  #Blosum62 for one_hot
         self.backwards = backwards
         self.norm = norm
         self.one_hot=one_hot
@@ -129,7 +130,7 @@ class SimpleCollater(object):
 
         if self.one_hot:
              #print([len(s[0]) for s in sequences])
-             tokenized = [torch.LongTensor(self.blosum.one_hot(s[0])) for s in sequences]
+             tokenized = [torch.LongTensor(self.tokenizer.one_hot(s[0])) for s in sequences]
         else:
             tokenized = [torch.LongTensor(self.tokenizer.tokenize(s)) for s in sequences]
             #print("called here2")
@@ -239,8 +240,9 @@ class DMsMaskCollater(object):
         self.inputs_padded  = inputs_padded
         self.masking_scheme = masking_scheme
         self.num_timesteps = num_timesteps # Only needed for markov trans, doesnt depend on seq len
-        self.blosum = Blosum62()
-        self.alphabet = [self.blosum.b_to_i[a] for a in BLOSUM62_ALPHABET]
+        #self.blosum = Blosum62()
+        #self.alphabet = [self.blosum.b_to_i[a] for a in BLOSUM62_ALPHABET]
+        self.alphabet = tokenizer.tokenize(BLOSUM62_AAS)
 
     def __call__(self, sequences):
         tokenized = [torch.LongTensor(self.tokenizer.tokenize(s)) for s in sequences]
@@ -286,9 +288,9 @@ class DMsMaskCollater(object):
         elif self.masking_scheme == "BLOSUM" or self.masking_scheme == "RANDOM":
             one_hot = [torch.LongTensor(self.blosum.one_hot(s[0])) for s in sequences]
             if self.masking_scheme == "BLOSUM":
-                q = self.blosum.q_blosum
+                q = self.tokenizer.q_blosum_alpha_t(alpha_t=0.01)
             elif self.masking_scheme == "RANDOM":
-                q = self.blosum.q_random
+                q = self.tokenzier.q_random
             for i,x in enumerate(one_hot):
                 if self.inputs_padded: # if truncating seqs to some length first in SimpleCollater, inputs will be padded
                      x_pad = x.clone()

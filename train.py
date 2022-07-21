@@ -19,11 +19,11 @@ from torch.cuda.amp import GradScaler
 #from apex import amp
 # replace amp with pytorch mixed precision
 
-#from sequence_models.convolutional import ByteNetLM
-from model import ByteNetLM
+from sequence_models.convolutional import ByteNetLM
+#from model import ByteNetLM
 #from sequence_models.constants import MASK
 from dms.constants import PROTEIN_ALPHABET, PAD
-from dms.utils import Blosum62
+from dms.utils import Tokenizer
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 #from torch.utils.data import SubsetRandomSampler
 from sequence_models.datasets import UniRefDataset
@@ -63,10 +63,11 @@ def main():
     parser.add_argument('--aml', action='store_true')  # Set true to do multi-node training on amlk8s
     parser.add_argument('-sd', '--state_dict', default=None)
     parser.add_argument('--zero_mask', action='store_true') # Set to true to use a masking scheme
-    parser.add_argument('--decay', action='store_true')
+    #parser.add_argument('--decay', action='store_true')
     parser.add_argument('--final_norm', action='store_true')
     parser.add_argument('--mini_run', action='store_true') # Set to True if running on subset of data
     parser.add_argument('--mask', type=str, default='autoreg')  # Set to True if running on subset of data
+    parser.add_argument('--warmup', action='store_true')  # Set to True if running on subset of data
 
 
     args = parser.parse_args()
@@ -140,8 +141,8 @@ def train(gpu, args):
         collater = OAMaskCollater(simple_collater, inputs_padded=False)
     elif args.mask == 'blosum':
         simple_collater = SimpleCollater()
-        collater = DMsMaskCollater(simple_collater, tokenizer=Blosum62(), inputs_padded=False, masking_scheme="BLOSUM",
-                                num_timesteps=50)
+        collater = DMsMaskCollater(simple_collater, tokenizer=Tokenizer(), inputs_padded=False, masking_scheme="BLOSUM",
+                                num_timesteps=500)
     elif args.mask == 'random':
         print('not implemented yet')
     else:
@@ -186,10 +187,10 @@ def train(gpu, args):
     # Initiate model
     # ----------------------------------------------------------
     if args.zero_mask:
-        padding_idx = PROTEIN_ALPHABET.index(PAD)
+        padding_idx = Tokenizer().tokenize(PAD)[0] #PROTEIN_ALPHABET.index(PAD)
     else:
         #padding_idx = None
-        padding_idx = PROTEIN_ALPHABET.index(PAD)
+        padding_idx = Tokenizer().tokenize(PAD)[0] #PROTEIN_ALPHABET.index(PAD)
     print('Using {} as padding index'.format(padding_idx))
     model = ByteNetLM(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
                       causal=causal, padding_idx=padding_idx, rank=weight_rank, dropout=args.dropout,
@@ -205,10 +206,10 @@ def train(gpu, args):
                    args.state_dict = args.out_fpath + output
                    last_epoch = epoch
     if args.state_dict is not None:
-       print('Loading weights from ' + args.state_dict + '...')
+       print('Loading weightsweights from ' + args.state_dict + '...')
        sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
        msd = sd['model_state_dict']
-       print([len(k.split('module.')) for k,v in msd.items()])
+       #print([len(k.split('module.')) for k,v in msd.items()])
        msd = {k.split('module.')[0]: v for k,v in msd.items()}
        model.load_state_dict(msd)
        optimizer.load_state_dict(sd['optimizer_state_dict'])
@@ -224,9 +225,8 @@ def train(gpu, args):
     # ----------------------------------------------------------
     # Loss Function
     # ----------------------------------------------------------
-    # TODO: add if statement args.warmup to warmup
-
-    scheduler = LambdaLR(optimizer, warmup(warmup_steps))
+    if args.warmup:
+        scheduler = LambdaLR(optimizer, warmup(warmup_steps))
     if args.mask == 'autoreg':
         loss_func = MaskedCrossEntropyLoss(reweight=True) # FOR ODARDMS
     elif args.mask == 'blosum':
@@ -254,12 +254,13 @@ def train(gpu, args):
         n_seen = 0
         tokens_trained = current_tokens
         if train:
-            n_total = len(len_train) #len(ds_train)
+            n_total = len(len_train)/args.gpus #len(ds_train)
         else:
             n_total = len(len_valid) #len(ds_valid)
         for i, batch in enumerate(loader):
             print("Batch", i)
             print("rank", rank)
+            print("Tokens", tokens_trained)
             # restarting from a checkpoint
             if train and i == 1 and e == initial_epoch and args.state_dict is not None:
                 print("Restarting from checkpoint")
@@ -313,10 +314,11 @@ def train(gpu, args):
                                 _ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
                         chunk_time = datetime.now()
         if not train:
-            if rank == 0:
-                with open(args.out_fpath + 'valid-metrics.csv', 'a') as f:
-                    f.write(','.join([str(rloss), str(raccu), str(int(current_tokens)), str(current_step), str(e)]))
-                    f.write('\n')
+            if n_seen == n_total:
+                if rank == 0:
+                    with open(args.out_fpath + 'valid-metrics.csv', 'a') as f:
+                        f.write(','.join([str(rloss), str(raccu), str(int(current_tokens)), str(current_step), str(e)]))
+                        f.write('\n')
 
                 print('Validation complete in ' + str(datetime.now() - start_time))
         elif rank == 0:
@@ -325,11 +327,11 @@ def train(gpu, args):
 
     def step(model, batch, train):
         src, timestep, tgt, mask = batch
-        print("Batchsize", len(timestep))
+        #print("Batchsize", len(timestep))
         src = src.to(device)
         tgt = tgt.to(device)
         mask = mask.to(device)
-        input_mask = (src != PROTEIN_ALPHABET.index(PAD)).float()
+        input_mask = (src != padding_idx).float() # TODO FIX
         n_tokens = mask.sum()
         n_processed = input_mask.sum()
 
@@ -350,6 +352,7 @@ def train(gpu, args):
 
         else:
             outputs = model(src, input_mask=input_mask.unsqueeze(-1))
+            #print(outputs[0])
             loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
             accu = accu_func(outputs, tgt, mask) * n_tokens
 
