@@ -9,30 +9,19 @@ import mlflow
 import torch
 import torch.multiprocessing as mp
 from torch.optim.lr_scheduler import LambdaLR
-#from apex.optimizers import FusedAdam
 from torch.optim import Adam
-from torch.nn.utils import clip_grad_norm_
+#from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 import torch.distributed as dist
 from torch.cuda.amp import GradScaler
-#from apex.parallel import DistributedDataParallel as DDP
-#from apex import amp
-# replace amp with pytorch mixed precision
 
 from sequence_models.convolutional import ByteNetLM
-#from model import ByteNetLM
-#from sequence_models.constants import MASK
-from dms.constants import PROTEIN_ALPHABET, PAD
+from dms.constants import PROTEIN_ALPHABET
 from dms.utils import Tokenizer
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
-#from torch.utils.data import SubsetRandomSampler
 from sequence_models.datasets import UniRefDataset
-#from dms.data import UNIREF50
 from dms.collaters import SimpleCollater, OAMaskCollater, DMsMaskCollater
-#from sequence_models.collaters import LMCollater, MLMCollater
-#from sequence_models.losses import MaskedCrossEntropyLoss
 from losses import MaskedCrossEntropyLoss, AustinLoss
-#from torch.nn import MSELoss
 from sequence_models.metrics import MaskedAccuracy
 from sequence_models.utils import warmup, transformer_lr
 
@@ -62,12 +51,14 @@ def main():
     parser.add_argument('--dataset', default=None)
     parser.add_argument('--aml', action='store_true')  # Set true to do multi-node training on amlk8s
     parser.add_argument('-sd', '--state_dict', default=None)
-    parser.add_argument('--zero_mask', action='store_true') # Set to true to use a masking scheme
+    #parser.add_argument('--zero_mask', action='store_true') # Set to true to use a masking scheme
     #parser.add_argument('--decay', action='store_true')
     parser.add_argument('--final_norm', action='store_true')
     parser.add_argument('--mini_run', action='store_true') # Set to True if running on subset of data
     parser.add_argument('--mask', type=str, default='autoreg')  # Set to True if running on subset of data
     parser.add_argument('--warmup', action='store_true')  # Set to True if running on subset of data
+    parser.add_argument('--checkpoint_freq', type=float, default=1)  # in minutes
+    parser.add_argument('--log_freq', type=float, default=10)  # in steps
 
 
     args = parser.parse_args()
@@ -133,6 +124,9 @@ def train(gpu, args):
     data_dir += config['dataset'] + '/'
     if args.mini_run:
         mini_size = 1000 # For troubleshooting
+    save_log_dir = home + '/Desktop/DMs/tmp'
+    if not os.path.exists(save_log_dir):
+        os.makedirs(save_log_dir)
     # ----------------------------------------------------------
     ### DEFINE COLLATOR ###
     # ----------------------------------------------------------
@@ -186,11 +180,11 @@ def train(gpu, args):
     # ----------------------------------------------------------
     # Initiate model
     # ----------------------------------------------------------
-    if args.zero_mask:
-        padding_idx = Tokenizer().tokenize(PAD)[0] #PROTEIN_ALPHABET.index(PAD)
-    else:
-        #padding_idx = None
-        padding_idx = Tokenizer().tokenize(PAD)[0] #PROTEIN_ALPHABET.index(PAD)
+    # if args.zero_mask:
+    #     padding_idx = Tokenizer().pad_id #PROTEIN_ALPHABET.index(PAD)
+    # else:
+    #     padding_idx = None
+    padding_idx = Tokenizer().pad_id  # PROTEIN_ALPHABET.index(PAD)
     print('Using {} as padding index'.format(padding_idx))
     model = ByteNetLM(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
                       causal=causal, padding_idx=padding_idx, rank=weight_rank, dropout=args.dropout,
@@ -255,24 +249,28 @@ def train(gpu, args):
         n_seen = 0
         tokens_trained = current_tokens
         if train:
-            n_total = len(len_train)/args.gpus #len(ds_train)
+            n_total = len(len_train)
         else:
-            n_total = len(len_valid) #len(ds_valid)
+            n_total = len(len_valid)
         for i, batch in enumerate(loader):
-            print("Batch", i)
-            print("rank", rank)
-            print("Tokens", tokens_trained)
+            print("batch", i)
             # restarting from a checkpoint
             if train and i == 1 and e == initial_epoch and args.state_dict is not None:
                 print("Restarting from checkpoint")
                 optimizer.load_state_dict(sd['optimizer_state_dict'])
                 scheduler.load_state_dict(sd['scheduler_state_dict'])
             new_loss, new_accu, new_n, new_seqs, new_processed = step(model, batch, train)
+            if train:
+                dist.reduce(new_loss, 0, op=dist.ReduceOp.SUM)
+                dist.reduce(new_accu, 0, op=dist.ReduceOp.SUM)
+                dist.reduce(new_n, 0, op=dist.ReduceOp.SUM)
+                dist.reduce(new_seqs, 0, op=dist.ReduceOp.SUM)
             losses.append(new_loss.item())
             accus.append(new_accu.item())
             ns.append(new_n.item())
             n_seen += new_seqs.item()
             total_n = sum(ns)
+            print("total_n", total_n)
             rloss = sum(losses) / total_n
             raccu = sum(accus) / total_n
             if train:
@@ -290,39 +288,50 @@ def train(gpu, args):
                 print(start + '%s Epoch %d of %d Step %d ntokens %d Example %d of %d loss = %.4f accu = %.4f'
                       % (t, e + 1, epochs, nsteps, tokens_trained, n_seen, n_total, rloss, raccu),
                       end=end)
+            # TRACK DATA
             if train:
                 losses = losses[-999:]
                 accus = accus[-999:]
                 ns = ns[-999:]
-                if n_seen == n_total:
+                if nsteps % args.log_freq == 0:
                     if rank == 0:
+                        mlflow.log_metrics({'train_loss': rloss,
+                                            'train_accu': raccu,
+                                            'n_tokens': total_n},
+                                           step=nsteps)
                         with open(args.out_fpath + 'train-metrics.csv', 'a') as f:
                             f.write(
-                                ','.join([str(rloss), str(raccu), str(int(current_tokens)), str(current_step), str(e)]))
+                                ','.join([str(rloss), str(raccu), str(int(current_tokens)), str(nsteps), str(e)]))
                             f.write('\n')
+                if n_seen == n_total:
+                    if rank == 0:
                         print('Training complete in ' + str(datetime.now() - chunk_time))
-                        with torch.no_grad():
-                            if rank == 0:
-                                ckpt_fpath = args.out_fpath + 'checkpoint%d.tar' % nsteps
-                                torch.save({
-                                    'step': nsteps,
-                                    'tokens': tokens_trained,
-                                    'model_state_dict': model.state_dict(),
-                                    'optimizer_state_dict': optimizer.state_dict(),
-                                    'scheduler_state_dict': scheduler.state_dict(),
-                                    'epoch': e
-                                }, ckpt_fpath)
-                                _ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
-                        chunk_time = datetime.now()
-        if not train:
-            if n_seen == n_total:
+                        _ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
+                    chunk_time = datetime.now()
+                if datetime.now() - chunk_time > timedelta(minutes=args.checkpoint_freq):
+                    print('Writing to checkpoint at', chunk_time)
+                    with torch.no_grad():
+                        if rank == 0:
+                            ckpt_fpath = args.out_fpath + 'checkpoint%d.tar' % nsteps
+                            torch.save({
+                                'step': nsteps,
+                                'tokens': tokens_trained,
+                                'model_state_dict': model.state_dict(),
+                                'optimizer_state_dict': optimizer.state_dict(),
+                                'scheduler_state_dict': scheduler.state_dict(),
+                                'epoch': e,
+                            }, ckpt_fpath)
+            if not train:
                 if rank == 0:
+                    mlflow.log_metrics({'valid_loss': rloss,
+                                        'valid_accu': raccu,
+                                        'n_tokens': current_tokens},
+                                       step=current_step)
                     with open(args.out_fpath + 'valid-metrics.csv', 'a') as f:
-                        f.write(','.join([str(rloss), str(raccu), str(int(current_tokens)), str(current_step), str(e)]))
+                        f.write(','.join([str(rloss), str(raccu), str(int(current_tokens)), str(nsteps), str(e)]))
                         f.write('\n')
-
-                print('Validation complete in ' + str(datetime.now() - start_time))
-        elif rank == 0:
+                    print('Validation complete in ' + str(datetime.now() - start_time))
+        if rank == 0:
             print('Epoch complete in ' + str(datetime.now() - start_time))
         return i, tokens_trained
 
@@ -330,7 +339,6 @@ def train(gpu, args):
         if args.mask == 'blosum':
             src, timestep, tgt, mask,q_x = batch
             q_x = q_x.to(device)
-            #print(q_x.shape)
         else:
             src, timestep, tgt, mask = batch
         print("Batchsize", len(timestep))
@@ -340,18 +348,19 @@ def train(gpu, args):
         input_mask = (src != padding_idx).float()
         n_tokens = mask.sum()
         n_processed = input_mask.sum()
-
+        print(len(input_mask), len(src))
+        print(input_mask.unsqueeze(-1).shape, src.shape)
         if train:
             optimizer.zero_grad() # reset gradients of model parameters
+            # Enables autocasting for the forward pass (model + loss)
             with torch.cuda.amp.autocast():
                 outputs = model(src, input_mask=input_mask.unsqueeze(-1))
-                #print(outputs.shape)
                 if args.mask == 'blosum':
                     loss = loss_func(q_x, outputs, tgt, mask, timestep) * n_tokens
                 else:
                     loss = loss_func(outputs, tgt, mask, timestep) * n_tokens
                 accu = accu_func(outputs, tgt, mask) * n_tokens
-
+            # Exits the context manager before backward()
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scale = scaler.get_scale()
@@ -359,10 +368,9 @@ def train(gpu, args):
             skip_scheduler = (scale > scaler.get_scale())
             if not skip_scheduler:
                 scheduler.step()
-
+        # No autocasting needed for validation set
         else:
             outputs = model(src, input_mask=input_mask.unsqueeze(-1))
-            #print(outputs[0])
             if args.mask == 'blosum':
                 loss = loss_func(q_x, outputs, tgt, mask, timestep) * n_tokens
             else:

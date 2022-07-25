@@ -16,8 +16,9 @@ class MaskedCrossEntropyLoss(CrossEntropyLoss):
 
     Returns
     """
-    def __init__(self, weight=None, reduction='none', reweight=True):
+    def __init__(self, weight=None, reduction='none', reweight=True, _lambda=0.01):
         self.reweight=reweight
+        self._lambda=_lambda
         super().__init__(weight=weight, reduction=reduction)
     def forward(self, pred, tgt, mask, timesteps):
         # Make sure we have that empty last dimension
@@ -40,15 +41,18 @@ class MaskedCrossEntropyLoss(CrossEntropyLoss):
             timesteps = timesteps.to(loss.device)
             rwt_term = 1. / timesteps  # Hoogeboom OARDM
             loss = torch.dot(rwt_term, loss.to(torch.float64))
-        else:
-            _lambda = 0.01  # TODO fix this
-            rwt_term = torch.tensor(np.repeat(_lambda, loss.shape[0], axis=0), dtype=torch.float64)
+        elif self.reweight == False:
+            rwt_term = torch.tensor(np.repeat(self._lambda, loss.shape[0], axis=0), dtype=torch.float64)
             rwt_term = rwt_term.to(loss.device)
             loss = torch.dot(rwt_term, loss.to(torch.float64))
+            #loss = _lambda * loss
+        else:
+            print("Choose option for reweight")
         return loss
 
 class AustinLoss(KLDivLoss):
-    def __init__(self, reduction='batchmean'):
+    def __init__(self, reduction='batchmean', _lambda=0.01):
+        self._lambda = _lambda
         super().__init__(reduction=reduction)
     def forward(self, q, p, tgt, mask, timestep):
         # KL divergence between q and p
@@ -60,10 +64,11 @@ class AustinLoss(KLDivLoss):
         elbo_loss = super().forward(p_norm,q) #input, target (note: reverse notation of documentation b/c of DM model notation)
         #print(elbo_loss)
         # Negative cross entropy
-        ce = MaskedCrossEntropyLoss(reweight=False)
+        ce = MaskedCrossEntropyLoss(reweight=False, _lambda=self._lambda)
         loss_ce = ce(p, tgt, mask, timestep)
         #print(loss_ce)
-
+        #print(len(loss_ce))
+        (print("elbo", elbo_loss, "ce", loss_ce))
         # loss = -elbo.mean() + ce_term(lambda?) * ce.mean() # FROM austin github
         loss = elbo_loss + loss_ce
         # loss = -elbo.mean() + lambda(=0.01)*MaskedCrossEntropyLoss(reweight=True)

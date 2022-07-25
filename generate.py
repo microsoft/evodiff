@@ -24,6 +24,7 @@ def main():
     parser.add_argument('--final_norm', action='store_true')
     parser.add_argument('--mask', type=str, default='mask')
     parser.add_argument('--seq_len', type=int, default=512)
+    parser.add_argument('--checkpoint', type=int, default=None)
     args = parser.parse_args()
 
     with open(args.config_fpath, 'r') as f:
@@ -55,18 +56,21 @@ def main():
                       causal=causal, padding_idx=padding_idx, rank=weight_rank, dropout=args.dropout,
                       tie_weights=args.tie_weights, final_ln=args.final_norm, slim=slim, activation=activation)
 
-    # Restore the model weights for the last checkpoint after training
-    outputs = os.listdir(args.out_fpath)
-    if len(outputs) > 0:
-       last_epoch = 0
-       for output in outputs:
-           if 'checkpoint' in output:
-               epoch = int(output.split('checkpoint')[-1][:-4])
-               if epoch > last_epoch:
-                   args.state_dict = args.out_fpath + output
-                   last_epoch = epoch
-    print(last_epoch)
+    if args.checkpoint is not None:
+        last_epoch = args.checkpoint
+    else:
+        # Restore the model weights for the last checkpoint after training
+        outputs = os.listdir(args.out_fpath)
+        if len(outputs) > 0:
+           last_epoch = 0
+           for output in outputs:
+               if 'checkpoint' in output:
+                   epoch = int(output.split('checkpoint')[-1][:-4])
+                   if epoch > last_epoch:
+                       args.state_dict = args.out_fpath + output
+                       last_epoch = epoch
 
+    print('Using checkpoint', last_epoch)
     print('Loading weights from ' + args.state_dict + '...')
     sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
     msd = sd['model_state_dict']
