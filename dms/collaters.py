@@ -28,6 +28,7 @@ def _normalize_seq_lengths(tokenized, seq_length, value):
     """
     Utility function that pads batches to the same length.
     Will always pad to right of sequence
+    Will always pad to right of sequence
 
     tokenized : list of tokenized sequences
     seq_length: (int) length to normalize sequences to
@@ -48,17 +49,28 @@ def matrixMul(a, n):
     else:
         return np.matmul(matrixMul(a, n-1), a)
 
+# def random_sample(seq, p, alphabet):
+#     "Categorical sample from distribution"
+#     sampled_seq = torch.zeros(len(seq))
+#     if torch.is_tensor(p):
+#         p = p.to(torch.float64).numpy()
+#     for i in range(len(seq)):
+#         #print(len(alphabet), len(p[i]))
+#         aa_selected = np.random.choice(alphabet, p=p[i])
+#         sampled_seq[i] = aa_selected
+#     return sampled_seq
+
 def random_sample(seq, p, alphabet):
-    "Categorical sample from distribution"
     sampled_seq = torch.zeros(len(seq))
     for i in range(len(seq)):
-        aa_selected = np.random.choice(alphabet, p=p[i])
+        aa_selected = torch.multinomial(p[i], 1)
         sampled_seq[i] = aa_selected
     return sampled_seq
 
 def sample_transition_matrix(x_0, q, time, alphabet):
     "Sample a markov transition according to next_step = x_0 * q ^ time"
     p_next_step = np.matmul(x_0, matrixMul(q, time))
+    #print(p_next_step.sum(axis=1))
     next_step = random_sample(x_0, p_next_step, alphabet)
     return next_step, p_next_step
 
@@ -227,7 +239,6 @@ class DMsMaskCollater(object):
         self.inputs_padded  = inputs_padded
         self.masking_scheme = masking_scheme
         self.num_timesteps = num_timesteps # Only needed for markov trans, doesnt depend on seq len
-        self.alphabet = tokenizer.tokenize([ALL_AAS])
 
     def __call__(self, sequences):
         tokenized = [torch.LongTensor(self.tokenizer.tokenize(s)) for s in sequences]
@@ -236,7 +247,6 @@ class DMsMaskCollater(object):
         timesteps = []
         masks=[]
         mask_id = torch.tensor(self.tokenizer.mask_id, dtype=torch.int64)
-        q_x = torch.zeros((len(tokenized), max_len, len(self.alphabet))) + self.tokenizer.pad_id
 
         if self.masking_scheme == "OA":
             for i, x in enumerate(tokenized):
@@ -263,6 +273,7 @@ class DMsMaskCollater(object):
                 mask = torch.tensor(mask, dtype=torch.bool)
                 masks.append(mask)
                 x_t = ~mask[0:D] * x + mask[0:D] * mask_id
+                #print(x_t)
                 src.append(x_t)
             # PAD out
             src = _pad(src, self.tokenizer.pad_id)
@@ -271,11 +282,22 @@ class DMsMaskCollater(object):
             return (src.to(torch.long), timesteps, tokenized.to(torch.long), masks)
 
         elif self.masking_scheme == "BLOSUM" or self.masking_scheme == "RANDOM":
+            alphabet = self.tokenizer.tokenize([self.tokenizer.alphabet])
+            all_aas = self.tokenizer.tokenize([self.tokenizer.all_aas])
             one_hot = [torch.LongTensor(self.tokenizer.one_hot(s[0])) for s in sequences]
+            Q_tminus1 = np.zeros((len(tokenized),len(all_aas),len(all_aas)))
+            # Pre pad one-hot arrays
+            pad_one_hot = torch.zeros((len(alphabet)))
+            #pad_one_hot[self.tokenizer.pad_id] = 1 # dont include padding tokens in matrix calcs
+            q_x = pad_one_hot.repeat((len(tokenized), max_len, 1))
+            #print("qx",q_x.shape)
+            # #q_x_tminus1_to_t = pad_one_hot.repeat((len(tokenized), max_len, 1))
+            # x_bar = pad_one_hot.repeat((len(tokenized), max_len, 1))
+            #tgt = pad_one_hot.repeat((len(tokenized), max_len, 1))
             if self.masking_scheme == "BLOSUM":
-                q = self.tokenizer.q_blosum_alpha_t(alpha_t=0.01)
+                Q = self.tokenizer.q_blosum_alpha_t(alpha_t=0.01)
             elif self.masking_scheme == "RANDOM":
-                q = self.tokenzier.q_random
+                Q = self.tokenzier.q_random
             for i,x in enumerate(one_hot):
                 if self.inputs_padded: # if truncating seqs to some length first in SimpleCollater, inputs will be padded
                      x_pad = x.clone()
@@ -283,30 +305,28 @@ class DMsMaskCollater(object):
                      x = x[mask_pad].to(torch.int64)
                 # Randomly generate timestep and indices to mask
                 D = len(x) # D should have the same dimensions as each sequence length
+                #print(D)
                 t = np.random.randint(1, self.num_timesteps) # randomly sample timestep
                 # Append timestep
                 timesteps.append(t)
                 # Calculate target
-                #print(x.shape, q.shape)
-                x_next, q_x_t = sample_transition_matrix(x, q, t, self.alphabet)
+                x_t, q_x_t = sample_transition_matrix(x, Q, t, all_aas) # x = tgt, x_t = src
+                src.append(x_t)
+                # Calc prior Q
+                Q_tminus1[i,:,:] = matrixMul(Q, t - 1)
+                #print(x_t.shape, q_x_t.shape)
+                q_x[i, 0:D, 0:len(all_aas)] = q_x_t
                 # Mask from input and output
-                mask_arr = _diff(tokenized[i],x_next)
+                mask_arr = _diff(tokenized[i],x_t)
                 index_arr = np.arange(0, max_len)  # index array [1...seq_len]
                 mask = np.isin(index_arr, mask_arr, invert=False).reshape(index_arr.shape)
                 mask = torch.tensor(mask, dtype=torch.bool)
                 masks.append(mask)
-                # Create src
-                x_t = ~mask[0:D] * tokenized[i] + mask[0:D] * mask_id
-                src.append(x_t)
-                #print(q_x_t.dtype)
-                #print(i, max_len, D)
-                #print(q_x_t.shape)
-                q_x[i, 0:D, :] = q_x_t
             # PAD out
             src = _pad(src, self.tokenizer.pad_id)
             masks = _pad(masks*1, 0)
             tokenized = _pad(tokenized, self.tokenizer.pad_id)
-            return (src.to(torch.long), timesteps, tokenized.to(torch.long), masks, q_x)
+            return (src.to(torch.long), timesteps, tokenized.to(torch.long), masks, Q, Q_tminus1, q_x.double())
 
         else:
             return None

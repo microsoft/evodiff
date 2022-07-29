@@ -42,7 +42,7 @@ def loadMatrix(path):
         line = line.strip()
 
         # Skip comments starting with #
-        if line.startswith("#"):
+        if line.startswith(";"):
             continue
 
         linelist = line.split()
@@ -58,6 +58,7 @@ def loadMatrix(path):
             continue
 
         if not len(linelist) == len(labelslist) + 1:
+            print(len(linelist), len(labelslist))
             # Check if line has as may entries as labels
             raise EOFError("Blosum file is missing values.")
 
@@ -67,5 +68,6 @@ def loadMatrix(path):
 
     # Check quadratic
     if not len(blosumDict) == len(labelslist) ** 2:
-        raise EOFError("Blosum file is not quadratic.")
+        print(len(blosumDict), len(labelslist))
+        raise EOFError("Blosum file is not quadratic.", len(blosumDict), len(labelslist)**2)
     return blosumDict

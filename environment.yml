@@ -1,15 +1,15 @@
 name: dms
 channels:
   - defaults
-  #- pytorch
+  - nvidia
+  - pytorch
 dependencies:
   - python=3.8.5
   - pandas
   - numpy
   - python-lmdb
-  #- cudatoolkit=10.1
-  - pytorch
-  #- torchaudio
+  - pytorch::pytorch
+  - nvidia::cudatoolkit=11.3
   - torchvision
   - pip
   - pip:

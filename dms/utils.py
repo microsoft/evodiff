@@ -2,8 +2,8 @@
 from dms.data import loadMatrix
 import torch
 import numpy as np
-from sequence_models.constants import SPECIALS, MASK
-from dms.constants import ALL_AAS, PAD, BLOSUM62_AAS
+from sequence_models.constants import MASK
+from dms.constants import ALL_AAS, PROTEIN_ALPHABET, PAD
 from sklearn.preprocessing import normalize
 
 data_dir = '/home/v-salamdari/Desktop/DMs/data/' # TODO fix this
@@ -54,12 +54,12 @@ def parse_fasta(seq_file, idx):
 
 class Tokenizer(object):
     """Convert between strings and index"""
-    def __init__(self, all_aas=ALL_AAS, specials=SPECIALS, pad=PAD, mask=MASK,
-                 path_to_blosum=data_dir+"blosum62.mat"):
+    def __init__(self, all_aas=ALL_AAS, protein_alphabet=PROTEIN_ALPHABET, pad=PAD, mask=MASK,
+                 path_to_blosum=data_dir+"blosum62-special.mat"):
         self.matrix = loadMatrix(path_to_blosum)
         self.matrix_dict = dict(self.matrix)
         self.all_aas = list(all_aas)
-        self.alphabet = list("".join(all_aas+pad+specials))
+        self.alphabet = list("".join(protein_alphabet))
         self.pad = pad
         self.mask = mask
         self.vocab = sorted(set("".join(all_aas)))
@@ -84,7 +84,7 @@ class Tokenizer(object):
 
     @property
     def q_random(self):
-        q = np.eye(len(self.all_aas)) + 1 / 10  # arbitrary, set diag to zero assign other transitions some prob
+        q = np.eye(len(self.alphabet)) + 1 / 10  # arbitrary, set diag to zero assign other transitions some prob
         q = double_stochastic(q)  # normalize so rows += 1
         return q
 
@@ -104,10 +104,22 @@ class Tokenizer(object):
         else:
             return "".join([self.i_to_a[t] for t in x])
 
-    def one_hot(self, seq):
+    def one_hot(self, seq, tokenized=False):
         "one hot encode according to indexing"
-        x_onehot = np.zeros((len(seq), len(self.all_aas)))
+        tokens = self.all_aas
+        x_onehot = np.zeros((len(seq), len(tokens)))
         for i, a in enumerate(seq):
-            one_index = self.a_to_i[a]
-            x_onehot[i][one_index] = 1
+            if not tokenized:
+                one_index = self.a_to_i[a]
+            else:
+                one_index = a
+            #print(one_index, len(tokens))
+            if one_index < len(tokens): # everything that isnt an amino acid will be zero
+                #print(i, one_index)
+                x_onehot[i][int(one_index)] = 1
         return x_onehot
+
+    def undo_one_hot(self, x_onehot):
+        "one hot encode according to indexing"
+        tokenized = [np.where(r==1)[0] for r in x_onehot]
+        return tokenized
