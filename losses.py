@@ -113,7 +113,7 @@ class AustinLoss(KLDivLoss):
                     B = torch.matmul(x_0_bar[j].unsqueeze(0), Q_tminus1)
                     #print("B", B)
                     num = torch.mul(A, B)  # element wise (shape 1 x K)
-                    den = (torch.t(x_t[j]))  # (shape K x 1) # TODO: ASK 1/one_hot gives inf for one hot encoded (?)
+                    den = (torch.t(x_t[j]))  # (shape K x 1) # TODO:ask if this ok, 1/x_t gives inf for one hot encoded (?)
                     #print("den", den)
                     q_t_j = torch.matmul(num, den)  # shape 1x1
                     # Calculate p_theta_j
