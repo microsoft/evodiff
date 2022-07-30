@@ -47,7 +47,7 @@ def matrixMul(a, n):
     if(n <= 1):
         return a
     else:
-        return np.matmul(matrixMul(a, n-1), a)
+        return torch.matmul(matrixMul(a, n-1), a)
 
 # def random_sample(seq, p, alphabet):
 #     "Categorical sample from distribution"
@@ -67,9 +67,10 @@ def random_sample(seq, p, alphabet):
         sampled_seq[i] = aa_selected
     return sampled_seq
 
-def sample_transition_matrix(x_0, q, time, alphabet):
+def sample_transition_matrix(x_0, Q, time, alphabet):
     "Sample a markov transition according to next_step = x_0 * q ^ time"
-    p_next_step = np.matmul(x_0, matrixMul(q, time))
+    p_next_step = torch.matmul(x_0, matrixMul(Q, time))
+    #print(p_next_step)
     #print(p_next_step.sum(axis=1))
     next_step = random_sample(x_0, p_next_step, alphabet)
     return next_step, p_next_step
@@ -241,7 +242,7 @@ class DMsMaskCollater(object):
         self.num_timesteps = num_timesteps # Only needed for markov trans, doesnt depend on seq len
 
     def __call__(self, sequences):
-        tokenized = [torch.LongTensor(self.tokenizer.tokenize(s)) for s in sequences]
+        tokenized = [torch.tensor(self.tokenizer.tokenize(s)) for s in sequences]
         max_len = max(len(t) for t in tokenized)
         src=[]
         timesteps = []
@@ -284,37 +285,28 @@ class DMsMaskCollater(object):
         elif self.masking_scheme == "BLOSUM" or self.masking_scheme == "RANDOM":
             alphabet = self.tokenizer.tokenize([self.tokenizer.alphabet])
             all_aas = self.tokenizer.tokenize([self.tokenizer.all_aas])
-            one_hot = [torch.LongTensor(self.tokenizer.one_hot(s[0])) for s in sequences]
-            Q_tminus1 = np.zeros((len(tokenized),len(all_aas),len(all_aas)))
+            one_hot = [torch.tensor(self.tokenizer.one_hot(s[0])) for s in sequences]
             # Pre pad one-hot arrays
             pad_one_hot = torch.zeros((len(alphabet)))
-            #pad_one_hot[self.tokenizer.pad_id] = 1 # dont include padding tokens in matrix calcs
             q_x = pad_one_hot.repeat((len(tokenized), max_len, 1))
-            #print("qx",q_x.shape)
-            # #q_x_tminus1_to_t = pad_one_hot.repeat((len(tokenized), max_len, 1))
-            # x_bar = pad_one_hot.repeat((len(tokenized), max_len, 1))
-            #tgt = pad_one_hot.repeat((len(tokenized), max_len, 1))
             if self.masking_scheme == "BLOSUM":
                 Q = self.tokenizer.q_blosum_alpha_t(alpha_t=0.01)
             elif self.masking_scheme == "RANDOM":
                 Q = self.tokenzier.q_random
+            Q = torch.tensor(Q)
             for i,x in enumerate(one_hot):
                 if self.inputs_padded: # if truncating seqs to some length first in SimpleCollater, inputs will be padded
                      x_pad = x.clone()
                      mask_pad = x_pad != self.tokenizer.pad_id
-                     x = x[mask_pad].to(torch.int64)
+                     x = x[mask_pad] #.to(torch.int64)
                 # Randomly generate timestep and indices to mask
                 D = len(x) # D should have the same dimensions as each sequence length
-                #print(D)
                 t = np.random.randint(1, self.num_timesteps) # randomly sample timestep
                 # Append timestep
                 timesteps.append(t)
                 # Calculate target
                 x_t, q_x_t = sample_transition_matrix(x, Q, t, all_aas) # x = tgt, x_t = src
                 src.append(x_t)
-                # Calc prior Q
-                Q_tminus1[i,:,:] = matrixMul(Q, t - 1)
-                #print(x_t.shape, q_x_t.shape)
                 q_x[i, 0:D, 0:len(all_aas)] = q_x_t
                 # Mask from input and output
                 mask_arr = _diff(tokenized[i],x_t)
@@ -326,7 +318,7 @@ class DMsMaskCollater(object):
             src = _pad(src, self.tokenizer.pad_id)
             masks = _pad(masks*1, 0)
             tokenized = _pad(tokenized, self.tokenizer.pad_id)
-            return (src.to(torch.long), timesteps, tokenized.to(torch.long), masks, Q, Q_tminus1, q_x.double())
+            return (src.to(torch.long), timesteps, tokenized.to(torch.long), masks.to(torch.long), Q, q_x.to(torch.double))
 
         else:
             return None

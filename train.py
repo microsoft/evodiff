@@ -380,8 +380,9 @@ def train(gpu, args):
 
     def step(model, batch, train):
         if args.mask == 'blosum':
-            src, timestep, tgt, mask, Q, Q_tminus1, q = batch
+            src, timestep, tgt, mask, Q, q = batch
             q = q.to(device)
+            Q = Q.to(device)
         else:
             src, timestep, tgt, mask = batch
             #print(src)
@@ -390,6 +391,7 @@ def train(gpu, args):
         tgt = tgt.to(device)
         mask = mask.to(device)
         input_mask = (src != padding_idx).float()
+        #input_mask = input_mask.to(torch.float64)
         n_tokens = mask.sum()
         n_processed = input_mask.sum()
         optimizer.zero_grad() # reset gradients of model parameters
