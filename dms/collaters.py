@@ -78,28 +78,6 @@ def sample_transition_matrix(x_0, Q, time, alphabet):
 def _diff(a, b):
     return [i for i in range(len(a)) if a[i] != b[i]]
 
-def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999):
-    """
-    Variance schedule for adding noise as introduced by Nichol and Dhariwal and adapted by Hoogeboom et al
-    Coined as uniform schedule in Austin et al.
-    Start/End will control the magnitude of sigmoidal and cosine schedules..
-    #TODO: Check that cosine matches Austin cosine schedule - I think theirs is slightly diff
-    #TODO: add mutual information Beta_t introduced by Sohl Dickensen used by Austin
-    """
-    if schedule == 'linear':
-        betas = torch.linspace(start, end, num_timesteps)
-    elif schedule == "quad":
-        betas = torch.linspace(start ** 0.5, end ** 0.5, num_timesteps) ** 2
-    elif schedule == "sigmoid":
-        betas = torch.linspace(-10, 10, num_timesteps)
-        betas = torch.sigmoid(betas) * (end - start) + start
-    elif schedule == "cosine":
-        betas = torch.linspace(np.pi / 2, 0, num_timesteps)
-        betas = torch.cos(betas) * (end - start) + start
-    else:
-        print("Must select a valid schedule; ['linear', 'quad', 'sigmoid', 'cosine']")
-    return betas
-
 class SimpleCollater(object):
     """
     TODO: probably can get rid of this
@@ -290,10 +268,11 @@ class DMsMaskCollater(object):
             pad_one_hot = torch.zeros((len(alphabet)))
             q_x = pad_one_hot.repeat((len(tokenized), max_len, 1))
             if self.masking_scheme == "BLOSUM":
-                Q = self.tokenizer.q_blosum_alpha_t(alpha_t=0.01)
+                #Q = self.tokenizer.q_blosum()
+                Q = self.tokenizer.q_blosum_schedule()
             elif self.masking_scheme == "RANDOM":
                 Q = self.tokenzier.q_random
-            Q = torch.tensor(Q)
+            #Q = torch.tensor(Q)
             for i,x in enumerate(one_hot):
                 if self.inputs_padded: # if truncating seqs to some length first in SimpleCollater, inputs will be padded
                      x_pad = x.clone()
@@ -302,10 +281,11 @@ class DMsMaskCollater(object):
                 # Randomly generate timestep and indices to mask
                 D = len(x) # D should have the same dimensions as each sequence length
                 t = np.random.randint(1, self.num_timesteps) # randomly sample timestep
+                #Q = torch.tensor(q_t[t])
                 # Append timestep
                 timesteps.append(t)
                 # Calculate target
-                x_t, q_x_t = sample_transition_matrix(x, Q, t, all_aas) # x = tgt, x_t = src
+                x_t, q_x_t = sample_transition_matrix(x, Q[t], 1, all_aas) # x = tgt, x_t = src
                 src.append(x_t)
                 q_x[i, 0:D, 0:len(all_aas)] = q_x_t
                 # Mask from input and output

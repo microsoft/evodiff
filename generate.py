@@ -22,7 +22,6 @@ def main():
     parser.add_argument('--dropout', type=float, default=0.0)
     parser.add_argument('--tie_weights', action='store_true')
     parser.add_argument('--final_norm', action='store_true')
-    parser.add_argument('--mask', type=str, default='mask')
     parser.add_argument('--seq_len', type=int, default=512)
     parser.add_argument('--checkpoint', type=int, default=None)
     args = parser.parse_args()
@@ -77,29 +76,35 @@ def main():
     msd = {k.split('module.')[0]: v for k,v in msd.items()}
     model.load_state_dict(msd) # TODO: why is this not saving the same
 
-    generate_text(model, args.mask, seq_len)
+    sequences = 100
+    seqs = ""
+    seqs_array = np.zeros((sequences, 512))
+    for i in range(sequences):
+        sample, string = generate_text(model, seq_len)
+        seqs += str(string)
+        seqs += "\n"
+        seqs_array[i] = sample.numpy()
+
+    np.savetxt(args.out_fpath + 'generated_samples.csv', seqs_array, delimiter=',', fmt='%d')
+    with open(args.out_fpath + 'generated_samples_string.csv', 'a') as f:
+        f.write(','.join(
+            [seqs]))
+        f.write('\n')
 
 
-def generate_text(model, initial_sample, seq_len, tokenizer=Tokenizer()):
+def generate_text(model, seq_len, tokenizer=Tokenizer()):
     # Generate a random start string and convert to tokens
     padding_idx = tokenizer.tokenize(PAD)[0]
     all_aas = tokenizer.tokenize([BLOSUM62_AAS])
     alphabet = tokenizer.tokenize([PROTEIN_ALPHABET])
     mask = tokenizer.tokenize(MASK)
     # Start from mask or random array
-    if initial_sample == 'mask':
-        sample = torch.zeros((1,seq_len))+mask
-        sample = sample.to(torch.long)
-    elif initial_sample == 'random':
-        sample = torch.LongTensor([np.random.choice(all_aas) for i in range(seq_len)])
-        sample = sample.unsqueeze(0) # batchsize 1
-    else:
-        print('flag --mask as mask or random')
+    sample = torch.zeros((1,512))+mask
+    sample = sample.to(torch.long)
     seq = tokenizer.untokenize(sample[0])
     print("input seq", seq)
-
     # Unmask 1 loc at a time randomly
-    loc = np.arange(len(seq))
+    loc = np.arange(seq_len)
     np.random.shuffle(loc)
     input_mask = torch.zeros(len(seq), dtype=bool)
     #print(loc.dtype, input_mask.dtype)
@@ -112,6 +117,7 @@ def generate_text(model, initial_sample, seq_len, tokenizer=Tokenizer()):
         sample[0][i] = p_sample
         #print(x, i, sample)
     print(tokenizer.untokenize(sample[0]))
+    return sample[0], tokenizer.untokenize(sample[0])
 
 if __name__ == '__main__':
     main()

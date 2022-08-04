@@ -60,7 +60,7 @@ def main():
     parser.add_argument('--warmup', action='store_true')  # Set to True if running on subset of data
     parser.add_argument('--checkpoint_freq', type=float, default=1)  # in minutes
     parser.add_argument('--log_freq', type=float, default=10)  # in steps
-
+    parser.add_argument('--reweighting_term', type=float, default=0.01)  # lambda reweighting term from Austin D3PM
 
     args = parser.parse_args()
     args.world_size = args.gpus * args.nodes
@@ -68,7 +68,8 @@ def main():
         pass
     else:
         os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = '8889'
+        os.environ['MASTER_PORT'] = '8888'
+
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
 def train(gpu, args):
@@ -87,7 +88,7 @@ def train(gpu, args):
     with open(args.config_fpath, 'r') as f:
         config = json.load(f)
     n_tokens = len(PROTEIN_ALPHABET)
-    print("len of alphabet", n_tokens)
+    #print("len of alphabet", n_tokens)
     d_embed = config['d_embed']
     d_model = config['d_model']
     n_layers = config['n_layers']
@@ -137,7 +138,7 @@ def train(gpu, args):
     elif args.mask == 'blosum':
         simple_collater = SimpleCollater()
         collater = DMsMaskCollater(simple_collater, tokenizer=Tokenizer(), inputs_padded=False, masking_scheme="BLOSUM",
-                                num_timesteps=500)
+                                num_timesteps=100)
     elif args.mask == 'random':
         print('not implemented yet')
     else:
@@ -257,7 +258,7 @@ def train(gpu, args):
         loss_func = MaskedCrossEntropyLoss(reweight=True)
     elif args.mask == 'blosum':
         loss_func1 = AustinLoss()
-        loss_func2 = MaskedCrossEntropyLoss(reweight=False, _lambda=0.01)
+        loss_func2 = MaskedCrossEntropyLoss(reweight=False, _lambda=args.reweighting_term)
     elif args.mask == 'random':
         print('not working yet')
     accu_func = MaskedAccuracy()
@@ -283,17 +284,26 @@ def train(gpu, args):
         n_seen = 0
         tokens_trained = current_tokens
         if train:
-            n_total = len(len_train)
+            if args.mini_run:
+                n_total = len(len_train)
+            else:
+                n_total = len(ds_train)
         else:
-            n_total = len(len_valid)
+            if args.mini_run:
+                n_total = len(len_valid)
+            else:
+                n_total = len(ds_valid)
         for i, batch in enumerate(loader):
-            print("batch", i)
+            #print("batch", i)
+            #print("rank", rank)
             # restarting from a checkpoint
             if train and i == 1 and e == initial_epoch and args.state_dict is not None:
                 print("Restarting from checkpoint")
                 optimizer.load_state_dict(sd['optimizer_state_dict'])
                 scheduler.load_state_dict(sd['scheduler_state_dict'])
             new_loss, new_ce_loss, new_nll_loss, new_accu, new_n, new_seqs, new_processed = step(model, batch, train)
+            #print("step output", new_loss, new_ce_loss, new_nll_loss)
+            #print("new loss", new_loss)
             if train:
                 dist.reduce(new_loss, 0, op=dist.ReduceOp.SUM)
                 dist.reduce(new_ce_loss, 0, op=dist.ReduceOp.SUM)
@@ -308,9 +318,12 @@ def train(gpu, args):
             ns.append(new_n.item())
             n_seen += new_seqs.item()
             total_n = sum(ns)
+            #print("new loss item", new_loss.item())
+            #print("losses", losses, len(losses), sum(losses))
             r_loss = sum(losses) / len(losses)
             r_ce_loss = sum(ce_losses) / len(ce_losses)
             r_nll_loss = sum(nll_losses) / len(nll_losses)
+            #print("epoch", r_loss, r_ce_loss, r_nll_loss)
             #rloss = sum(losses) / total_n
             raccu = sum(accus) / total_n
             if train:
@@ -328,32 +341,29 @@ def train(gpu, args):
                 print(start + '%s Epoch %d of %d Step %d ntokens %d Example %d of %d loss = %.4f ce loss = %.4f nll loss = %.4f accu = %.4f'
                       % (t, e + 1, epochs, nsteps, tokens_trained, n_seen, n_total, r_loss, r_ce_loss, r_nll_loss, raccu),
                       end=end)
-            # TRACK DATA
             if train:
                 losses = losses[-999:]
                 ce_losses = ce_losses[-999:]
                 accus = accus[-999:]
                 ns = ns[-999:]
-                if nsteps % args.log_freq == 0:
+                #print("if rank in epoch", rank)
+                #print("if train in epoch", r_loss, r_ce_loss, r_nll_loss)
+                #print(datetime.now() - chunk_time)
+                if nsteps % args.log_freq == 0:  # write to checkpoint frequency
                     if rank == 0:
                         mlflow.log_metrics({'train_loss': r_loss,
                                             'train_accu': raccu,
                                             'n_tokens': total_n},
-                                           step=nsteps)
+                                            step=nsteps)
                         with open(args.out_fpath + 'train-metrics.csv', 'a') as f:
-                            f.write(
-                                ','.join([str(r_loss), str(r_ce_loss), str(r_nll_loss), str(raccu), str(int(current_tokens)), str(nsteps), str(e)]))
+                            f.write(','.join([str(r_loss), str(r_ce_loss), str(r_nll_loss), str(raccu), str(int(current_tokens)), str(nsteps), str(e)]))
                             f.write('\n')
-                if (n_seen == n_total) or (datetime.now() - chunk_time > timedelta(minutes=args.checkpoint_freq)):
+                        #print(n_seen == n_total)
+                if ((datetime.now() - chunk_time) > timedelta(minutes=args.checkpoint_freq)) or (n_seen == n_total):
                     if rank == 0:
-                        print('Training complete in ' + str(datetime.now() - chunk_time))
-                        #_ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
-                #print(datetime.now() - chunk_time)
-                #if datetime.now() - chunk_time > timedelta(minutes=args.checkpoint_freq):
                         print('Writing to checkpoint at', chunk_time)
-                        print(nsteps)
                         with torch.no_grad():
-                            # if rank == 0:
+                            if rank == 0:
                                 ckpt_fpath = args.out_fpath + 'checkpoint%d.tar' % nsteps
                                 torch.save({
                                     'step': nsteps,
@@ -361,20 +371,21 @@ def train(gpu, args):
                                     'model_state_dict': model.state_dict(),
                                     'optimizer_state_dict': optimizer.state_dict(),
                                     'scheduler_state_dict': scheduler.state_dict(),
-                                    'epoch': e,
+                                    'epoch': e
                                 }, ckpt_fpath)
+                                _ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
                         chunk_time = datetime.now()
-            if not train:
-                if rank == 0:
-                    mlflow.log_metrics({'valid_loss': r_loss,
-                                        'valid_accu': raccu,
-                                        'n_tokens': current_tokens},
-                                       step=current_step)
+        if not train:
+            if rank == 0:
+                mlflow.log_metrics({'valid_loss': r_loss,
+                                    'valid_accu': raccu,
+                                    'n_tokens': current_tokens},
+                                    step=current_step)
                 with open(args.out_fpath + 'valid-metrics.csv', 'a') as f:
                     f.write(','.join([str(r_loss), str(r_ce_loss), str(r_nll_loss), str(raccu), str(int(current_tokens)), str(nsteps), str(e)]))
                     f.write('\n')
                 print('Validation complete in ' + str(datetime.now() - start_time))
-        if rank == 0:
+        elif rank == 0:
             print('Epoch complete in ' + str(datetime.now() - start_time))
         return i, tokens_trained
 
@@ -394,26 +405,38 @@ def train(gpu, args):
         #input_mask = input_mask.to(torch.float64)
         n_tokens = mask.sum()
         n_processed = input_mask.sum()
-        optimizer.zero_grad() # reset gradients of model parameters
-        # Enables autocasting for the forward pass (model + loss) #
-        with torch.cuda.amp.autocast():
-            outputs = model(src, input_mask=input_mask.unsqueeze(-1))
-            if args.mask == 'blosum':
-                kl_loss = loss_func1(q, outputs, tgt, mask, timestep, Q, input_mask) #* n_tokens
-                ce_loss, nll_loss = loss_func2(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
-                loss = kl_loss + ce_loss
-            elif args.mask == 'autoreg':
-                ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask) #* n_tokens
-                loss = ce_loss
-            accu = accu_func(outputs, tgt, mask) * n_tokens
-        # Exits the context manager before backward()
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scale = scaler.get_scale()
-        scaler.update()
-        skip_scheduler = (scale > scaler.get_scale())
-        if not skip_scheduler:
-            scheduler.step()
+        if train:
+            optimizer.zero_grad() # reset gradients of model parameters
+            # Enables autocasting for the forward pass (model + loss) #
+            with torch.cuda.amp.autocast():
+                outputs = model(src, input_mask=input_mask.unsqueeze(-1))
+                if args.mask == 'blosum':
+                    kl_loss = loss_func1(q, outputs, tgt, mask, timestep, Q, input_mask) #* n_tokens
+                    ce_loss, nll_loss = loss_func2(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
+                    loss = kl_loss + ce_loss
+                elif args.mask == 'autoreg':
+                    ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask) #* n_tokens
+                    loss = ce_loss
+                accu = accu_func(outputs, tgt, mask) * n_tokens
+            # Exits the context manager before backward()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scale = scaler.get_scale()
+            scaler.update()
+            skip_scheduler = (scale > scaler.get_scale())
+            if not skip_scheduler:
+                scheduler.step()
+        else: # dont step through model during val
+            with torch.cuda.amp.autocast():
+                outputs = model(src, input_mask=input_mask.unsqueeze(-1))
+                if args.mask == 'blosum':
+                    kl_loss = loss_func1(q, outputs, tgt, mask, timestep, Q, input_mask)  # * n_tokens
+                    ce_loss, nll_loss = loss_func2(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
+                    loss = kl_loss + ce_loss
+                elif args.mask == 'autoreg':
+                    ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
+                    loss = ce_loss
+                accu = accu_func(outputs, tgt, mask) * n_tokens
         n_seqs = torch.tensor(len(src), device=device)
         return loss, ce_loss, nll_loss, accu, n_tokens, n_seqs, n_processed
 
@@ -429,11 +452,11 @@ def train(gpu, args):
     for e in range(initial_epoch, epochs):
         if not args.mini_run:
             train_sortish_sampler.set_epoch(e + 1)
-        print("epoch ", e)
+        #print("epoch ", e)
         s, t = epoch(model, True, current_step=total_steps, current_tokens=total_tokens)
         total_steps += s
         total_tokens += t
-        print(total_steps, total_tokens)
+        #print(total_steps, total_tokens)
 
 if __name__ == '__main__':
     main()

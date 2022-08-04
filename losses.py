@@ -43,14 +43,14 @@ class MaskedCrossEntropyLoss(CrossEntropyLoss):
             t = torch.masked_select(tgt[i], mask[i].squeeze())#.squeeze())
             loss = super().forward(p, t)
             #print("loss", loss)
-            if self.reweight:
+            if self.reweight: # Uses autoreg reweighting term
                 # Reweight for summation over t
                 _timesteps = torch.tensor(np.repeat(timesteps[i], timesteps[i], axis=0))  # expand timesteps so dim matches loss dim
                 _timesteps = _timesteps.to(tgt.device)
                 rwt_term = 1. / _timesteps  # Hoogeboom OARDM
                 _n_tokens = torch.repeat_interleave(n_tokens[i], len(loss), axis=0)
                 ce_loss = _n_tokens * rwt_term * loss
-            if not self.reweight:
+            if not self.reweight: # Uses lambda reweighting term
                 rwt_term = torch.tensor(np.repeat(self._lambda, len(loss), axis=0))
                 #print(rwt_term.shape, loss.shape)
                 rwt_term = rwt_term.to(tgt.device)
@@ -92,9 +92,10 @@ class AustinLoss(KLDivLoss):
             x_0_bar = torch.tensor(self.tokenizer.one_hot(x_0_bar, tokenized=True)) # one hot
             x_0_bar = x_0_bar.to(tgt.device)
             # Calculate q given model predictions
-            x_t, q_x_t = sample_transition_matrix(x_0_bar, Q, timestep[i], alphabet)
+            x_t, q_x_t = sample_transition_matrix(x_0_bar, Q[timestep[i]], 1, alphabet)
             x_t = torch.tensor(self.tokenizer.one_hot(x_t, tokenized=True))  # one hot
-            Q_tminus1 = matrixMul(Q, timestep[i]-1)
+            #Q_tminus1 = matrixMul(Q, timestep[i]-1)
+            Q_tminus1 = Q[timestep[i]-1]
             # move to device
             x_t = x_t.to(tgt.device)
             pad_mask_mask = pad_mask_mask.to(tgt.device)
@@ -107,7 +108,7 @@ class AustinLoss(KLDivLoss):
                 for j in range(len(x_0_bar)): # enumerate over masked tokens in sequence (dim 1xK)
                     # Calculate q(x_t-1 | x_t, x_0_bar) - eq 3
                     # A = x_t * torch.transpose(Q_t) (shape - 1 x K)
-                    A = torch.matmul(x_t[j].unsqueeze(0), torch.t(Q))
+                    A = torch.matmul(x_t[j].unsqueeze(0), torch.t(Q[timestep[i]]))
                     #print("A", A)
                     # B = x_0_bar * Q_t-1 (shape - 1 x K)
                     B = torch.matmul(x_0_bar[j].unsqueeze(0), Q_tminus1)
@@ -126,7 +127,7 @@ class AustinLoss(KLDivLoss):
                 kl_loss_i = torch.stack(kl_loss_i).sum() # loss per seq
                 #print("kli", kl_loss_i)
                 kl_losses.append(kl_loss_i)
-            else: # if empty sequence ignore (loss = 0)
+            else: # if empty sequence ignore
                 c += 1 # subtract seq from batch normalization
         #print(len(kl_losses), tgt.shape[0])
         kl_losses = (torch.stack(kl_losses, dim=0).sum()/(tgt.shape[0]-c)) # loss per batch, norm by batchsize
