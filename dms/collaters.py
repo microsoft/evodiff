@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from dms.utils import Tokenizer
+from dms.utils import Tokenizer, matrixMul
 #from sequence_models.constants import STOP
 from dms.constants import ALL_AAS
 
@@ -43,12 +43,6 @@ def _normalize_seq_lengths(tokenized, seq_length, value):
             output[row, :seq_length] = t[:seq_length]
     return output
 
-def matrixMul(a, n):
-    if(n <= 1):
-        return a
-    else:
-        return torch.matmul(matrixMul(a, n-1), a)
-
 # def random_sample(seq, p, alphabet):
 #     "Categorical sample from distribution"
 #     sampled_seq = torch.zeros(len(seq))
@@ -63,6 +57,7 @@ def matrixMul(a, n):
 def random_sample(seq, p, alphabet):
     sampled_seq = torch.zeros(len(seq))
     for i in range(len(seq)):
+        #print(p[i])
         aa_selected = torch.multinomial(p[i], 1)
         sampled_seq[i] = aa_selected
     return sampled_seq
@@ -87,7 +82,6 @@ class SimpleCollater(object):
     - Can reverse sequence orders
     - Pad to "max" length in batch or pads to "normalized" length chosen by providing seq_length (default 512)
     """
-
     def __init__(self, pad=False, backwards=False, norm=False, seq_length=512, one_hot=False):
         self.pad = pad
         self.seq_length = seq_length
@@ -269,9 +263,11 @@ class DMsMaskCollater(object):
             q_x = pad_one_hot.repeat((len(tokenized), max_len, 1))
             if self.masking_scheme == "BLOSUM":
                 #Q = self.tokenizer.q_blosum()
-                Q = self.tokenizer.q_blosum_schedule()
+                Q = self.tokenizer.q_blosum_schedule(timesteps=self.num_timesteps)
+                #Q = self.tokenizer.q_blosum_scaled(alpha_t=0.03, timesteps=self.num_timesteps)
             elif self.masking_scheme == "RANDOM":
                 Q = self.tokenzier.q_random
+                print("Not working yet")
             #Q = torch.tensor(Q)
             for i,x in enumerate(one_hot):
                 if self.inputs_padded: # if truncating seqs to some length first in SimpleCollater, inputs will be padded

@@ -1,4 +1,5 @@
 #import blosum as bl
+import os
 from dms.data import loadMatrix
 import torch
 import numpy as np
@@ -6,7 +7,15 @@ from sequence_models.constants import MASK
 from dms.constants import ALL_AAS, PROTEIN_ALPHABET, PAD
 from sklearn.preprocessing import normalize
 
-data_dir = '/home/v-salamdari/Desktop/DMs/data/' # TODO fix this
+#data_dir = os.getenv('PT_DATA_DIR') + '/'
+data_dir = '/home/v-salamdari/Desktop/DMs/data/'
+path_to_blosum = data_dir+"blosum62-special.mat"
+
+def matrixMul(a, n):
+    if(n <= 1):
+        return a
+    else:
+        return torch.matmul(matrixMul(a, n-1), a)
 
 def softmax(x):
     return np.exp(x)/np.sum(np.exp(x),axis=0)
@@ -18,7 +27,7 @@ def double_stochastic(q):
         q_norm = normalize(q_norm, axis=1, norm='l1')
     return q_norm
 
-def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999):
+def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=8):
     """
     Variance schedule for adding noise as introduced by Nichol and Dhariwal and adapted by Hoogeboom et al
     Coined as uniform schedule in Austin et al.
@@ -40,7 +49,7 @@ def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999):
         betas = torch.linspace(np.pi / 2, 0, num_timesteps)
         betas = torch.sin(betas) * (end - start) + start
     elif schedule == "exp":
-        betas = torch.linspace(0, 8, num_timesteps) # TOOO: this 8 should be a tuneable parameter
+        betas = torch.linspace(0, max, num_timesteps) # TOOO: this 8 should be a tuneable parameter
         betas = torch.exp(betas) * (end - start) + start
     else:
         print("Must select a valid schedule; ['linear', 'quad', 'sigmoid', 'cosine']")
@@ -83,7 +92,7 @@ def parse_fasta(seq_file, idx):
 class Tokenizer(object):
     """Convert between strings and index"""
     def __init__(self, all_aas=ALL_AAS, protein_alphabet=PROTEIN_ALPHABET, pad=PAD, mask=MASK,
-                 path_to_blosum=data_dir+"blosum62-special.mat"):
+                 path_to_blosum=path_to_blosum):
         self.matrix = loadMatrix(path_to_blosum)
         self.matrix_dict = dict(self.matrix)
         self.all_aas = list(all_aas)
@@ -107,10 +116,10 @@ class Tokenizer(object):
         q = q.reshape((len(self.all_aas), len(self.all_aas)))
         q = softmax(q)
         q = double_stochastic(q)
-        return torch.tensor(q)
+        return q
 
-    def q_blosum_schedule(self, timesteps=500, end=0.4):
-        q = self.q_blosum()
+    def q_blosum_schedule(self, timesteps=500, end=0.4, max=8):
+        q = torch.tensor(self.q_blosum())
         betas = _beta_schedule(timesteps, 'exp', end=end)
         alphas = betas - end # normalize first value to 0
         q_diag = torch.tensor(np.identity(len(self.all_aas))) * q
@@ -129,12 +138,18 @@ class Tokenizer(object):
         q = double_stochastic(q)  # normalize so rows += 1
         return q
 
-    def q_blosum_scaled(self, alpha_t=0.03):
-        q = self.q_blosum
+    def q_blosum_scaled(self, alpha_t=0.03, timesteps=500):
+        q = self.q_blosum()
         q_diag = np.identity(len(self.all_aas)) * q
         q_non_diag = (1 - np.identity(len(self.all_aas))) * q
         q_alpha_t = double_stochastic((q_diag + np.dot(q_non_diag, np.array(alpha_t))))
-        return q_alpha_t
+        q_alpha_t = torch.tensor(q_alpha_t)
+        q_t = []
+        for t in range(timesteps):
+            q_temp = matrixMul(q_alpha_t, t)
+            q_t.append(q_temp)
+        q_t = torch.stack(q_t)
+        return q_t
 
     def tokenize(self, seq):
         return np.array([self.a_to_i[a] for a in seq[0]]) # seq is a tuple with empty second dim

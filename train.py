@@ -118,17 +118,18 @@ def train(gpu, args):
     if args.dataset is not None:
         config['dataset'] = args.dataset
     try:
-        data_dir = os.getenv('PT_DATA_DIR') + '/'
+        data_top_dir = os.getenv('PT_DATA_DIR') + '/'
         ptjob = True
     except:
-        data_dir = home + '/Desktop/DMs/data/'
+        data_top_dir = home + '/Desktop/DMs/data/'
         ptjob = False
-    data_dir += config['dataset'] + '/'
+    data_dir = data_top_dir + config['dataset'] + '/'
     if args.mini_run:
-        mini_size = 100 # For troubleshooting
-    save_log_dir = home + '/Desktop/DMs/tmp'
-    if not os.path.exists(save_log_dir):
-        os.makedirs(save_log_dir)
+        mini_size = 10 # For troubleshooting
+    # save_log_dir = home + '/Desktop/DMs/tmp'
+    # if not os.path.exists(save_log_dir):
+    #     os.makedirs(save_log_dir)
+    diffusion_timesteps = config['diffusion_timesteps']
     # ----------------------------------------------------------
     ### DEFINE COLLATOR ###
     # ----------------------------------------------------------
@@ -137,8 +138,8 @@ def train(gpu, args):
         collater = OAMaskCollater(simple_collater, inputs_padded=False)
     elif args.mask == 'blosum':
         simple_collater = SimpleCollater()
-        collater = DMsMaskCollater(simple_collater, tokenizer=Tokenizer(), inputs_padded=False, masking_scheme="BLOSUM",
-                                num_timesteps=100)
+        collater = DMsMaskCollater(simple_collater, tokenizer=Tokenizer(path_to_blosum=data_top_dir+"blosum62-special.mat"), inputs_padded=False, masking_scheme="BLOSUM",
+                                num_timesteps=diffusion_timesteps)
     elif args.mask == 'random':
         print('not implemented yet')
     else:
@@ -257,7 +258,7 @@ def train(gpu, args):
     if args.mask == 'autoreg':
         loss_func = MaskedCrossEntropyLoss(reweight=True)
     elif args.mask == 'blosum':
-        loss_func1 = AustinLoss()
+        loss_func1 = AustinLoss(tmax=diffusion_timesteps)
         loss_func2 = MaskedCrossEntropyLoss(reweight=False, _lambda=args.reweighting_term)
     elif args.mask == 'random':
         print('not working yet')
@@ -373,7 +374,7 @@ def train(gpu, args):
                                     'scheduler_state_dict': scheduler.state_dict(),
                                     'epoch': e
                                 }, ckpt_fpath)
-                                _ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
+                                #_ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
                         chunk_time = datetime.now()
         if not train:
             if rank == 0:
@@ -411,12 +412,19 @@ def train(gpu, args):
             with torch.cuda.amp.autocast():
                 outputs = model(src, input_mask=input_mask.unsqueeze(-1))
                 if args.mask == 'blosum':
-                    kl_loss = loss_func1(q, outputs, tgt, mask, timestep, Q, input_mask) #* n_tokens
+                    loss_list, lvb_loss = loss_func1(q, outputs, tgt, timestep, Q) #* n_tokens
                     ce_loss, nll_loss = loss_func2(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
-                    loss = kl_loss + ce_loss
+                    loss = lvb_loss + ce_loss
                 elif args.mask == 'autoreg':
                     ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask) #* n_tokens
                     loss = ce_loss
+                loss_list = loss_list.cpu()
+                loss_numpy = loss_list.detach().numpy()
+                for index, tim in enumerate(timestep):
+                    with open(args.out_fpath + 'losses.csv', 'a') as f:
+                        f.write(','.join(
+                            [str(timestep[index]), str(loss_numpy[index])]))
+                        f.write('\n')
                 accu = accu_func(outputs, tgt, mask) * n_tokens
             # Exits the context manager before backward()
             scaler.scale(loss).backward()
@@ -430,9 +438,9 @@ def train(gpu, args):
             with torch.cuda.amp.autocast():
                 outputs = model(src, input_mask=input_mask.unsqueeze(-1))
                 if args.mask == 'blosum':
-                    kl_loss = loss_func1(q, outputs, tgt, mask, timestep, Q, input_mask)  # * n_tokens
+                    lvb_loss = loss_func1(q, outputs, tgt, timestep, Q)  # * n_tokens
                     ce_loss, nll_loss = loss_func2(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
-                    loss = kl_loss + ce_loss
+                    loss = lvb_loss + ce_loss
                 elif args.mask == 'autoreg':
                     ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
                     loss = ce_loss
