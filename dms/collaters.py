@@ -206,8 +206,7 @@ class DMsMaskCollater(object):
         tokenized: tokenized sequences (target seq)
         masks: masks used to generate src
     """
-    def __init__(self, simple_collater, tokenizer=Tokenizer(), masking_scheme="OA", inputs_padded=False, num_timesteps=100):
-        self.simple_collater = simple_collater
+    def __init__(self, tokenizer=Tokenizer(), masking_scheme="OA", inputs_padded=False, num_timesteps=100):
         self.tokenizer = tokenizer
         self.inputs_padded  = inputs_padded
         self.masking_scheme = masking_scheme
@@ -262,12 +261,9 @@ class DMsMaskCollater(object):
             pad_one_hot = torch.zeros((len(alphabet)))
             q_x = pad_one_hot.repeat((len(tokenized), max_len, 1))
             if self.masking_scheme == "BLOSUM":
-                #Q = self.tokenizer.q_blosum()
-                Q = self.tokenizer.q_blosum_schedule(timesteps=self.num_timesteps)
-                #Q = self.tokenizer.q_blosum_scaled(alpha_t=0.03, timesteps=self.num_timesteps)
+                Q = self.tokenizer.q_blosum_schedule(timesteps=self.num_timesteps, end=0.4, max=8)
             elif self.masking_scheme == "RANDOM":
-                Q = self.tokenzier.q_random
-                print("Not working yet")
+                Q = self.tokenizer.q_random_schedule(timesteps=self.num_timesteps, end=2, max=6)
             #Q = torch.tensor(Q)
             for i,x in enumerate(one_hot):
                 if self.inputs_padded: # if truncating seqs to some length first in SimpleCollater, inputs will be padded
@@ -294,7 +290,7 @@ class DMsMaskCollater(object):
             src = _pad(src, self.tokenizer.pad_id)
             masks = _pad(masks*1, 0)
             tokenized = _pad(tokenized, self.tokenizer.pad_id)
-            return (src.to(torch.long), timesteps, tokenized.to(torch.long), masks.to(torch.long), Q, q_x.to(torch.double))
+            return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), masks.to(torch.long), Q, q_x.to(torch.double))
 
         else:
             return None

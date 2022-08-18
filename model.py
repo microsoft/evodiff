@@ -5,6 +5,30 @@ import numpy as np
 
 from sequence_models.layers import PositionFeedForward, PositionFeedForward2d, DoubleEmbedding
 
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model=8, length=500):
+        super().__init__()
+        self.d_model = d_model
+        self.length = length
+
+    def forward(self, x):
+        """
+        :param d_model: dimension of the model
+        :param length: length of positions
+        :return: length*d_model position matrix
+        """
+        if self.d_model % 2 != 0:
+            raise ValueError("Cannot use sin/cos positional encoding with "
+                             "odd dim (got dim={:d})".format(self.d_model))
+        pe = torch.zeros(self.length, self.d_model)
+        position = torch.arange(0, self.length).unsqueeze(1)
+        div_term = torch.exp((torch.arange(0, self.d_model, 2, dtype=torch.float) *
+                              -(np.log(10000.0) / self.d_model)))
+        pe[:, 0::2] = torch.sin(position.float() * div_term)
+        pe[:, 1::2] = torch.cos(position.float() * div_term)
+
+        return pe[x].to(x.device)
+
 
 class MaskedConv1d(nn.Conv1d):
     """ A masked 1-dimensional convolution layer.
@@ -253,7 +277,8 @@ class ByteNet(nn.Module):
     """
 
     def __init__(self, n_tokens, d_embedding, d_model, n_layers, kernel_size, r, rank=None, n_frozen_embs=None,
-                 padding_idx=None, causal=False, dropout=0.0, slim=True, activation='relu', down_embed=True):
+                 padding_idx=None, causal=False, dropout=0.0, slim=True, activation='relu', down_embed=True,
+                 timesteps=None):
         """
         :param n_tokens: number of tokens in token dictionary
         :param d_embedding: dimension of embedding
@@ -270,6 +295,8 @@ class ByteNet(nn.Module):
         :param down_embed: if True, have lower dimension for initial embedding than in CNN layers
         """
         super().__init__()
+        #self.time_encoding = nn.Embedding(timesteps, d_embedding) # TODO MAKE SINUSOIDAL POS
+        self.time_encoding = PositionalEncoding(d_embedding, timesteps)
         if n_tokens is not None:
             if n_frozen_embs is None:
                 self.embedder = nn.Embedding(n_tokens, d_embedding, padding_idx=padding_idx)
@@ -296,17 +323,22 @@ class ByteNet(nn.Module):
         self.layers = nn.ModuleList(modules=layers)
         self.dropout = dropout
 
-    def forward(self, x, input_mask=None):
+    def forward(self, x, y, input_mask=None):
         """
         :param x: (batch, length)
         :param input_mask: (batch, length, 1)
         :return: (batch, length,)
         """
-        e = self._embed(x)
+        e = self._embed(x, y)
         return self._convolve(e, input_mask=input_mask)
 
-    def _embed(self, x):
-        e = self.embedder(x)
+    def _embed(self, x, y):
+        e1 = self.embedder(x)
+        e2 = self.time_encoding(y)
+        e2 = e2.unsqueeze(1)
+        print(e1.shape, e2.shape)
+        e = torch.mul(e2,e1)
+        print(e.shape)
         e = self.up_embedder(e)
         return e
 
@@ -322,11 +354,12 @@ class ByteNetLM(nn.Module):
 
     def __init__(self, n_tokens, d_embedding, d_model, n_layers, kernel_size, r, rank=None, n_frozen_embs=None,
                  padding_idx=None, causal=False, dropout=0.0, final_ln=False, slim=True, activation='relu',
-                 tie_weights=False, down_embed=True):
+                 tie_weights=False, down_embed=True, timesteps=None):
         super().__init__()
         self.embedder = ByteNet(n_tokens, d_embedding, d_model, n_layers, kernel_size, r,
                                 padding_idx=padding_idx, causal=causal, dropout=dropout, down_embed=down_embed,
-                                slim=slim, activation=activation, rank=rank, n_frozen_embs=n_frozen_embs)
+                                slim=slim, activation=activation, rank=rank, n_frozen_embs=n_frozen_embs,
+                                timesteps=timesteps)
         if tie_weights:
             self.decoder = nn.Linear(d_model, n_tokens, bias=False)
             self.decoder.weight = self.embedder.embedder.weight
@@ -337,9 +370,9 @@ class ByteNetLM(nn.Module):
         else:
             self.last_norm = nn.Identity()
 
-    def forward(self, x, input_mask=None):
+    def forward(self, x, y, input_mask=None):
         #print("embedder weight dim", len(self.embedder.embedder.weight))
-        e = self.embedder(x, input_mask=input_mask)
+        e = self.embedder(x, y, input_mask=input_mask)
         e = self.last_norm(e)
         return self.decoder(e)
 

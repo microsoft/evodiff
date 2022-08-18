@@ -95,18 +95,18 @@ class AustinLoss(KLDivLoss):
         prior = sample_prior_gaussian(q) # random prior, for absorbing state
         prior = prior.to(tgt.device)
         for i in range(tgt.shape[0]): # enumerate over batch
-            print(self.tokenizer.untokenize(tgt[i]))
+            #print(self.tokenizer.untokenize(tgt[i]))
             if timestep[i] == 1:
                 # CE (L_t=0)
                 # Reconstruction loss
                 reconstruction_loss = CrossEntropyLoss()
                 r_loss = reconstruction_loss(pred[i], tgt[i])
                 losses.append(r_loss)
-                print("timestep", timestep[i], "seq_len", len(tgt[i]), "r_loss_i", r_loss)
-            elif timestep[i] >= T_inf-1:
+                #print("timestep", timestep[i], "seq_len", len(tgt[i]), "r_loss_i", r_loss)
+            elif timestep[i] == T_inf-1:
                 # D KL (L_T)
                 # As T approches infinity, this term goes to zero
-                print(prior[i].shape, q[i,:,:26].shape)
+                #print(prior[i].shape, q[i,:,:26].shape)
                 kl_loss_i = super().forward(prior[i].log(), q[i,:,:26]) # KLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
                 #print("timestep", timestep[i], "seq_len", len(tgt[i]), "kINF_loss_i", kl_loss_i)
@@ -137,10 +137,11 @@ class AustinLoss(KLDivLoss):
                     p_theta.append(p_theta_j.squeeze())
                 p_theta = torch.stack(p_theta)
                 p_theta = p_theta.to(tgt.device)
+                #print(p_theta.shape, q_true.shape)
                 kl_loss_i = super().forward(p_theta.log(), q_true)  # KLDivLoss expects input in log-space
-                print("timestep", timestep[i], "seq_len", len(tgt[i]), "k_loss_i", kl_loss_i)
+                #print("timestep", timestep[i], "seq_len", len(tgt[i]), "k_loss_i", kl_loss_i)
                 losses.append(kl_loss_i)
-        # TODO append loss to CSV w/ timestep for plotting #
+        # TODO: remove this append loss to CSV w/ timestep for plotting #
         losses = torch.stack(losses)
         lvb = ((losses.sum()) / (tgt.shape[0]))  # loss per batch, norm by batchsize
         return losses, lvb

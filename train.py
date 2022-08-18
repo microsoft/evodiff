@@ -15,7 +15,8 @@ from torch.utils.data import DataLoader
 import torch.distributed as dist
 from torch.cuda.amp import GradScaler
 
-from sequence_models.convolutional import ByteNetLM
+#from sequence_models.convolutional import ByteNetLM
+from model import ByteNetLM
 from dms.constants import PROTEIN_ALPHABET
 from dms.utils import Tokenizer
 from torch.utils.data import Subset
@@ -125,23 +126,25 @@ def train(gpu, args):
         ptjob = False
     data_dir = data_top_dir + config['dataset'] + '/'
     if args.mini_run:
-        mini_size = 10 # For troubleshooting
+        mini_size = 100 # For troubleshooting
     # save_log_dir = home + '/Desktop/DMs/tmp'
     # if not os.path.exists(save_log_dir):
     #     os.makedirs(save_log_dir)
-    diffusion_timesteps = config['diffusion_timesteps']
     # ----------------------------------------------------------
     ### DEFINE COLLATOR ###
     # ----------------------------------------------------------
     if args.mask == 'autoreg':
         simple_collater = SimpleCollater()
         collater = OAMaskCollater(simple_collater, inputs_padded=False)
+        diffusion_timesteps = None
     elif args.mask == 'blosum':
-        simple_collater = SimpleCollater()
-        collater = DMsMaskCollater(simple_collater, tokenizer=Tokenizer(path_to_blosum=data_top_dir+"blosum62-special.mat"), inputs_padded=False, masking_scheme="BLOSUM",
+        diffusion_timesteps = config['diffusion_timesteps']
+        collater = DMsMaskCollater(tokenizer=Tokenizer(path_to_blosum=data_top_dir+"blosum62-special.mat"), inputs_padded=False, masking_scheme="BLOSUM",
                                 num_timesteps=diffusion_timesteps)
     elif args.mask == 'random':
-        print('not implemented yet')
+        diffusion_timesteps = config['diffusion_timesteps']
+        collater = DMsMaskCollater(tokenizer=Tokenizer(path_to_blosum=data_top_dir + "blosum62-special.mat"), inputs_padded=False, masking_scheme="RANDOM",
+                                   num_timesteps=diffusion_timesteps)
     else:
         print("Using autoreg masking scheme")
         simple_collater = SimpleCollater()
@@ -221,7 +224,8 @@ def train(gpu, args):
     print('Using {} as masking index'.format(masking_idx))
     model = ByteNetLM(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
                       causal=causal, padding_idx=masking_idx, rank=weight_rank, dropout=args.dropout,
-                      tie_weights=args.tie_weights, final_ln=args.final_norm, slim=slim, activation=activation)
+                      tie_weights=args.tie_weights, final_ln=args.final_norm, slim=slim, activation=activation,
+                      timesteps=diffusion_timesteps)
     optimizer = Adam(model.parameters(), lr=lr, weight_decay=args.weight_decay)
     outputs = os.listdir(args.out_fpath)
     if len(outputs) > 0:
@@ -257,11 +261,9 @@ def train(gpu, args):
         scheduler = LambdaLR(optimizer, warmup(warmup_steps), verbose=False)
     if args.mask == 'autoreg':
         loss_func = MaskedCrossEntropyLoss(reweight=True)
-    elif args.mask == 'blosum':
+    elif args.mask == 'blosum' or args.mask == 'random':
         loss_func1 = AustinLoss(tmax=diffusion_timesteps)
         loss_func2 = MaskedCrossEntropyLoss(reweight=False, _lambda=args.reweighting_term)
-    elif args.mask == 'random':
-        print('not working yet')
     accu_func = MaskedAccuracy()
     # ----------------------------------------------------------
     # Run
@@ -319,8 +321,6 @@ def train(gpu, args):
             ns.append(new_n.item())
             n_seen += new_seqs.item()
             total_n = sum(ns)
-            #print("new loss item", new_loss.item())
-            #print("losses", losses, len(losses), sum(losses))
             r_loss = sum(losses) / len(losses)
             r_ce_loss = sum(ce_losses) / len(ce_losses)
             r_nll_loss = sum(nll_losses) / len(nll_losses)
@@ -391,7 +391,7 @@ def train(gpu, args):
         return i, tokens_trained
 
     def step(model, batch, train):
-        if args.mask == 'blosum':
+        if args.mask == 'blosum' or args.mask == 'random':
             src, timestep, tgt, mask, Q, q = batch
             q = q.to(device)
             Q = Q.to(device)
@@ -399,6 +399,7 @@ def train(gpu, args):
             src, timestep, tgt, mask = batch
             #print(src)
         print("Batchsize", len(timestep))
+        timestep = timestep.to(device)
         src = src.to(device)
         tgt = tgt.to(device)
         mask = mask.to(device)
@@ -410,8 +411,8 @@ def train(gpu, args):
             optimizer.zero_grad() # reset gradients of model parameters
             # Enables autocasting for the forward pass (model + loss) #
             with torch.cuda.amp.autocast():
-                outputs = model(src, input_mask=input_mask.unsqueeze(-1))
-                if args.mask == 'blosum':
+                outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
+                if args.mask == 'blosum' or args.mask == 'random':
                     loss_list, lvb_loss = loss_func1(q, outputs, tgt, timestep, Q) #* n_tokens
                     ce_loss, nll_loss = loss_func2(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
                     loss = lvb_loss + ce_loss
@@ -437,8 +438,8 @@ def train(gpu, args):
         else: # dont step through model during val
             with torch.cuda.amp.autocast():
                 outputs = model(src, input_mask=input_mask.unsqueeze(-1))
-                if args.mask == 'blosum':
-                    lvb_loss = loss_func1(q, outputs, tgt, timestep, Q)  # * n_tokens
+                if args.mask == 'blosum' or args.mask == 'random':
+                    loss_list, lvb_loss = loss_func1(q, outputs, tgt, timestep, Q)  # * n_tokens
                     ce_loss, nll_loss = loss_func2(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
                     loss = lvb_loss + ce_loss
                 elif args.mask == 'autoreg':

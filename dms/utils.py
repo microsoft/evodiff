@@ -46,10 +46,10 @@ def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=
         betas = torch.linspace(np.pi / 2, 0, num_timesteps)
         betas = torch.cos(betas) * (end - start) + start
     elif schedule == "sine":
-        betas = torch.linspace(np.pi / 2, 0, num_timesteps)
+        betas = torch.linspace(np.pi/2, 0, num_timesteps)
         betas = torch.sin(betas) * (end - start) + start
     elif schedule == "exp":
-        betas = torch.linspace(0, max, num_timesteps) # TOOO: this 8 should be a tuneable parameter
+        betas = torch.linspace(0, max, num_timesteps)
         betas = torch.exp(betas) * (end - start) + start
     else:
         print("Must select a valid schedule; ['linear', 'quad', 'sigmoid', 'cosine']")
@@ -120,7 +120,7 @@ class Tokenizer(object):
 
     def q_blosum_schedule(self, timesteps=500, end=0.4, max=8):
         q = torch.tensor(self.q_blosum())
-        betas = _beta_schedule(timesteps, 'exp', end=end)
+        betas = _beta_schedule(timesteps, 'exp', end=end, max=max)
         alphas = betas - end # normalize first value to 0
         q_diag = torch.tensor(np.identity(len(self.all_aas))) * q
         q_non_diag = torch.tensor((1 - np.identity(len(self.all_aas)))) * q
@@ -133,21 +133,16 @@ class Tokenizer(object):
         q_t = torch.stack(q_t)
         return q_t
 
-    def q_random(self):
-        q = np.eye(len(self.alphabet)) + 1 / 10  # arbitrary, set diag to zero assign other transitions some prob
-        q = double_stochastic(q)  # normalize so rows += 1
-        return q
-
-    def q_blosum_scaled(self, alpha_t=0.03, timesteps=500):
-        q = self.q_blosum()
-        q_diag = np.identity(len(self.all_aas)) * q
-        q_non_diag = (1 - np.identity(len(self.all_aas))) * q
-        q_alpha_t = double_stochastic((q_diag + np.dot(q_non_diag, np.array(alpha_t))))
-        q_alpha_t = torch.tensor(q_alpha_t)
+    def q_random_schedule(self, timesteps=500, end=2, max=6):
+        betas = _beta_schedule(timesteps, 'exp', end=end, max=max)
+        alphas = (betas - betas.min()) / (betas.max() * 0.8)  # normalize first value to 0 and max > 1
+        q_diag = torch.tensor(np.identity(len(Tokenizer().all_aas)))
+        q_non_diag = torch.tensor((1 - np.identity(len(Tokenizer().all_aas))))
         q_t = []
-        for t in range(timesteps):
-            q_temp = matrixMul(q_alpha_t, t)
-            q_t.append(q_temp)
+        for i, a in enumerate(alphas):
+            R = q_diag + q_non_diag * a
+            q_temp = double_stochastic(R)
+            q_t.append(torch.tensor(q_temp))
         q_t = torch.stack(q_t)
         return q_t
 
