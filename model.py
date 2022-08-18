@@ -335,10 +335,10 @@ class ByteNet(nn.Module):
     def _embed(self, x, y):
         e1 = self.embedder(x)
         e2 = self.time_encoding(y)
-        e2 = e2.unsqueeze(1)
-        print(e1.shape, e2.shape)
-        e = torch.mul(e2,e1)
-        print(e.shape)
+        # expand dim of e2 to match e1
+        e2 = e2.expand(e1.shape[1], e2.shape[0], e2.shape[1])
+        e2 = e2.reshape(e1.shape[0], e1.shape[1], e1.shape[2])
+        e = torch.add(e2,e1)
         e = self.up_embedder(e)
         return e
 
