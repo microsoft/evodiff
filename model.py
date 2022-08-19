@@ -106,10 +106,9 @@ class ByteNetTime(nn.Module):
             # expand dim of e2 to match e1
             e2 = e2.expand(e1.shape[1], e2.shape[0], e2.shape[1])
             e2 = e2.reshape(e1.shape[0], e1.shape[1], e1.shape[2])
+            e = torch.add(e2,e1)
         else:
-            e2 = torch.zeros((e1.shape[0], e1.shape[1], e1.shape[2]))
-            e2 = e2.to(e1.device)
-        e = torch.add(e2,e1)
+            e = e1
         e = self.up_embedder(e)
         return e
 
