@@ -59,10 +59,7 @@ class ByteNetTime(nn.Module):
         """
         super().__init__()
         self.timesteps = timesteps
-        if self.timesteps is not None:
-            self.time_encoding = PositionalEncoding(d_embedding, timesteps)
-        else:
-            self.up_embedder = nn.Identity()
+        self.time_encoding = PositionalEncoding(d_embedding, timesteps)
         if n_tokens is not None:
             if n_frozen_embs is None:
                 self.embedder = nn.Embedding(n_tokens, d_embedding, padding_idx=padding_idx)
