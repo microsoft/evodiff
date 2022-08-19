@@ -15,15 +15,14 @@ from torch.utils.data import DataLoader
 import torch.distributed as dist
 from torch.cuda.amp import GradScaler
 
-#from sequence_models.convolutional import ByteNetLM
-from model import ByteNetLM
+from model import ByteNetLMTime
 from dms.constants import PROTEIN_ALPHABET
 from dms.utils import Tokenizer
 from torch.utils.data import Subset
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 from sequence_models.datasets import UniRefDataset
-from dms.collaters import SimpleCollater, OAMaskCollater, DMsMaskCollater
-from losses import MaskedCrossEntropyLoss, AustinLoss
+from dms.collaters import OAMaskCollater, D3PMCollater
+from losses import MaskedCrossEntropyLoss, LVBLoss
 from sequence_models.metrics import MaskedAccuracy
 from sequence_models.utils import warmup, transformer_lr
 
@@ -127,47 +126,30 @@ def train(gpu, args):
     data_dir = data_top_dir + config['dataset'] + '/'
     if args.mini_run:
         mini_size = 100 # For troubleshooting
-    # save_log_dir = home + '/Desktop/DMs/tmp'
-    # if not os.path.exists(save_log_dir):
-    #     os.makedirs(save_log_dir)
     # ----------------------------------------------------------
-    ### DEFINE COLLATOR ###
+    ### COLLATORS ###
     # ----------------------------------------------------------
     if args.mask == 'autoreg':
-        simple_collater = SimpleCollater()
-        collater = OAMaskCollater(simple_collater, inputs_padded=False)
-        diffusion_timesteps = None
+        collater = OAMaskCollater(tokenizer=Tokenizer())
+        diffusion_timesteps = None # Not input to model
     elif args.mask == 'blosum':
         diffusion_timesteps = config['diffusion_timesteps']
-        collater = DMsMaskCollater(tokenizer=Tokenizer(path_to_blosum=data_top_dir+"blosum62-special.mat"), inputs_padded=False, masking_scheme="BLOSUM",
+        collater = D3PMCollater(tokenizer=Tokenizer(path_to_blosum=data_top_dir+"blosum62-special.mat"), masking_scheme="BLOSUM",
                                 num_timesteps=diffusion_timesteps)
     elif args.mask == 'random':
         diffusion_timesteps = config['diffusion_timesteps']
-        collater = DMsMaskCollater(tokenizer=Tokenizer(path_to_blosum=data_top_dir + "blosum62-special.mat"), inputs_padded=False, masking_scheme="RANDOM",
+        collater = D3PMCollater(tokenizer=Tokenizer(path_to_blosum=data_top_dir + "blosum62-special.mat"), masking_scheme="RANDOM",
                                    num_timesteps=diffusion_timesteps)
     else:
-        print("Using autoreg masking scheme")
-        simple_collater = SimpleCollater()
-        collater = OAMaskCollater(simple_collater, inputs_padded=False)
+        print("mask must be: 'autoreg', 'blosum', or 'random'")
     causal = False
     # ----------------------------------------------------------
     ### DATALOADER ###
     # ----------------------------------------------------------
     metadata = np.load(data_dir + 'lengths_and_offsets.npz')
     ds_train = UniRefDataset(data_dir, 'train', structure=False)
-
-    #print(metadata['ells'][train_idx])
-
     train_idx = ds_train.indices
     if args.mini_run:
-        #len_train = np.sort(np.random.choice(metadata['ells'][train_idx], size=mini_size))[::-1]
-        #  TODO: pick 1000 samples from middle (not tails)
-        # GO BACK TO OLD SAMPLER for mini_run
-        # TRAIN LOSS SHOULD GO TO ZERO (dont need validation to test this)
-        # 1 job on 1 gpu w/ 1000 random w/o validation
-        # run full dataset on 2nd gpu w/ validation
-        # train loss goes down on both, goes to ~zero on 1st case
-        # mess w/ batching params on full dataset
         tindices = np.arange(21546293,31546293,1)#(1000000,21546293, 1)
         train_indices = np.sort(np.random.choice(tindices, mini_size, replace=False))
         train_sampler = Subset(ds_train,train_indices)
@@ -179,19 +161,16 @@ def train(gpu, args):
                               collate_fn=collater)
     else:
         len_train = metadata['ells'][train_idx]
-        #print(len_train)
         train_sortish_sampler = SortishSampler(len_train, bucket_size, num_replicas=args.world_size, rank=rank)
         train_sampler = ApproxBatchSampler(train_sortish_sampler, max_tokens, max_batch_size, len_train)
         dl_train = DataLoader(dataset=ds_train,
                           batch_sampler=train_sampler,
                           num_workers=16,
                           collate_fn=collater)
-
     if rank == 0:
         ds_valid = UniRefDataset(data_dir, 'valid', structure=False)
         valid_idx = ds_valid.indices
         if args.mini_run:
-            #len_valid = np.sort(np.random.choice(metadata['ells'][valid_idx], size=mini_size))[::-1]
             vindices = np.arange(1, 80000, 1)
             valid_indices = np.random.choice(vindices, mini_size)
             len_valid = valid_indices
@@ -210,19 +189,14 @@ def train(gpu, args):
                               batch_sampler=valid_sampler,
                               num_workers=8,
                               collate_fn=collater)
-
     # ----------------------------------------------------------
     # Initiate model
     # ----------------------------------------------------------
-    # if args.zero_mask:
-    #     padding_idx = Tokenizer().pad_id #PROTEIN_ALPHABET.index(PAD)
-    # else:
-    #     padding_idx = None
     padding_idx = Tokenizer().pad_id  # PROTEIN_ALPHABET.index(PAD)
     masking_idx = Tokenizer().mask_id
     print('Using {} as padding index'.format(padding_idx))
     print('Using {} as masking index'.format(masking_idx))
-    model = ByteNetLM(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
+    model = ByteNetLMTime(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
                       causal=causal, padding_idx=masking_idx, rank=weight_rank, dropout=args.dropout,
                       tie_weights=args.tie_weights, final_ln=args.final_norm, slim=slim, activation=activation,
                       timesteps=diffusion_timesteps)
@@ -241,7 +215,6 @@ def train(gpu, args):
        print('Loading weightsweights from ' + args.state_dict + '...')
        sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
        msd = sd['model_state_dict']
-       #print([len(k.split('module.')) for k,v in msd.items()])
        msd = {k.split('module.')[0]: v for k,v in msd.items()}
        model.load_state_dict(msd)
        optimizer.load_state_dict(sd['optimizer_state_dict'])
@@ -252,7 +225,6 @@ def train(gpu, args):
        initial_epoch = 0
        total_steps = 0
        total_tokens = 0
-    #model = model.to(device)
     scaler = GradScaler()
     # ----------------------------------------------------------
     # Loss Function
@@ -262,8 +234,9 @@ def train(gpu, args):
     if args.mask == 'autoreg':
         loss_func = MaskedCrossEntropyLoss(reweight=True)
     elif args.mask == 'blosum' or args.mask == 'random':
-        loss_func1 = AustinLoss(tmax=diffusion_timesteps)
-        loss_func2 = MaskedCrossEntropyLoss(reweight=False, _lambda=args.reweighting_term)
+        # Austin = LVB + lambda * CE
+        loss_func1 = LVBLoss(tmax=diffusion_timesteps)
+        loss_func2 = MaskedCrossEntropyLoss(reweight=False)
     accu_func = MaskedAccuracy()
     # ----------------------------------------------------------
     # Run
@@ -297,16 +270,12 @@ def train(gpu, args):
             else:
                 n_total = len(ds_valid)
         for i, batch in enumerate(loader):
-            #print("batch", i)
-            #print("rank", rank)
             # restarting from a checkpoint
             if train and i == 1 and e == initial_epoch and args.state_dict is not None:
                 print("Restarting from checkpoint")
                 optimizer.load_state_dict(sd['optimizer_state_dict'])
                 scheduler.load_state_dict(sd['scheduler_state_dict'])
             new_loss, new_ce_loss, new_nll_loss, new_accu, new_n, new_seqs, new_processed = step(model, batch, train)
-            #print("step output", new_loss, new_ce_loss, new_nll_loss)
-            #print("new loss", new_loss)
             if train:
                 dist.reduce(new_loss, 0, op=dist.ReduceOp.SUM)
                 dist.reduce(new_ce_loss, 0, op=dist.ReduceOp.SUM)
@@ -324,8 +293,6 @@ def train(gpu, args):
             r_loss = sum(losses) / len(losses)
             r_ce_loss = sum(ce_losses) / len(ce_losses)
             r_nll_loss = sum(nll_losses) / len(nll_losses)
-            #print("epoch", r_loss, r_ce_loss, r_nll_loss)
-            #rloss = sum(losses) / total_n
             raccu = sum(accus) / total_n
             if train:
                 nsteps = current_step + i + 1
@@ -347,9 +314,6 @@ def train(gpu, args):
                 ce_losses = ce_losses[-999:]
                 accus = accus[-999:]
                 ns = ns[-999:]
-                #print("if rank in epoch", rank)
-                #print("if train in epoch", r_loss, r_ce_loss, r_nll_loss)
-                #print(datetime.now() - chunk_time)
                 if nsteps % args.log_freq == 0:  # write to checkpoint frequency
                     if rank == 0:
                         mlflow.log_metrics({'train_loss': r_loss,
@@ -359,7 +323,6 @@ def train(gpu, args):
                         with open(args.out_fpath + 'train-metrics.csv', 'a') as f:
                             f.write(','.join([str(r_loss), str(r_ce_loss), str(r_nll_loss), str(raccu), str(int(current_tokens)), str(nsteps), str(e)]))
                             f.write('\n')
-                        #print(n_seen == n_total)
                 if ((datetime.now() - chunk_time) > timedelta(minutes=args.checkpoint_freq)) or (n_seen == n_total):
                     if rank == 0:
                         print('Writing to checkpoint at', chunk_time)
@@ -397,14 +360,12 @@ def train(gpu, args):
             Q = Q.to(device)
         else:
             src, timestep, tgt, mask = batch
-            #print(src)
         print("Batchsize", len(timestep))
         timestep = timestep.to(device)
         src = src.to(device)
         tgt = tgt.to(device)
         mask = mask.to(device)
         input_mask = (src != padding_idx).float()
-        #input_mask = input_mask.to(torch.float64)
         n_tokens = mask.sum()
         n_processed = input_mask.sum()
         if train:
@@ -415,17 +376,20 @@ def train(gpu, args):
                 if args.mask == 'blosum' or args.mask == 'random':
                     loss_list, lvb_loss = loss_func1(q, outputs, tgt, timestep, Q) #* n_tokens
                     ce_loss, nll_loss = loss_func2(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
-                    loss = lvb_loss + ce_loss
+                    loss = lvb_loss + args.reweighting_term * ce_loss
+                    #TODO GET RID OF THIS AFTER SOLVING KL
+                    loss_list = loss_list.cpu()
+                    loss_numpy = loss_list.detach().numpy()
+                    for index, tim in enumerate(timestep):
+                        with open(args.out_fpath + 'losses.csv', 'a') as f:
+                            f.write(','.join(
+                                [str(timestep[index]), str(loss_numpy[index])]))
+                            f.write('\n')
+                    ####
+                    print("ce_loss", ce_loss, "nll_loss", nll_loss, "lvb_loss", lvb_loss, "loss", loss)
                 elif args.mask == 'autoreg':
                     ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask) #* n_tokens
                     loss = ce_loss
-                loss_list = loss_list.cpu()
-                loss_numpy = loss_list.detach().numpy()
-                for index, tim in enumerate(timestep):
-                    with open(args.out_fpath + 'losses.csv', 'a') as f:
-                        f.write(','.join(
-                            [str(timestep[index]), str(loss_numpy[index])]))
-                        f.write('\n')
                 accu = accu_func(outputs, tgt, mask) * n_tokens
             # Exits the context manager before backward()
             scaler.scale(loss).backward()
@@ -465,7 +429,6 @@ def train(gpu, args):
         s, t = epoch(model, True, current_step=total_steps, current_tokens=total_tokens)
         total_steps += s
         total_tokens += t
-        #print(total_steps, total_tokens)
 
 if __name__ == '__main__':
     main()

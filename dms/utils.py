@@ -1,15 +1,9 @@
-#import blosum as bl
-import os
 from dms.data import loadMatrix
 import torch
 import numpy as np
 from sequence_models.constants import MASK
 from dms.constants import ALL_AAS, PROTEIN_ALPHABET, PAD
 from sklearn.preprocessing import normalize
-
-#data_dir = os.getenv('PT_DATA_DIR') + '/'
-data_dir = '/home/v-salamdari/Desktop/DMs/data/'
-path_to_blosum = data_dir+"blosum62-special.mat"
 
 def matrixMul(a, n):
     if(n <= 1):
@@ -81,7 +75,6 @@ def parse_fasta(seq_file, idx):
     Reads seq_file from processing steps, and will extract sequence at a given index
     """
     sequence = ''
-
     with open(seq_file) as f_in:
         for l, line in enumerate(f_in):
             if l == idx:
@@ -89,12 +82,10 @@ def parse_fasta(seq_file, idx):
                 break
     return sequence
 
+
 class Tokenizer(object):
     """Convert between strings and index"""
-    def __init__(self, all_aas=ALL_AAS, protein_alphabet=PROTEIN_ALPHABET, pad=PAD, mask=MASK,
-                 path_to_blosum=path_to_blosum):
-        self.matrix = loadMatrix(path_to_blosum)
-        self.matrix_dict = dict(self.matrix)
+    def __init__(self, all_aas=ALL_AAS, protein_alphabet=PROTEIN_ALPHABET, pad=PAD, mask=MASK, path_to_blosum=None):
         self.all_aas = list(all_aas)
         self.alphabet = list("".join(protein_alphabet))
         self.pad = pad
@@ -102,6 +93,9 @@ class Tokenizer(object):
         self.vocab = sorted(set("".join(all_aas)))
         self.a_to_i = {u: i for i, u in enumerate(self.alphabet)}
         self.i_to_a = np.array(self.alphabet)
+        if path_to_blosum is not None:
+            self.matrix = loadMatrix(path_to_blosum)
+            self.matrix_dict = dict(self.matrix)
 
     @property
     def pad_id(self):
@@ -124,7 +118,6 @@ class Tokenizer(object):
         alphas = betas - end # normalize first value to 0
         q_diag = torch.tensor(np.identity(len(self.all_aas))) * q
         q_non_diag = torch.tensor((1 - np.identity(len(self.all_aas)))) * q
-        #print(q_diag, q_non_diag)
         q_t = []
         for i, a in enumerate(alphas):
             R = q_diag + q_non_diag * a
@@ -164,9 +157,7 @@ class Tokenizer(object):
                 one_index = self.a_to_i[a]
             else:
                 one_index = a
-            #print(one_index, len(tokens))
             if one_index < len(tokens): # everything that isnt an amino acid will be zero
-                #print(i, one_index)
                 x_onehot[i][int(one_index)] = 1
         return x_onehot
 

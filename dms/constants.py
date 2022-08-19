@@ -1,12 +1,8 @@
 from sequence_models.constants import MASK, SPECIALS
 
-PAD = '!'
-
-#CAN_AAS = 'ACDEFGHIKLMNPQRSTVWY'
-#AMB_AAS = 'BZX'
-OTHER_AAS = 'JOU'
-
 BLOSUM62_AAS = 'ARNDCQEGHILKMFPSTWYVBZX' # In order of BLOSUM indices for matrix creation
+OTHER_AAS = 'JOU'
+PAD = '!'
 
 ALL_AAS = BLOSUM62_AAS + OTHER_AAS
 
@@ -25,15 +21,3 @@ PROTEIN_ALPHABET = ALL_AAS + PAD + MASK #SPECIALS
 # # J: leucine (L) or isoleucine (I)
 # # O: Pyrrolysine
 # # U: Selenocystine
-#
-# ALL_AAS = CAN_AAS + AMB_AAS + OTHER_AAS
-#
-# PAD = '!'
-#
-# STOP = '*'
-# GAP = '-'
-# MASK = '#'  # Useful for masked language model training
-# START = '@'
-# SPECIALS = STOP + GAP + MASK + START
-#
-# PROTEIN_ALPHABET = ALL_AAS + SPECIALS + PAD
