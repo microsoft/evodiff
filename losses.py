@@ -6,18 +6,11 @@ from dms.collaters import random_sample, sample_transition_matrix
 from dms.constants import ALL_AAS
 
 def sample_prior_gaussian(q, all_aas=ALL_AAS):
-    samples = q.shape[0]
-    seq_len = q.shape[1]
-    sample_shape = (torch.zeros(1,len(all_aas))).shape
-    m = torch.distributions.uniform.Uniform(torch.tensor([0.0]), torch.tensor([1.0]))
-    prior = torch.zeros(q[:, :, :len(all_aas)].shape)
-    print(q.size)
-    for i in range(samples):
-        for j in range(seq_len):
-            aa_prob = m.sample(sample_shape=sample_shape).squeeze()
-            aa_prob = aa_prob/aa_prob.sum()
-            prior[i,j] = aa_prob
-    return prior
+    """
+    Returns prior for KL at T-> inf with same shape as q over total possible values (all_aas)
+    Prior is a stationary distribution; uniform distribution over number of values
+    """
+    return torch.ones_like(torch.tensor(q)) / len(all_aas)
 
 class MaskedCrossEntropyLoss(CrossEntropyLoss):
     """Masked cross-entropy loss for sequences.
