@@ -11,6 +11,15 @@ def matrixMul(a, n):
     else:
         return torch.matmul(matrixMul(a, n-1), a)
 
+def matrixProd(a):
+    "Takes a matrix of size T total timesteps as input and calculates the cumulative product at each t step"
+    matrix = torch.zeros(a.shape[0], a.shape[1], a.shape[2])
+    start = a[0]
+    for i in range(len(a)):
+        start = torch.matmul(start, a[i])
+        matrix[i] = start
+    return matrix.to(torch.double)
+
 def softmax(x):
     return np.exp(x)/np.sum(np.exp(x),axis=0)
 
@@ -21,7 +30,25 @@ def double_stochastic(q):
         q_norm = normalize(q_norm, axis=1, norm='l1')
     return q_norm
 
-def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=8):
+# def _beta_schedule(timesteps, schedule='linear'):
+#     if schedule == 'sohl-dickstein':
+#         betas = torch.linspace(0,timesteps-1, timesteps)
+#         betas = 1/(timesteps - betas + 1)
+#         alphas = 1-betas
+#     elif schedule == "cosine":
+#         betas = torch.linspace(0, np.pi, timesteps)
+#         betas = torch.cos(betas)
+#         betas = (betas - betas.min())
+#         betas = betas/betas.max()
+#         alphas = 1 - betas
+#         #betas = betas-betas.min()
+#         #alphas = betas.max()-betas
+#     elif schedule == 'linear':
+#         betas = torch.linspace(0.02, 1, timesteps)
+#         alphas = 1-betas
+#     return betas, alphas
+
+def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=8, timesteps=500):
     """
     Variance schedule for adding noise as introduced by Nichol and Dhariwal and adapted by Hoogeboom et al
     Coined as uniform schedule in Austin et al.
@@ -31,11 +58,9 @@ def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=
     """
     if schedule == 'linear':
         betas = torch.linspace(start, end, num_timesteps)
-    elif schedule == "quad":
-        betas = torch.linspace(start ** 0.5, end ** 0.5, num_timesteps) ** 2
-    elif schedule == "sigmoid":
-        betas = torch.linspace(-10, 10, num_timesteps)
-        betas = torch.sigmoid(betas) * (end - start) + start
+    if schedule == 'sohl-dickstein':
+        betas = torch.linspace(0,timesteps-1, timesteps)
+        betas = 1/(timesteps - betas + 1)
     elif schedule == "cosine":
         betas = torch.linspace(np.pi / 2, 0, num_timesteps)
         betas = torch.cos(betas) * (end - start) + start
@@ -85,7 +110,7 @@ def parse_fasta(seq_file, idx):
 
 class Tokenizer(object):
     """Convert between strings and index"""
-    def __init__(self, all_aas=ALL_AAS, protein_alphabet=PROTEIN_ALPHABET, pad=PAD, mask=MASK, path_to_blosum=None):
+    def __init__(self, all_aas=ALL_AAS, protein_alphabet=PROTEIN_ALPHABET, pad=PAD, mask=MASK, path_to_blosum=None, masking_scheme='blosum'):
         self.all_aas = list(all_aas)
         self.alphabet = list("".join(protein_alphabet))
         self.pad = pad
@@ -112,30 +137,59 @@ class Tokenizer(object):
         q = double_stochastic(q)
         return q
 
-    def q_blosum_schedule(self, timesteps=500, end=0.4, max=8):
+# THIS ONE WORKS BEST FOR SOME REASON ALTHOUGH IT SHOULDNT AND IS WRONG ###
+# ATTEMPT 2 -> 0.5 ACC IN 500 EPOCHS
+#     def q_blosum_schedule(self, timesteps=500):
+#         q = torch.tensor(self.q_blosum())
+#         betas = _beta_schedule(timesteps, 'cosine')
+#         betas = betas / betas.max()  # normalize first value to 0
+#         alphas = 1 - betas
+#         q_diag = torch.tensor(np.identity(len(self.all_aas))) * q
+#         q_non_diag = torch.tensor((1 - np.identity(len(self.all_aas)))) * q
+#         q_t = []
+#         for i, a in enumerate(alphas):
+#             b = betas[i]
+#             R = q_diag * a + q_non_diag * b
+#             q_temp = R
+#             q_t.append(q_temp)
+#         q_t = torch.stack(q_t)
+#         return q_t
+
+    def q_blosum_schedule(self, timesteps=500, betas=None):
+        """
+        betas = None; Natural mutation pattern for blosum - no schedule
+        betas = 'exp' use exp scheme for beta schedule
+        """
+        K = len(self.all_aas)
         q = torch.tensor(self.q_blosum())
-        betas = _beta_schedule(timesteps, 'exp', end=end, max=max)
-        alphas = betas - end # normalize first value to 0
-        q_diag = torch.tensor(np.identity(len(self.all_aas))) * q
-        q_non_diag = torch.tensor((1 - np.identity(len(self.all_aas)))) * q
+        if betas is not None:
+            _betas = _beta_schedule(timesteps, 'exp', max=6)
+            betas = (_betas - _betas.min())
+            betas = betas / betas.max()
+        else:
+            _betas = torch.ones(timesteps)
         q_t = []
-        for i, a in enumerate(alphas):
-            R = q_diag + q_non_diag * a
-            q_temp = double_stochastic(R)
-            q_t.append(torch.tensor(q_temp))
+        for i in range(timesteps):
+            q_non_diag = torch.tensor((1 - np.identity(K))) * q * betas[i]
+            norm_constant = (1 - (q_non_diag).sum(axis=0))
+            q_diag = torch.tensor(np.identity(K)) * norm_constant
+            R = q_diag + q_non_diag
+            q_temp = matrixMul(R, i)
+            q_t.append(q_temp)
         q_t = torch.stack(q_t)
         return q_t
 
-    def q_random_schedule(self, timesteps=500, end=2, max=6):
-        betas = _beta_schedule(timesteps, 'exp', end=end, max=max)
-        alphas = (betas - betas.min()) / (betas.max() * 0.8)  # normalize first value to 0 and max > 1
-        q_diag = torch.tensor(np.identity(len(Tokenizer().all_aas)))
-        q_non_diag = torch.tensor((1 - np.identity(len(Tokenizer().all_aas))))
+    def q_random_schedule(self, timesteps=500):
+        betas = _beta_schedule(timesteps, 'cosine')
+        K = len(self.all_aas)
         q_t = []
-        for i, a in enumerate(alphas):
-            R = q_diag + q_non_diag * a
-            q_temp = double_stochastic(R)
-            q_t.append(torch.tensor(q_temp))
+        for i in range(len(betas)):
+            q_non_diag = torch.tensor((1 - np.identity(K))) / K * betas[i]
+            norm_constant = (1 - (q_non_diag).sum(axis=0))
+            q_diag = torch.tensor(np.identity(K)) * norm_constant
+            R = q_diag + q_non_diag
+            #print(R.sum(axis=0), R.sum(axis=1))
+            q_t.append(R)
         q_t = torch.stack(q_t)
         return q_t
 

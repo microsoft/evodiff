@@ -6,7 +6,7 @@
   "d_model": 1024,
   "activation": "gelu",
   "slim": true,
-  "epochs": 100,
+  "epochs": 500,
   "n_layers": 16,
   "kernel_size": 5,
   "r": 128,

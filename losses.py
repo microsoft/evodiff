@@ -5,12 +5,14 @@ from dms.utils import Tokenizer, matrixMul
 from dms.collaters import random_sample, sample_transition_matrix
 from dms.constants import ALL_AAS
 
-def sample_prior_gaussian(q, all_aas=ALL_AAS):
+
+def sample_prior(a,b, all_aas=ALL_AAS):
     """
     Returns prior for KL at T-> inf with same shape as q over total possible values (all_aas)
     Prior is a stationary distribution; uniform distribution over number of values
     """
-    return torch.ones_like(torch.tensor(q)) / len(all_aas)
+    _input = torch.empty(a,b)
+    return torch.ones_like(torch.tensor(_input)) / len(all_aas)
 
 class MaskedCrossEntropyLoss(CrossEntropyLoss):
     """Masked cross-entropy loss for sequences.
@@ -28,9 +30,8 @@ class MaskedCrossEntropyLoss(CrossEntropyLoss):
         ce_losses
         nll_losses
     """
-    def __init__(self, weight=None, reduction='none', reweight=True, _lambda=0.01, tokenizer=Tokenizer()):
+    def __init__(self, weight=None, reduction='none', reweight=True, tokenizer=Tokenizer()):
         self.reweight=reweight
-        self._lambda=_lambda
         self.tokenizer = tokenizer
         super().__init__(weight=weight, reduction=reduction)
     def forward(self, pred, tgt, mask, timesteps, input_mask):
@@ -59,7 +60,7 @@ class MaskedCrossEntropyLoss(CrossEntropyLoss):
                 rwt_term = 1. / _timesteps  # Hoogeboom OARDM
                 _n_tokens = torch.repeat_interleave(n_tokens[i], len(loss), axis=0)
                 ce_loss = _n_tokens * rwt_term * loss
-            else: # D3PM omits reweighting term
+            if not self.reweight:  # For D3PM reweight in train loop
                 ce_loss = loss
             ce_losses.append(ce_loss.sum()) # reduce mean
             nll_losses += loss.sum()
@@ -81,21 +82,19 @@ class LVBLoss(KLDivLoss):
 
         Returns
         """
-    def __init__(self, tmax=500, reduction='batchmean', log_target=False, _lambda=0.01, all_aas=ALL_AAS):
+    def __init__(self, tmax=500, reduction='batchmean', log_target=False, all_aas=ALL_AAS):
         self.tmax = tmax
-        self._lambda = _lambda
         self.tokenizer = Tokenizer()
         self.len_aa = len(all_aas)
         super().__init__(reduction=reduction, log_target=log_target)
-    def forward(self, q, pred, tgt, timestep, Q):
+    def forward(self, q, pred, tgt, timestep, Q, Q_bar):
         p = torch.nn.functional.softmax(pred[:, :, :self.len_aa], dim=2) # ignoring mask/pad
         alphabet = self.tokenizer.tokenize([self.tokenizer.alphabet])
         losses = []
-        prior = sample_prior_gaussian(q) # random prior, for absorbing state
-        prior = prior.to(tgt.device)
+        #print(tgt.shape)
         for i in range(tgt.shape[0]): # enumerate over batch
             #print(self.tokenizer.untokenize(tgt[i]))
-            if timestep[i] == 1:
+            if timestep[i] <= 1:
                 # CE (L_t=0)
                 # Reconstruction loss
                 reconstruction_loss = CrossEntropyLoss()
@@ -104,29 +103,34 @@ class LVBLoss(KLDivLoss):
             elif timestep[i] == self.tmax-1:
                 # D KL (L_T)
                 # As T approches infinity, this term goes to zero
-                kl_loss_i = super().forward(prior[i].log(), q[i, :, :self.len_aa]) # KLDivLoss expects input in log-space
+                D = q[i].sum(dim=1).bool().sum().item() # want prior/q in shape of seq len (q has shape of longest seq in batch)
+                q_temp = q[i, :D, :]
+                prior = sample_prior(q_temp.shape[0], q_temp.shape[1])
+                prior = prior.to(tgt.device)
+                #print("one amino acid", super().forward(q_temp[0].log(), prior[0]))
+                kl_loss_i = super().forward(q_temp.log(), prior) # KLDivLoss expects input in log-space
+                #print("all loss", kl_loss_i)
                 losses.append(kl_loss_i)
             else:
                 # D KL (L_t-1) -> (q(x|x_t, x_0), p_theta)
                 prob = p[i]
-                print(q.shape)
-                q_true = q[i, :, :self.len_aa] # ignoring mask/pad
+                q_true = q[i]# ignoring mask/pad
                 # sample x_0_bar from predicted prob
-                x_0_bar = random_sample(torch.zeros(len(prob)), prob, alphabet)
+                x_0_bar = random_sample(torch.zeros(len(prob)), prob)
                 x_0_bar = torch.tensor(self.tokenizer.one_hot(x_0_bar, tokenized=True)) # one hot
                 x_0_bar = x_0_bar.to(tgt.device)
                 # Calculate q(forward) given model predictions
-                x_t, q_x_t = sample_transition_matrix(x_0_bar, Q[timestep[i]], 1, alphabet)
+                x_t, q_x_t = sample_transition_matrix(x_0_bar, Q[timestep[i]], 1)
                 x_t = torch.tensor(self.tokenizer.one_hot(x_t, tokenized=True))  # one hot
                 x_t = x_t.to(tgt.device)
                 p_theta = []
                 for j in range(len(x_0_bar)):  # enumerate over tokens in sequence (dim 1xK)
                     # A = x_t * torch.transpose(Q_t) (shape - 1 x K)
                     A = torch.matmul(x_t[j].unsqueeze(0), torch.t(Q[timestep[i]]))
-                    #print("A", A.shape, A)
-                    # B = x_0_bar * Q_t-1 (shape - 1 x K)
-                    B = torch.matmul(x_0_bar[j].unsqueeze(0), Q[timestep[i-1]])
-                    #print("B", B.shape, B)
+                    #print("A", A.shape)
+                    # B = x_0_bar * Q_bar_t-1 (shape - 1 x K)
+                    B = torch.matmul(x_0_bar[j].unsqueeze(0), Q_bar[timestep[i]-1])
+                    #print("B", B.shape)
                     q_t_j = torch.mul(A, B)  # element wise (shape 1 x K)
                     p_theta_j = q_t_j * prob[j]
                     p_theta_j = p_theta_j / p_theta_j.sum()  # renormalize; sum prob to 1

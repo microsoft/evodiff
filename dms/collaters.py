@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from dms.utils import Tokenizer, matrixMul
+from dms.constants import ALL_AAS
 
 def _pad(tokenized, value):
     """
@@ -22,7 +23,7 @@ def _unpad(x, value):
     x = x[mask_pad].to(torch.int64)
     return x
 
-def random_sample(seq, p, alphabet):
+def random_sample(seq, p):
     sampled_seq = torch.zeros(len(seq))
     for i in range(len(seq)):
         #print(p[i])
@@ -30,12 +31,12 @@ def random_sample(seq, p, alphabet):
         sampled_seq[i] = aa_selected
     return sampled_seq
 
-def sample_transition_matrix(x_0, Q, time, alphabet):
+def sample_transition_matrix(x_0, Q, time):
     "Sample a markov transition according to next_step = x_0 * q ^ time"
     p_next_step = torch.matmul(x_0, matrixMul(Q, time))
     #print(p_next_step)
     #print(p_next_step.sum(axis=1))
-    next_step = random_sample(x_0, p_next_step, alphabet)
+    next_step = random_sample(x_0, p_next_step)
     return next_step, p_next_step
 
 
@@ -108,12 +109,12 @@ class D3PMCollater(object):
         Q : markov matrix
         q_x : forward transition probabilities
     """
-    def __init__(self, tokenizer=Tokenizer(), masking_scheme="BLOSUM", num_timesteps=100):
+    def __init__(self, tokenizer=Tokenizer(), num_timesteps=100, transition_matrix=None):
         self.tokenizer = tokenizer
-        self.masking_scheme = masking_scheme
         self.num_timesteps = num_timesteps # Only needed for markov trans, doesnt depend on seq len
         self.alphabet = self.tokenizer.tokenize([self.tokenizer.alphabet])
         self.all_aas = self.tokenizer.tokenize([self.tokenizer.all_aas])
+        self.Q = transition_matrix
 
     def __call__(self, sequences):
         tokenized = [torch.tensor(self.tokenizer.tokenize(s)) for s in sequences]
@@ -123,24 +124,18 @@ class D3PMCollater(object):
         timesteps = []
         masks=[]
         # Pre pad one-hot arrays
-        pad_one_hot = torch.zeros((len(self.alphabet)))
+        pad_one_hot = torch.zeros((len(self.all_aas)))
         q_x = pad_one_hot.repeat((len(tokenized), max_len, 1))
-        # Options for markov matrix
-        if self.masking_scheme == "BLOSUM":
-            Q = self.tokenizer.q_blosum_schedule(timesteps=self.num_timesteps, end=0.4, max=8)
-        elif self.masking_scheme == "RANDOM":
-            Q = self.tokenizer.q_random_schedule(timesteps=self.num_timesteps, end=2, max=6)
-        else:
-            print("Choose OA, BLOSUM, or RANDOM as masking scheme")
         for i,x in enumerate(one_hot): # enumerate over batch
             D = len(x) # sequence length
             t = np.random.randint(1, self.num_timesteps) # randomly sample timestep
             # Append timestep
             timesteps.append(t)
             # Calculate target
-            x_t, q_x_t = sample_transition_matrix(x, Q[t], 1, self.all_aas) # x = tgt, x_t = src
+            x_t, q_x_t = sample_transition_matrix(x, self.Q[t], 1) # x = tgt, x_t = src
+            #print(q_x_t.shape)
             src.append(x_t)
-            q_x[i, :D, :len(self.all_aas)] = q_x_t
+            q_x[i, :D, :] = q_x_t
             # mask = determines which tokens were mutated
             mask = torch.ne(tokenized[i], x_t)
             masks.append(mask)
@@ -148,4 +143,4 @@ class D3PMCollater(object):
         src = _pad(src, self.tokenizer.pad_id)
         masks = _pad(masks*1, 0)
         tokenized = _pad(tokenized, self.tokenizer.pad_id)
-        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), masks.to(torch.long), Q, q_x.to(torch.double))
+        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), masks.to(torch.long), self.Q, q_x.to(torch.double))
