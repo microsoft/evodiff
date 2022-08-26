@@ -15,13 +15,13 @@ import torch.distributed as dist
 from torch.cuda.amp import GradScaler
 
 from model import ByteNetLMTime
-from dms.constants import PROTEIN_ALPHABET
+from dms.constants import PROTEIN_ALPHABET, ALL_AAS
 from dms.utils import Tokenizer, matrixProd
 from torch.utils.data import Subset
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 from sequence_models.datasets import UniRefDataset
 from dms.collaters import OAMaskCollater, D3PMCollater
-from losses import MaskedCrossEntropyLoss, LVBLoss
+from losses import MaskedCrossEntropyLoss, D3PMCELoss, LVBLoss
 from sequence_models.metrics import MaskedAccuracy
 from sequence_models.utils import warmup, transformer_lr
 import sys
@@ -239,7 +239,7 @@ def train(gpu, args):
     elif args.mask == 'blosum' or args.mask == 'random':
         # Austin = LVB + lambda * CE
         loss_func1 = LVBLoss(tmax=diffusion_timesteps)
-        loss_func2 = MaskedCrossEntropyLoss(reweight=False)
+        loss_func2 = D3PMCELoss()
         _lambda = args.reweighting_term
     accu_func = MaskedAccuracy()
     # ----------------------------------------------------------
@@ -359,7 +359,8 @@ def train(gpu, args):
 
     def step(model, batch, train):
         if args.mask == 'blosum' or args.mask == 'random':
-            src, timestep, tgt, mask, Q, q = batch
+            src, timestep, tgt, one_hot, mask, Q, q = batch
+            one_hot = one_hot.to(device)
             q = q.to(device)
             Q = Q.to(device)
         else:
@@ -378,18 +379,10 @@ def train(gpu, args):
             with torch.cuda.amp.autocast():
                 outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
                 if args.mask == 'blosum' or args.mask == 'random':
-                    loss_list, lvb_loss = loss_func1(q, outputs, tgt, timestep, Q, Q_prod) #* n_tokens
-                    ce_loss, nll_loss = loss_func2(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
-                    loss = lvb_loss + _lambda * nll_loss
-                    #TODO GET RID OF THIS AFTER SOLVING KL
-                    loss_list = loss_list.cpu()
-                    loss_numpy = loss_list.detach().numpy()
-                    for index, tim in enumerate(timestep):
-                        with open(args.out_fpath + 'losses.csv', 'a') as f:
-                            f.write(','.join(
-                                [str(timestep[index]), str(loss_numpy[index])]))
-                            f.write('\n')
-                    ###
+                    lvb_loss = loss_func1(q, outputs, one_hot, input_mask, timestep, Q, Q_prod) #* n_tokens
+                    ce_loss = loss_func2(outputs, one_hot, input_mask)
+                    nll_loss = ce_loss
+                    loss = lvb_loss + _lambda * ce_loss
                     #print("ce_loss", ce_loss, "nll_loss", nll_loss, "lvb_loss", lvb_loss, "loss", loss)
                 elif args.mask == 'autoreg':
                     ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask) #* n_tokens
@@ -407,8 +400,9 @@ def train(gpu, args):
             with torch.cuda.amp.autocast():
                 outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
                 if args.mask == 'blosum' or args.mask == 'random':
-                    loss_list, lvb_loss = loss_func1(q, outputs, tgt, timestep, Q, Q_prod)  # * n_tokens
-                    ce_loss, nll_loss = loss_func2(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
+                    lvb_loss = loss_func1(q, outputs, one_hot, input_mask, timestep, Q, Q_prod)  # * n_tokens
+                    ce_loss = loss_func2(outputs, one_hot, input_mask)
+                    nll_loss = ce_loss
                     loss = lvb_loss + _lambda * ce_loss
                 elif args.mask == 'autoreg':
                     ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask)  # * n_tokens

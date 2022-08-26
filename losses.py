@@ -69,6 +69,28 @@ class MaskedCrossEntropyLoss(CrossEntropyLoss):
         return ce_losses, nll_losses.to(torch.float64)
 
 
+class D3PMCELoss(CrossEntropyLoss):
+    """
+    Standard cross entropy loss
+    Wrapped to deal with padding and normalize by # of non-padded locations
+    pred: batchsize x seq_len x n_tokens(PROTEIN_ALPHABET)
+    one_hot: batchsize x seq_len x n_tokens(ALL_AAS)
+    input_mask: bool of non-padded locations
+    """
+    def __init__(self, weight=None, reduction='none', tokenizer=Tokenizer()):
+        self.tokenizer = tokenizer
+        super().__init__(weight=weight, reduction=reduction)
+    def forward(self, pred, one_hot, input_mask):
+        p = pred[:, :, :len(ALL_AAS)]
+        nonpad_loc = input_mask.sum(axis=1)
+        ce_losses = 0
+        for i in range(p.shape[0]): # iterate over batchsize
+            D = int(nonpad_loc[i].item()) # index non-pad entries
+            ce_loss = super().forward(p[i, :D, :], one_hot[i, :D, :])
+            ce_losses += ce_loss.sum()
+        ce_losses = ce_losses/nonpad_loc.sum()
+        return ce_losses
+
 class LVBLoss(KLDivLoss):
     """
     Lower variational bound loss as defined in Austin et al.
@@ -82,23 +104,20 @@ class LVBLoss(KLDivLoss):
 
         Returns
         """
-    def __init__(self, tmax=500, reduction='batchmean', log_target=False, all_aas=ALL_AAS):
+    def __init__(self, tmax=500, reduction='batchmean', log_target=False, all_aas=ALL_AAS, tokenizer=Tokenizer()):
         self.tmax = tmax
-        self.tokenizer = Tokenizer()
+        self.tokenizer = tokenizer
         self.len_aa = len(all_aas)
         super().__init__(reduction=reduction, log_target=log_target)
-    def forward(self, q, pred, tgt, timestep, Q, Q_bar):
+    def forward(self, q, pred, one_hot, input_mask, timestep, Q, Q_bar):
         p = torch.nn.functional.softmax(pred[:, :, :self.len_aa], dim=2) # ignoring mask/pad
-        alphabet = self.tokenizer.tokenize([self.tokenizer.alphabet])
         losses = []
-        #print(tgt.shape)
-        for i in range(tgt.shape[0]): # enumerate over batch
-            #print(self.tokenizer.untokenize(tgt[i]))
+        for i in range(one_hot.shape[0]): # enumerate over batch
             if timestep[i] <= 1:
                 # CE (L_t=0)
                 # Reconstruction loss
-                reconstruction_loss = CrossEntropyLoss()
-                r_loss = reconstruction_loss(pred[i], tgt[i])
+                reconstruction_loss = D3PMCELoss()
+                r_loss = reconstruction_loss(pred[i].unsqueeze(0), one_hot[i].unsqueeze(0), input_mask[i].unsqueeze(0))
                 losses.append(r_loss)
             elif timestep[i] == self.tmax-1:
                 # D KL (L_T)
@@ -106,7 +125,7 @@ class LVBLoss(KLDivLoss):
                 D = q[i].sum(dim=1).bool().sum().item() # want prior/q in shape of seq len (q has shape of longest seq in batch)
                 q_temp = q[i, :D, :]
                 prior = sample_prior(q_temp.shape[0], q_temp.shape[1])
-                prior = prior.to(tgt.device)
+                prior = prior.to(one_hot.device)
                 #print("one amino acid", super().forward(q_temp[0].log(), prior[0]))
                 kl_loss_i = super().forward(q_temp.log(), prior) # KLDivLoss expects input in log-space
                 #print("all loss", kl_loss_i)
@@ -118,11 +137,11 @@ class LVBLoss(KLDivLoss):
                 # sample x_0_bar from predicted prob
                 x_0_bar = random_sample(torch.zeros(len(prob)), prob)
                 x_0_bar = torch.tensor(self.tokenizer.one_hot(x_0_bar, tokenized=True)) # one hot
-                x_0_bar = x_0_bar.to(tgt.device)
+                x_0_bar = x_0_bar.to(one_hot.device)
                 # Calculate q(forward) given model predictions
                 x_t, q_x_t = sample_transition_matrix(x_0_bar, Q[timestep[i]], 1)
                 x_t = torch.tensor(self.tokenizer.one_hot(x_t, tokenized=True))  # one hot
-                x_t = x_t.to(tgt.device)
+                x_t = x_t.to(one_hot.device)
                 p_theta = []
                 for j in range(len(x_0_bar)):  # enumerate over tokens in sequence (dim 1xK)
                     # A = x_t * torch.transpose(Q_t) (shape - 1 x K)
@@ -136,10 +155,9 @@ class LVBLoss(KLDivLoss):
                     p_theta_j = p_theta_j / p_theta_j.sum()  # renormalize; sum prob to 1
                     p_theta.append(p_theta_j.squeeze())
                 p_theta = torch.stack(p_theta)
-                p_theta = p_theta.to(tgt.device)
+                p_theta = p_theta.to(one_hot.device)
                 kl_loss_i = super().forward(p_theta.log(), q_true)  # KLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
-        # TODO: remove this append loss to CSV w/ timestep for plotting #
         losses = torch.stack(losses) # for plotting purposes only - remove this line
-        lvb = ((losses.sum()) / (tgt.shape[0]))  # loss per batch, norm by batchsize
-        return losses, lvb
+        lvb = ((losses.sum()) / (one_hot.shape[0]))  # loss per batch, norm by batchsize
+        return lvb
