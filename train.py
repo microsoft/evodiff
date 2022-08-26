@@ -139,7 +139,7 @@ def train(gpu, args):
         if args.mask == 'random':
             Q = tokenizer.q_random_schedule(timesteps=diffusion_timesteps)
         if args.mask == 'blosum':
-            Q = tokenizer.q_blosum_schedule(timesteps=diffusion_timesteps, betas='exp')
+            Q = tokenizer.q_blosum_schedule(timesteps=diffusion_timesteps)
         collater = D3PMCollater(tokenizer=tokenizer, num_timesteps=diffusion_timesteps, transition_matrix=Q)
         Q_prod = matrixProd(Q)
         Q_prod = Q_prod.to(device)
@@ -380,7 +380,7 @@ def train(gpu, args):
                 if args.mask == 'blosum' or args.mask == 'random':
                     loss_list, lvb_loss = loss_func1(q, outputs, tgt, timestep, Q, Q_prod) #* n_tokens
                     ce_loss, nll_loss = loss_func2(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
-                    loss = lvb_loss + _lambda * ce_loss
+                    loss = lvb_loss + _lambda * nll_loss
                     #TODO GET RID OF THIS AFTER SOLVING KL
                     loss_list = loss_list.cpu()
                     loss_numpy = loss_list.detach().numpy()

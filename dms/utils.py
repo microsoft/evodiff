@@ -30,24 +30,6 @@ def double_stochastic(q):
         q_norm = normalize(q_norm, axis=1, norm='l1')
     return q_norm
 
-# def _beta_schedule(timesteps, schedule='linear'):
-#     if schedule == 'sohl-dickstein':
-#         betas = torch.linspace(0,timesteps-1, timesteps)
-#         betas = 1/(timesteps - betas + 1)
-#         alphas = 1-betas
-#     elif schedule == "cosine":
-#         betas = torch.linspace(0, np.pi, timesteps)
-#         betas = torch.cos(betas)
-#         betas = (betas - betas.min())
-#         betas = betas/betas.max()
-#         alphas = 1 - betas
-#         #betas = betas-betas.min()
-#         #alphas = betas.max()-betas
-#     elif schedule == 'linear':
-#         betas = torch.linspace(0.02, 1, timesteps)
-#         alphas = 1-betas
-#     return betas, alphas
-
 def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=8, timesteps=500):
     """
     Variance schedule for adding noise as introduced by Nichol and Dhariwal and adapted by Hoogeboom et al
@@ -58,20 +40,17 @@ def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=
     """
     if schedule == 'linear':
         betas = torch.linspace(start, end, num_timesteps)
-    if schedule == 'sohl-dickstein':
+    elif schedule == 'sohl-dickstein':
         betas = torch.linspace(0,timesteps-1, timesteps)
         betas = 1/(timesteps - betas + 1)
     elif schedule == "cosine":
         betas = torch.linspace(np.pi / 2, 0, num_timesteps)
         betas = torch.cos(betas) * (end - start) + start
-    elif schedule == "sine":
-        betas = torch.linspace(np.pi/2, 0, num_timesteps)
-        betas = torch.sin(betas) * (end - start) + start
     elif schedule == "exp":
         betas = torch.linspace(0, max, num_timesteps)
         betas = torch.exp(betas) * (end - start) + start
     else:
-        print("Must select a valid schedule; ['linear', 'quad', 'sigmoid', 'cosine']")
+        print("Must select a valid schedule; ['linear', 'sohl-dickstein', 'cosine', 'exp']")
     return betas
 
 def read_fasta(fasta_path, seq_file, info_file, index_file):
@@ -137,40 +116,19 @@ class Tokenizer(object):
         q = double_stochastic(q)
         return q
 
-# THIS ONE WORKS BEST FOR SOME REASON ALTHOUGH IT SHOULDNT AND IS WRONG ###
-# ATTEMPT 2 -> 0.5 ACC IN 500 EPOCHS
-#     def q_blosum_schedule(self, timesteps=500):
-#         q = torch.tensor(self.q_blosum())
-#         betas = _beta_schedule(timesteps, 'cosine')
-#         betas = betas / betas.max()  # normalize first value to 0
-#         alphas = 1 - betas
-#         q_diag = torch.tensor(np.identity(len(self.all_aas))) * q
-#         q_non_diag = torch.tensor((1 - np.identity(len(self.all_aas)))) * q
-#         q_t = []
-#         for i, a in enumerate(alphas):
-#             b = betas[i]
-#             R = q_diag * a + q_non_diag * b
-#             q_temp = R
-#             q_t.append(q_temp)
-#         q_t = torch.stack(q_t)
-#         return q_t
-
-    def q_blosum_schedule(self, timesteps=500, betas=None):
+    def q_blosum_schedule(self, timesteps=500, schedule='exp'):
         """
         betas = None; Natural mutation pattern for blosum - no schedule
         betas = 'exp' use exp scheme for beta schedule
         """
         K = len(self.all_aas)
         q = torch.tensor(self.q_blosum())
-        if betas is not None:
-            _betas = _beta_schedule(timesteps, 'exp', max=6)
-            betas = (_betas - _betas.min())
-            betas = betas / betas.max()
-        else:
-            _betas = torch.ones(timesteps)
+        _betas = _beta_schedule(timesteps, schedule=schedule, max=6)
+        betas = (_betas - _betas.min())
+        betas = betas / betas.max()
         q_t = []
         for i in range(timesteps):
-            q_non_diag = torch.tensor((1 - np.identity(K))) * q * betas[i]
+            q_non_diag = torch.ones((K,K)) * q * betas[i]
             norm_constant = (1 - (q_non_diag).sum(axis=0))
             q_diag = torch.tensor(np.identity(K)) * norm_constant
             R = q_diag + q_non_diag
@@ -179,12 +137,13 @@ class Tokenizer(object):
         q_t = torch.stack(q_t)
         return q_t
 
-    def q_random_schedule(self, timesteps=500):
-        betas = _beta_schedule(timesteps, 'cosine')
+    def q_random_schedule(self, timesteps=500, schedule='linear'):
+        print(schedule)
+        betas = _beta_schedule(timesteps, schedule=schedule)
         K = len(self.all_aas)
         q_t = []
         for i in range(len(betas)):
-            q_non_diag = torch.tensor((1 - np.identity(K))) / K * betas[i]
+            q_non_diag = torch.ones((K,K)) / K * betas[i]
             norm_constant = (1 - (q_non_diag).sum(axis=0))
             q_diag = torch.tensor(np.identity(K)) * norm_constant
             R = q_diag + q_non_diag

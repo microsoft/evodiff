@@ -22,8 +22,7 @@ class PositionalEncoding(nn.Module):
                              "odd dim (got dim={:d})".format(self.d_model))
         pe = torch.zeros(self.length, self.d_model)
         position = torch.arange(0, self.length).unsqueeze(1)
-        div_term = torch.exp((torch.arange(0, self.d_model, 2, dtype=torch.float) *
-                              -(np.log(10000.0) / self.d_model)))
+        div_term = torch.exp((torch.arange(0, self.d_model, 2, dtype=torch.float) * -(np.log(10000.0) / self.d_model)))
         pe[:, 0::2] = torch.sin(position.float() * div_term)
         pe[:, 1::2] = torch.cos(position.float() * div_term)
         return pe[x].to(x.device)
