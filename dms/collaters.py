@@ -3,7 +3,7 @@ import torch
 from dms.utils import Tokenizer, matrixMul
 from dms.constants import ALL_AAS
 
-def _pad(tokenized, value):
+def _pad(tokenized, value, dim=2):
     """
     Utility function that pads batches to the same length.
 
@@ -12,9 +12,17 @@ def _pad(tokenized, value):
     """
     batch_size = len(tokenized)
     max_len = max(len(t) for t in tokenized)
-    output = torch.zeros((batch_size, max_len)) + value
-    for row, t in enumerate(tokenized):
-        output[row, :len(t)] = t
+    if dim > 3:
+        "Print dimensions too large to pad"
+    elif dim == 3: # dim = 3 (one hot)
+        categories = tokenized[0].shape[1]
+        output = torch.zeros((batch_size, max_len, categories)) + value
+        for row, t in enumerate(tokenized):
+            output[row, :len(t), :] = t
+    else: # dim = 2 (tokenized)
+        output = torch.zeros((batch_size, max_len)) + value
+        for row, t in enumerate(tokenized):
+            output[row, :len(t)] = t
     return output
 
 def _unpad(x, value):
@@ -132,7 +140,7 @@ class D3PMCollater(object):
             # Append timestep
             timesteps.append(t)
             # Calculate target
-            x_t, q_x_t = sample_transition_matrix(x, self.Q[t], 1) # x = tgt, x_t = src
+            x_t, q_x_t = sample_transition_matrix(x, self.Q[t], 1) # x = tgt, x_t = src, Q is already a function of time here
             #print(q_x_t.shape)
             src.append(x_t)
             q_x[i, :D, :] = q_x_t
@@ -143,4 +151,5 @@ class D3PMCollater(object):
         src = _pad(src, self.tokenizer.pad_id)
         masks = _pad(masks*1, 0)
         tokenized = _pad(tokenized, self.tokenizer.pad_id)
-        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), masks.to(torch.long), self.Q, q_x.to(torch.double))
+        one_hot = _pad(one_hot, self.tokenizer.pad_id, dim=3)
+        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), one_hot.to(torch.float16), masks.to(torch.long), self.Q, q_x.to(torch.double))
