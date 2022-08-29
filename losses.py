@@ -157,6 +157,6 @@ class D3PMLVBLoss(KLDivLoss):
                 p_theta = p_theta.to(one_hot.device)
                 kl_loss_i = super().forward(p_theta.log(), q_true)  # KLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
-        losses = torch.stack(losses) # for plotting purposes only - remove this line
+        losses = torch.stack(losses)
         lvb = ((losses.sum()) / (one_hot.shape[0]))  # loss per batch, norm by batchsize
         return lvb
