@@ -11,8 +11,9 @@ def sample_prior(a,b, all_aas=ALL_AAS):
     Returns prior for KL at T-> inf with same shape as q over total possible values (all_aas)
     Prior is a stationary distribution; uniform distribution over number of values
     """
-    _input = torch.empty(a,b)
-    return torch.ones_like(torch.tensor(_input)) / len(all_aas)
+    prior = torch.empty(a,b)
+    prior = torch.ones_like(prior) / len(all_aas)
+    return prior
 
 class MaskedCrossEntropyLoss(CrossEntropyLoss):
     """Masked cross-entropy loss for sequences.
@@ -91,7 +92,7 @@ class D3PMCELoss(CrossEntropyLoss):
         ce_losses = ce_losses/nonpad_loc.sum()
         return ce_losses
 
-class LVBLoss(KLDivLoss):
+class D3PMLVBLoss(KLDivLoss):
     """
     Lower variational bound loss as defined in Austin et al.
         Shape:
@@ -126,9 +127,7 @@ class LVBLoss(KLDivLoss):
                 q_temp = q[i, :D, :]
                 prior = sample_prior(q_temp.shape[0], q_temp.shape[1])
                 prior = prior.to(one_hot.device)
-                #print("one amino acid", super().forward(q_temp[0].log(), prior[0]))
                 kl_loss_i = super().forward(q_temp.log(), prior) # KLDivLoss expects input in log-space
-                #print("all loss", kl_loss_i)
                 losses.append(kl_loss_i)
             else:
                 # D KL (L_t-1) -> (q(x|x_t, x_0), p_theta)
