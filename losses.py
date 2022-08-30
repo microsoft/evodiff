@@ -5,7 +5,6 @@ from dms.utils import Tokenizer, matrixMul
 from dms.collaters import random_sample, sample_transition_matrix
 from dms.constants import ALL_AAS
 
-
 def sample_prior(a,b, all_aas=ALL_AAS):
     """
     Returns prior for KL at T-> inf with same shape as q over total possible values (all_aas)
@@ -120,40 +119,35 @@ class D3PMLVBLoss(KLDivLoss):
                 reconstruction_loss = D3PMCELoss()
                 r_loss = reconstruction_loss(pred[i].unsqueeze(0), one_hot[i].unsqueeze(0), input_mask[i].unsqueeze(0))
                 losses.append(r_loss)
-            elif timestep[i] == self.tmax-1:
-                # D KL (L_T)
-                # As T approches infinity, this term goes to zero
-                D = q[i].sum(dim=1).bool().sum().item() # want prior/q in shape of seq len (q has shape of longest seq in batch)
-                q_temp = q[i, :D, :]
-                prior = sample_prior(q_temp.shape[0], q_temp.shape[1])
-                prior = prior.to(one_hot.device)
-                kl_loss_i = super().forward(q_temp.log(), prior) # KLDivLoss expects input in log-space
-                losses.append(kl_loss_i)
+            ## NOT NEEDED FOR TRAINING - JUST TO VALIDATE THAT KL->0 AT T->INF
+            # elif timestep[i] == self.tmax-1:
+            #     # D KL (L_T)
+            #     # As T approches infinity, this term goes to zero
+            #     D = q[i].sum(dim=1).bool().sum().item() # want prior/q in shape of seq len (q has shape of longest seq in batch)
+            #     q_temp = q[i, :D, :]
+            #     prior = sample_prior(q_temp.shape[0], q_temp.shape[1])
+            #     prior = prior.to(one_hot.device)
+            #     kl_loss_i = super().forward(q_temp.log(), prior) # KLDivLoss expects input in log-space
+            #     losses.append(kl_loss_i)
             else:
                 # D KL (L_t-1) -> (q(x|x_t, x_0), p_theta)
                 prob = p[i]
                 q_true = q[i]# ignoring mask/pad
                 # sample x_0_bar from predicted prob
-                x_0_bar = random_sample(torch.zeros(len(prob)), prob)
+                x_0_bar = random_sample(torch.zeros(len(prob)), prob) 
                 x_0_bar = torch.tensor(self.tokenizer.one_hot(x_0_bar, tokenized=True)) # one hot
                 x_0_bar = x_0_bar.to(one_hot.device)
                 # Calculate q(forward) given model predictions
                 x_t, q_x_t = sample_transition_matrix(x_0_bar, Q[timestep[i]], 1)
                 x_t = torch.tensor(self.tokenizer.one_hot(x_t, tokenized=True))  # one hot
                 x_t = x_t.to(one_hot.device)
-                p_theta = []
-                for j in range(len(x_0_bar)):  # enumerate over tokens in sequence (dim 1xK)
-                    # A = x_t * torch.transpose(Q_t) (shape - 1 x K)
-                    A = torch.matmul(x_t[j].unsqueeze(0), torch.t(Q[timestep[i]]))
-                    #print("A", A.shape)
-                    # B = x_0_bar * Q_bar_t-1 (shape - 1 x K)
-                    B = torch.matmul(x_0_bar[j].unsqueeze(0), Q_bar[timestep[i]-1])
-                    #print("B", B.shape)
-                    q_t_j = torch.mul(A, B)  # element wise (shape 1 x K)
-                    p_theta_j = q_t_j * prob[j]
-                    p_theta_j = p_theta_j / p_theta_j.sum()  # renormalize; sum prob to 1
-                    p_theta.append(p_theta_j.squeeze())
-                p_theta = torch.stack(p_theta)
+                # Calc p_theta
+                A = torch.matmul(x_t, torch.t(Q[timestep[i]])) # A = x_t * torch.transpose(Q_t) (shape - L x K)
+                B = torch.matmul(x_0_bar, Q_bar[timestep[i]-1])  # B = x_0_bar * Q_bar_t-1 (shape - L x K)
+                q_t = torch.mul (A,B)
+                p_theta = q_t * prob
+                norm = p_theta.sum(keepdim=True, axis=1)
+                p_theta = p_theta/norm # renormalize; sum prob to 1
                 p_theta = p_theta.to(one_hot.device)
                 kl_loss_i = super().forward(p_theta.log(), q_true)  # KLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
