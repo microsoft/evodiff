@@ -2,8 +2,9 @@ import numpy as np
 import torch
 from torch.nn import CrossEntropyLoss, KLDivLoss
 from dms.utils import Tokenizer, matrixMul
-from dms.collaters import random_sample, sample_transition_matrix
+from dms.collaters import sample_transition_matrix
 from dms.constants import ALL_AAS
+from tqdm import tqdm
 
 def sample_prior(a,b, all_aas=ALL_AAS):
     """
@@ -49,7 +50,7 @@ class MaskedCrossEntropyLoss(CrossEntropyLoss):
         n_tokens = input_mask.sum(axis=1) # len batch
         nll_losses = 0
         ce_losses = []
-        for i in range(tgt.shape[0]): # iterate over each sequence in batch
+        for i in tqdm(range(tgt.shape[0])): # iterate over each sequence in batch
             p = torch.masked_select(pred[i], mask[i]).view(mask_tokens[i], len(alphabet)) # predictions for each mask
             t = torch.masked_select(tgt[i], mask[i].squeeze())#.squeeze())
             loss = super().forward(p, t)
@@ -109,6 +110,7 @@ class D3PMLVBLoss(KLDivLoss):
         self.tokenizer = tokenizer
         self.len_aa = len(all_aas)
         super().__init__(reduction=reduction, log_target=log_target)
+
     def forward(self, q, pred, one_hot, input_mask, timestep, Q, Q_bar):
         p = torch.nn.functional.softmax(pred[:, :, :self.len_aa], dim=2) # ignoring mask/pad
         losses = []
@@ -119,7 +121,7 @@ class D3PMLVBLoss(KLDivLoss):
                 reconstruction_loss = D3PMCELoss()
                 r_loss = reconstruction_loss(pred[i].unsqueeze(0), one_hot[i].unsqueeze(0), input_mask[i].unsqueeze(0))
                 losses.append(r_loss)
-            ## NOT NEEDED FOR TRAINING - JUST TO VALIDATE THAT KL->0 AT T->INF
+            ## NOT NEEDED FOR TRAINING - JUST TO VALIDATE THAT KL->0 AT T->INF TODO-MAKE OPTIONAL?
             # elif timestep[i] == self.tmax-1:
             #     # D KL (L_T)
             #     # As T approches infinity, this term goes to zero
@@ -134,7 +136,7 @@ class D3PMLVBLoss(KLDivLoss):
                 prob = p[i]
                 q_true = q[i]# ignoring mask/pad
                 # sample x_0_bar from predicted prob
-                x_0_bar = random_sample(torch.zeros(len(prob)), prob) 
+                x_0_bar = torch.multinomial(prob, num_samples=1).squeeze()
                 x_0_bar = torch.tensor(self.tokenizer.one_hot(x_0_bar, tokenized=True)) # one hot
                 x_0_bar = x_0_bar.to(one_hot.device)
                 # Calculate q(forward) given model predictions

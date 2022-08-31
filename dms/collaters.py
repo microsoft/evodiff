@@ -31,21 +31,11 @@ def _unpad(x, value):
     x = x[mask_pad].to(torch.int64)
     return x
 
-def random_sample(seq, p):
-    sampled_seq = torch.zeros(len(seq))
-    for i in range(len(seq)):
-        #print(p[i])
-        aa_selected = torch.multinomial(p[i], 1)
-        sampled_seq[i] = aa_selected
-    return sampled_seq
-
 def sample_transition_matrix(x_0, Q, time):
     "Sample a markov transition according to next_step = x_0 * q ^ time"
     p_next_step = torch.matmul(x_0, matrixMul(Q, time))
-    #print(p_next_step)
-    #print(p_next_step.sum(axis=1))
-    next_step = random_sample(x_0, p_next_step)
-    return next_step, p_next_step
+    next_step = torch.multinomial(p_next_step, num_samples=1)
+    return next_step.squeeze(), p_next_step
 
 
 class OAMaskCollater(object):
