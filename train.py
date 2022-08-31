@@ -25,7 +25,6 @@ from losses import MaskedCrossEntropyLoss, D3PMCELoss, D3PMLVBLoss
 from sequence_models.metrics import MaskedAccuracy
 from sequence_models.utils import warmup, transformer_lr
 import sys
-from tqdm import tqdm
 
 sys.setrecursionlimit(2000)
 
@@ -420,7 +419,7 @@ def train(gpu, args):
         print('%d model parameters' %n_parameters)
         print('%d training sequences' %len(len_train))
         print('%d validation sequences' %len(len_valid))
-    for e in tqdm(range(initial_epoch, epochs)):
+    for e in range(initial_epoch, epochs):
         if not args.mini_run:
             train_sortish_sampler.set_epoch(e + 1)
         #print("epoch ", e)
