@@ -35,8 +35,6 @@ def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=
     Variance schedule for adding noise as introduced by Nichol and Dhariwal and adapted by Hoogeboom et al
     Coined as uniform schedule in Austin et al.
     Start/End will control the magnitude of sigmoidal and cosine schedules..
-    #TODO: Check that cosine matches Austin cosine schedule - I think theirs is slightly diff
-    #TODO: add mutual information Beta_t introduced by Sohl Dickensen used by Austin
     """
     if schedule == 'linear':
         betas = torch.linspace(start, end, num_timesteps)
@@ -161,18 +159,10 @@ class Tokenizer(object):
         else:
             return "".join([self.i_to_a[t] for t in x])
 
-    def one_hot(self, seq, tokenized=False):
+    def one_hot(self, tokenized):
         "one hot encode according to indexing"
-        tokens = self.all_aas
-        x_onehot = np.zeros((len(seq), len(tokens)))
-        for i, a in enumerate(seq):
-            if not tokenized:
-                one_index = self.a_to_i[a]
-            else:
-                one_index = a
-            if one_index < len(tokens): # everything that isnt an amino acid will be zero
-                x_onehot[i][int(one_index)] = 1
-        return x_onehot
+        x_onehot = torch.nn.functional.one_hot(tokenized, num_classes=len(self.all_aas))
+        return x_onehot.to(torch.double)
 
     def undo_one_hot(self, x_onehot):
         "one hot encode according to indexing"
