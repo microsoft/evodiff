@@ -116,7 +116,6 @@ class D3PMCollater(object):
 
     def __call__(self, sequences):
         tokenized = [torch.tensor(self.tokenizer.tokenize(s)) for s in sequences]
-        #one_hot = [torch.tensor(self.tokenizer.one_hot(s[0])) for s in sequences]
         one_hot = [self.tokenizer.one_hot(t) for t in tokenized]
         max_len = max(len(t) for t in tokenized)
         src=[]

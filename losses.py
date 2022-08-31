@@ -111,7 +111,7 @@ class D3PMLVBLoss(KLDivLoss):
         self.len_aa = len(all_aas)
         super().__init__(reduction=reduction, log_target=log_target)
 
-    def forward(self, q, pred, one_hot, input_mask, timestep, Q, Q_bar):
+    def forward(self, q, pred, one_hot, input_mask, timestep, Q, Q_bar, calc_KL=False):
         p = torch.nn.functional.softmax(pred[:, :, :self.len_aa], dim=2) # ignoring mask/pad
         losses = []
         for i in range(one_hot.shape[0]): # enumerate over batch
@@ -121,16 +121,6 @@ class D3PMLVBLoss(KLDivLoss):
                 reconstruction_loss = D3PMCELoss()
                 r_loss = reconstruction_loss(pred[i].unsqueeze(0), one_hot[i].unsqueeze(0), input_mask[i].unsqueeze(0))
                 losses.append(r_loss)
-            ## NOT NEEDED FOR TRAINING - JUST TO VALIDATE THAT KL->0 AT T->INF TODO-MAKE OPTIONAL?
-            # elif timestep[i] == self.tmax-1:
-            #     # D KL (L_T)
-            #     # As T approches infinity, this term goes to zero
-            #     D = q[i].sum(dim=1).bool().sum().item() # want prior/q in shape of seq len (q has shape of longest seq in batch)
-            #     q_temp = q[i, :D, :]
-            #     prior = sample_prior(q_temp.shape[0], q_temp.shape[1])
-            #     prior = prior.to(one_hot.device)
-            #     kl_loss_i = super().forward(q_temp.log(), prior) # KLDivLoss expects input in log-space
-            #     losses.append(kl_loss_i)
             else:
                 # D KL (L_t-1) -> (q(x|x_t, x_0), p_theta)
                 prob = p[i]
@@ -153,6 +143,16 @@ class D3PMLVBLoss(KLDivLoss):
                 p_theta = p_theta.to(one_hot.device)
                 kl_loss_i = super().forward(p_theta.log(), q_true)  # KLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
+            if calc_KL: ## NOT NEEDED FOR TRAINING - JUST TO VALIDATE THAT KL->0 AT T->INF
+                if timestep[i] == self.tmax - 1:
+                    # D KL (L_T)
+                    # As T approches infinity, this term goes to zero
+                    D = q[i].sum(dim=1).bool().sum().item()  # want prior/q in shape of seq len (q has shape of longest seq in batch)
+                    q_temp = q[i, :D, :]
+                    prior = sample_prior(q_temp.shape[0], q_temp.shape[1])
+                    prior = prior.to(one_hot.device)
+                    kl_loss_i = super().forward(q_temp.log(), prior)  # fKLDivLoss expects input in log-space
+                    losses.append(kl_loss_i)
         losses = torch.stack(losses)
         lvb = ((losses.sum()) / (one_hot.shape[0]))  # loss per batch, norm by batchsize
         return lvb
