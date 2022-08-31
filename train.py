@@ -21,10 +21,11 @@ from torch.utils.data import Subset
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 from sequence_models.datasets import UniRefDataset
 from dms.collaters import OAMaskCollater, D3PMCollater
-from losses import MaskedCrossEntropyLoss, D3PMCELoss, LVBLoss
+from losses import MaskedCrossEntropyLoss, D3PMCELoss, D3PMLVBLoss
 from sequence_models.metrics import MaskedAccuracy
 from sequence_models.utils import warmup, transformer_lr
 import sys
+from tqdm import tqdm
 
 sys.setrecursionlimit(2000)
 
@@ -54,7 +55,6 @@ def main():
     parser.add_argument('--dataset', default=None)
     parser.add_argument('--aml', action='store_true')  # Set true to do multi-node training on amlk8s
     parser.add_argument('-sd', '--state_dict', default=None)
-    #parser.add_argument('--zero_mask', action='store_true') # Set to true to use a masking scheme
     parser.add_argument('--decay', action='store_true')
     parser.add_argument('--final_norm', action='store_true')
     parser.add_argument('--mini_run', action='store_true') # Set to True if running on subset of data
@@ -238,7 +238,7 @@ def train(gpu, args):
         loss_func = MaskedCrossEntropyLoss(reweight=True)
     elif args.mask == 'blosum' or args.mask == 'random':
         # Austin = LVB + lambda * CE
-        loss_func1 = LVBLoss(tmax=diffusion_timesteps)
+        loss_func1 = D3PMLVBLoss(tmax=diffusion_timesteps)
         loss_func2 = D3PMCELoss()
         _lambda = args.reweighting_term
     accu_func = MaskedAccuracy()
@@ -341,7 +341,7 @@ def train(gpu, args):
                                     'scheduler_state_dict': scheduler.state_dict(),
                                     'epoch': e
                                 }, ckpt_fpath)
-                                #_ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
+                                _ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
                         chunk_time = datetime.now()
         if not train:
             if rank == 0:
@@ -420,7 +420,7 @@ def train(gpu, args):
         print('%d model parameters' %n_parameters)
         print('%d training sequences' %len(len_train))
         print('%d validation sequences' %len(len_valid))
-    for e in range(initial_epoch, epochs):
+    for e in tqdm(range(initial_epoch, epochs)):
         if not args.mini_run:
             train_sortish_sampler.set_epoch(e + 1)
         #print("epoch ", e)

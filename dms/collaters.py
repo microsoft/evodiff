@@ -116,7 +116,8 @@ class D3PMCollater(object):
 
     def __call__(self, sequences):
         tokenized = [torch.tensor(self.tokenizer.tokenize(s)) for s in sequences]
-        one_hot = [torch.tensor(self.tokenizer.one_hot(s[0])) for s in sequences]
+        #one_hot = [torch.tensor(self.tokenizer.one_hot(s[0])) for s in sequences]
+        one_hot = [self.tokenizer.one_hot(t) for t in tokenized]
         max_len = max(len(t) for t in tokenized)
         src=[]
         timesteps = []
@@ -142,4 +143,4 @@ class D3PMCollater(object):
         masks = _pad(masks*1, 0)
         tokenized = _pad(tokenized, self.tokenizer.pad_id)
         one_hot = _pad(one_hot, self.tokenizer.pad_id, dim=3)
-        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), one_hot.to(torch.float16), masks.to(torch.long), self.Q, q_x.to(torch.double))
+        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), one_hot, masks.to(torch.long), self.Q,  q_x.to(torch.double))

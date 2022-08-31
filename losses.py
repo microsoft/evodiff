@@ -137,11 +137,11 @@ class D3PMLVBLoss(KLDivLoss):
                 q_true = q[i]# ignoring mask/pad
                 # sample x_0_bar from predicted prob
                 x_0_bar = torch.multinomial(prob, num_samples=1).squeeze()
-                x_0_bar = torch.tensor(self.tokenizer.one_hot(x_0_bar, tokenized=True)) # one hot
+                x_0_bar = self.tokenizer.one_hot(x_0_bar) # one hot
                 x_0_bar = x_0_bar.to(one_hot.device)
                 # Calculate q(forward) given model predictions
                 x_t, q_x_t = sample_transition_matrix(x_0_bar, Q[timestep[i]], 1)
-                x_t = torch.tensor(self.tokenizer.one_hot(x_t, tokenized=True))  # one hot
+                x_t = self.tokenizer.one_hot(x_t)  # one hot
                 x_t = x_t.to(one_hot.device)
                 # Calc p_theta
                 A = torch.matmul(x_t, torch.t(Q[timestep[i]])) # A = x_t * torch.transpose(Q_t) (shape - L x K)
