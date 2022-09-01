@@ -26,7 +26,7 @@ from sequence_models.metrics import MaskedAccuracy
 from sequence_models.utils import warmup, transformer_lr
 import sys
 
-sys.setrecursionlimit(2000)
+sys.setrecursionlimit(1000) # must be as large as diffusion timesteps for Q_bar calculation
 
 ### SET RANDOM SEEDS ###
 random_seed = 1

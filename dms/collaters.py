@@ -68,7 +68,7 @@ class OAMaskCollater(object):
         for i,x in enumerate(tokenized):
             # Randomly generate timestep and indices to mask
             D = len(x) # D should have the same dimensions as each sequence length
-            if D <= 1:  # dataset has sequences length = 1, probably should filter these out
+            if D <= 1:  # for sequence length = 1 in dataset
                 t = 1
             else:
                 t = np.random.randint(1, D) # randomly sample timestep
@@ -116,7 +116,10 @@ class D3PMCollater(object):
 
     def __call__(self, sequences):
         tokenized = [torch.tensor(self.tokenizer.tokenize(s)) for s in sequences]
-        one_hot = [self.tokenizer.one_hot(t) for t in tokenized]
+        one_hot = []
+        for t in tokenized:
+            if len(t) >= 1: # filter out the one empty sequence in MNIST dataset
+                one_hot.append(self.tokenizer.one_hot(t))
         max_len = max(len(t) for t in tokenized)
         src=[]
         timesteps = []
