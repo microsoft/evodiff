@@ -143,25 +143,24 @@ class D3PMLVBLoss(KLDivLoss):
                 # D KL (L_t-1) -> (q(x|x_t, x_0), p_theta)
                 D = int(nonpad_loc[i]) # non pad locations
                 prob = p[i, :D]
-                q_true = q_minus1[i,:D]# ignoring mask/pad
-                # Calculate q(x_tminus1, x_t | x_0_bar) == q_t
+                q_true = q_minus1[i,:D]
+                src_i = src[i, :D]
                 p_theta_marg = torch.zeros((prob.shape[0], prob.shape[1]), dtype=torch.double)
                 for j in range(prob.shape[0]): # iterate over each residue in sequence
-                    for k in range(prob.shape[1]): # iterate over each token in each residue
-                        # Calculate q(x|x_t, x_0)
-                        # x_0_bar is the one hot location for each predicted token (TODO precompute q_t to make faster?)
-                        x_0_bar = self.tokenizer.one_hot(torch.tensor(k)) # one hot location for each token [1 x K]
-                        x_0_bar = x_0_bar.to(one_hot.device)
-                        x_t, q_x_t = sample_transition_matrix(x_0_bar, Q[timestep[i]], 1) # Sample time t for each token [1 x K]
-                        x_t = self.tokenizer.one_hot(x_t)  # one hot
-                        x_t = x_t.to(one_hot.device)
-                        A = torch.matmul(x_t, torch.t(Q[timestep[i]])) # A = x_t * torch.transpose(Q_t) (shape - 1 x K)
-                        B = torch.matmul(x_0_bar, Q_bar[timestep[i]-1])  # B = x_0_bar * Q_bar_t-1 (shape - 1 x K)
-                        q_t = torch.mul(A,B)
-                        # p_theta is q_t times the prediction at each token
-                        p_theta = q_t * prob[j,k]
-                        p_theta_marg[j,k] = p_theta.sum() # marginalize
-                # print(p_theta_marg.shape, prob.shape) # both are (P x K)
+                    # Compute p_theta(x_tminus1| x_t)
+                    #cat = torch.linspace(0,prob.shape[1]-1, prob.shape[1], dtype=torch.int64)
+                    #x_0_bar = self.tokenizer.one_hot(cat) # one hot encoding of all tokens [K x K]
+                    #x_0_bar = x_0_bar.to(one_hot.device)
+                    x_t = self.tokenizer.one_hot(src_i[j]) # one_hot encoding of the true corrupted sequence [1 x K]
+                    A = torch.matmul(x_t, torch.t(Q[timestep[i]])) # [1 x K]
+                    B = Q_bar[timestep[i]-1]
+                    #B = torch.matmul(x_0_bar, Q_bar[timestep[i] - 1]) # [K x K]
+                    q_t = torch.mul(A, B) # [K x K]
+                    p_theta = q_t * prob[j] # [ K x K]
+                    p_theta_marg_j = p_theta.sum(axis=1) # sum over cols to marginalize each token at the same time
+                    p_theta_marg[j] = p_theta_marg_j / p_theta_marg_j.sum() # normalize token probabilities
+                    #p_theta_marg[j] = p_theta_marg_j
+                    #import pdb; pdb.set_trace()
                 p_theta_marg = p_theta_marg.to(one_hot.device)
                 kl_loss_i = super().forward(q_true.log(), p_theta_marg)  # KLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
@@ -217,10 +216,10 @@ class D3PMLVBLossMSA(KLDivLoss):
         self.len_aa = len(self.tokenizer.all_aas)
         super().__init__(reduction=reduction, log_target=log_target)
 
-    def forward(self, q, pred, one_hot, input_mask, timestep, Q, Q_bar):
+    def forward(self, src, q, q_minus1, pred, one_hot, input_mask, timestep, Q, Q_bar):
         p = torch.nn.functional.softmax(pred[:, :, :, :self.len_aa], dim=3) # ignoring mask/pad
         losses = []
-        nonpad_loc = input_mask.sum(axis=(1,2))
+        nonpad_loc = input_mask.sum(axis=(2))
         for i in range(one_hot.shape[0]): # enumerate over batch
             if timestep[i] <= 1:
                 # CE (L_t=0)
@@ -231,7 +230,7 @@ class D3PMLVBLossMSA(KLDivLoss):
             elif timestep[i] == self.tmax:
                 # D KL (L_T)
                 # As T approches infinity, this term goes to zero
-                D = int(nonpad_loc[i]) # want prior/q in shape of seq len (q has shape of longest seq in batch)
+                D = int(nonpad_loc[i, :]) # want prior/q in shape of seq len (q has shape of longest seq in batch)
                 q_temp = q[i, :, :D, :]
                 prior = sample_prior3D(q_temp.shape[0], q_temp.shape[1], q_temp.shape[2], all_aas=self.tokenizer.all_aas)
                 prior = prior.to(one_hot.device)
@@ -239,29 +238,24 @@ class D3PMLVBLossMSA(KLDivLoss):
                 losses.append(kl_loss_i)
             else:
                 # D KL (L_t-1) -> (q(x|x_t, x_0), p_theta_marg)
-                D = int(nonpad_loc[i])
-                prob = p[i].flatten(start_dim=0, end_dim=1) # [pos x tokens]
-                q_true = q[i].flatten(start_dim=0, end_dim=1) # ignoring mask/pad
-                prob = prob[:, :D]
-                q_true = q_true[:, :D]  # ignoring mask/pad
+                D = int(nonpad_loc[i][0]) # all seq in one MSA are padded to the same length, use first seq as ref
+                prob = p[i, :, :D].flatten(start_dim=0, end_dim=1) # [pos x tokens]
+                q_true = q_minus1[i, :, :D].flatten(start_dim=0, end_dim=1)
+                src_i = src[i, :, :D].flatten(start_dim=0, end_dim=1)
                 p_theta_marg = torch.zeros((prob.shape[0], prob.shape[1]), dtype=torch.double)
-                # Calc p_theta
                 for j in range(prob.shape[0]):  # iterate over each residue in sequence
-                    for k in range(prob.shape[1]):  # iterate over each token in each residue
-                        # Calculate q(x|x_t, x_0)
-                        # x_0_bar is the one hot location for each predicted token (TODO precompute q_t to make faster?)
-                        x_0_bar = self.tokenizer.one_hot(torch.tensor(k))  # one hot location for each token [1 x K]
-                        x_0_bar = x_0_bar.to(one_hot.device)
-                        x_t, q_x_t = sample_transition_matrix(x_0_bar, Q[timestep[i]], 1)  # Sample time t for each token [1 x K]
-                        x_t = self.tokenizer.one_hot(x_t)  # one hot
-                        x_t = x_t.to(one_hot.device)
-                        A = torch.matmul(x_t, torch.t(Q[timestep[i]]))  # A = x_t * torch.transpose(Q_t) (shape - 1 x K)
-                        B = torch.matmul(x_0_bar, Q_bar[timestep[i] - 1])  # B = x_0_bar * Q_bar_t-1 (shape - 1 x K)
-                        q_t = torch.mul(A, B)
-                        # p_theta is q_t times the prediction at each token
-                        p_theta = q_t * prob[j, k]
-                        p_theta_marg[j, k] = p_theta.sum()  # marginalize
-                # print(p_theta_marg.shape, prob.shape) # both are (P x K)
+                    # Compute p_theta(x_tminus1| x_t)
+                    # cat = torch.linspace(0, prob.shape[1] - 1, prob.shape[1], dtype=torch.int64)
+                    # x_0_bar = self.tokenizer.one_hot(cat)  # one hot encoding of all tokens [K x K]
+                    # x_0_bar = x_0_bar.to(one_hot.device)
+                    x_t = self.tokenizer.one_hot(src_i[j])  # one_hot encoding of x_t at position j [1 x K]
+                    A = torch.matmul(x_t, torch.t(Q[timestep[i]]))  # [1 x K]
+                    B = Q_bar[timestep[i]-1]
+                    #B = torch.matmul(x_0_bar, Q_bar[timestep[i] - 1])  # [K x K]
+                    q_t = torch.mul(A, B)  # [K x K]
+                    p_theta = q_t * prob[j]  # [ K x K]
+                    p_theta_marg_j = p_theta.sum(axis=1)  # sum over rows to marginalize each token at the same time
+                    p_theta_marg[j] = p_theta_marg_j / p_theta_marg_j.sum()  # normalize token probabilities
                 p_theta_marg = p_theta_marg.to(one_hot.device)
                 kl_loss_i = super().forward(q_true.log(), p_theta_marg)  # KLDivLoss expects input in log-space
                 losses.append(kl_loss_i)

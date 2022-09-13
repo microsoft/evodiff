@@ -202,6 +202,7 @@ class D3PMCollaterMSA(object):
         # Pre pad one-hot arrays
         pad_one_hot = torch.zeros((len(self.all_aas)))
         q_x = pad_one_hot.repeat((batch_size, self.num_seqs, max_seq_len, 1))
+        q_x_minus1 = pad_one_hot.repeat((batch_size, self.num_seqs, max_seq_len, 1))
         for i in range(batch_size): # enumerate over batch
             tokenized[i] = [torch.tensor(self.tokenizer.tokenizeMSA(s)) for s in msas[i]]
             one_hot[i] = [self.tokenizer.one_hot(t) for t in tokenized[i]]
@@ -214,13 +215,16 @@ class D3PMCollaterMSA(object):
             timesteps.append(t)
             # Calculate target
             x_t, q_x_t = sample_transition_matrix(curr_msa, self.Q[t], 1) # x = tgt, x_t = src, Q is already a function of time here
+            x_tminus1, q_x_tminus1 = sample_transition_matrix(curr_msa, self.Q[t - 1], 1)
             # mask = tracks which tokens were mutated
             mask = torch.ne(curr_msa_tokenized, x_t)
             x_t = x_t.reshape(length, depth)
             q_x_t = q_x_t.reshape(length, depth, tokens)
+            q_x_tminus1 = q_x_tminus1.reshape(length, depth, tokens)
             mask = mask.reshape(length, depth)
             src[i] = x_t
             q_x[i, :, :depth, :] = q_x_t
+            q_x_minus1[i, :, :depth, :] = q_x_tminus1
             masks[i] = mask
             tokenized[i] = torch.stack(tokenized[i]) # replace list with stack
             one_hot[i] = torch.stack(one_hot[i])
@@ -229,4 +233,5 @@ class D3PMCollaterMSA(object):
         masks = _pad_msa(masks*1, self.num_seqs, max_seq_len, 0)
         tokenized = _pad_msa(tokenized, self.num_seqs, max_seq_len, self.tokenizer.pad_id)
         one_hot = _pad_msa(one_hot, self.num_seqs, max_seq_len, self.tokenizer.pad_id, dim=4)
-        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), one_hot.to(torch.double), masks.to(torch.long), self.Q,  q_x.to(torch.double))
+        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), one_hot.to(torch.double),
+                masks.to(torch.long), self.Q,  q_x.to(torch.double), q_x_minus1.to(torch.double))
