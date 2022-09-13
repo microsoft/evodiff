@@ -1,12 +1,11 @@
-from sequence_models.convolutional import ByteNetLM
+from sequence_models.convolutional import ByteNetLM # TODO NEED TO USE BYTENETLMTIME for BLOSUM
 import numpy as np
 import argparse
-from dms.constants import PAD, PROTEIN_ALPHABET, BLOSUM62_AAS
-from sequence_models.constants import MASK
+from dms.constants import ALL_AAS
+from sequence_models.constants import MASK, MSA_PAD, PROTEIN_ALPHABET, PAD
 import torch
 import os
 import json
-from dms.collaters import random_sample
 from dms.utils import Tokenizer
 
 ### SET RANDOM SEEDS ###
@@ -21,15 +20,16 @@ def main():
     parser.add_argument('out_fpath', type=str, nargs='?', default=os.getenv('PT_OUTPUT_DIR', '/tmp') + '/')
     parser.add_argument('--dropout', type=float, default=0.0)
     parser.add_argument('--tie_weights', action='store_true')
-    parser.add_argument('--final_norm', action='store_true')
+    parser.add_argument('--final_norm', action='store_true') # TODO THIS SHOULD BE ON
     parser.add_argument('--seq_len', type=int, default=512)
     parser.add_argument('--checkpoint', type=int, default=None)
+    parser.add_argument('--num_seqs', type=int, default=100)
     args = parser.parse_args()
 
     with open(args.config_fpath, 'r') as f:
         config = json.load(f)
 
-    n_tokens = len(PROTEIN_ALPHABET)
+    n_tokens = len(PROTEIN_ALPHABET) # TODO ADD START/STOP FOR KEVIN
     d_embed = config['d_embed']
     d_model = config['d_model']
     n_layers = config['n_layers']
@@ -48,7 +48,7 @@ def main():
     else:
         activation = 'relu'
     seq_len = args.seq_len
-    causal = False
+    causal = True
     padding_idx = PROTEIN_ALPHABET.index(PAD)
 
     model = ByteNetLM(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
@@ -73,10 +73,12 @@ def main():
     print('Loading weights from ' + args.state_dict + '...')
     sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
     msd = sd['model_state_dict']
-    msd = {k.split('module.')[0]: v for k,v in msd.items()}
+    print(list(msd.keys())[0:10])
+    msd = {k.split('module.')[1]: v for k,v in msd.items()} # TODO: this was zero (for OAARDM)
+    print(list(msd.keys())[0:10], list(model.state_dict().keys())[0:10])
     model.load_state_dict(msd) # TODO: why is this not saving the same
 
-    sequences = 100
+    sequences = args.num_seqs
     seqs = ""
     seqs_array = np.zeros((sequences, 512))
     for i in range(sequences):
@@ -91,33 +93,34 @@ def main():
             [seqs]))
         f.write('\n')
 
-
 def generate_text(model, seq_len, tokenizer=Tokenizer()):
     # Generate a random start string and convert to tokens
-    padding_idx = tokenizer.tokenize(PAD)[0]
-    all_aas = tokenizer.tokenize([BLOSUM62_AAS])
+    #padding_idx = tokenizer.tokenize(MSA_PAD)[0]
+    all_aas = tokenizer.tokenize([ALL_AAS])
     alphabet = tokenizer.tokenize([PROTEIN_ALPHABET])
     mask = tokenizer.tokenize(MASK)
     # Start from mask or random array
-    sample = torch.zeros((1,512))+mask
+    sample = torch.zeros((seq_len))+mask
     sample = sample.to(torch.long)
-    seq = tokenizer.untokenize(sample[0])
+    seq = tokenizer.untokenize(sample)
     print("input seq", seq)
     # Unmask 1 loc at a time randomly
     loc = np.arange(seq_len)
     np.random.shuffle(loc)
     input_mask = torch.zeros(len(seq), dtype=bool)
     #print(loc.dtype, input_mask.dtype)
-    for x,i in enumerate(loc):
-        input_mask[i] = 1
-        prediction = model(sample, input_mask=input_mask)
-        p = torch.nn.functional.softmax(prediction[0], dim=1).detach().numpy()
-        p_sample = np.random.choice(alphabet, p=p[i])
-        #p_sample = alphabet[np.argmax(p[i])] # over samples alanine
-        sample[0][i] = p_sample
-        #print(x, i, sample)
-    print(tokenizer.untokenize(sample[0]))
-    return sample[0], tokenizer.untokenize(sample[0])
+    with torch.no_grad():
+        for i in loc:
+            input_mask[i] = 1
+            prediction = model(sample.unsqueeze(0), input_mask=input_mask) #sample prediction given input
+            p = prediction[:, i, :len(all_aas)-6] # sample at location i (random)
+            p = torch.nn.functional.softmax(p, dim=1) # softmax over categorical probs
+            p_sample = torch.multinomial(p.squeeze(), num_samples=1)
+            #p_sample = alphabet[np.argmax(p[i])] # over samples alanine
+            sample[i] = p_sample
+            #print("residue", i, tokenizer.untokenize(sample))
+    print("final seq", tokenizer.untokenize(sample))
+    return sample, tokenizer.untokenize(sample)
 
 if __name__ == '__main__':
     main()

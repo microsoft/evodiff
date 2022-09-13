@@ -69,7 +69,7 @@ def main():
         pass
     else:
         os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = '8888'
+        os.environ['MASTER_PORT'] = '8889'
 
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
@@ -130,7 +130,8 @@ def train(gpu, args):
     ### COLLATORS ###
     # ----------------------------------------------------------
     if args.mask == 'autoreg':
-        collater = OAMaskCollater(tokenizer=Tokenizer())
+        tokenizer = Tokenizer()
+        collater = OAMaskCollater(tokenizer=tokenizer)
         diffusion_timesteps = None # Not input to model
     elif args.mask == 'blosum' or args.mask == 'random':
         diffusion_timesteps = config['diffusion_timesteps']
@@ -194,8 +195,8 @@ def train(gpu, args):
     # ----------------------------------------------------------
     # Initiate model
     # ----------------------------------------------------------
-    padding_idx = Tokenizer().pad_id  # PROTEIN_ALPHABET.index(PAD)
-    masking_idx = Tokenizer().mask_id
+    padding_idx = tokenizer.pad_id  # PROTEIN_ALPHABET.index(PAD)
+    masking_idx = tokenizer.mask_id
     print('Using {} as padding index'.format(padding_idx))
     print('Using {} as masking index'.format(masking_idx))
     model = ByteNetLMTime(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
@@ -340,7 +341,7 @@ def train(gpu, args):
                                     'scheduler_state_dict': scheduler.state_dict(),
                                     'epoch': e
                                 }, ckpt_fpath)
-                                _ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
+                                #_ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
                         chunk_time = datetime.now()
         if not train:
             if rank == 0:
@@ -358,9 +359,10 @@ def train(gpu, args):
 
     def step(model, batch, train):
         if args.mask == 'blosum' or args.mask == 'random':
-            src, timestep, tgt, one_hot, mask, Q, q = batch
+            src, timestep, tgt, one_hot, mask, Q, q, q_minus1 = batch
             one_hot = one_hot.to(device)
             q = q.to(device)
+            q_minus1 = q_minus1.to(device)
             Q = Q.to(device)
         else:
             src, timestep, tgt, mask = batch
@@ -378,7 +380,7 @@ def train(gpu, args):
             with torch.cuda.amp.autocast():
                 outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
                 if args.mask == 'blosum' or args.mask == 'random':
-                    lvb_loss = loss_func1(q, outputs, one_hot, input_mask, timestep, Q, Q_prod) #* n_tokens
+                    lvb_loss = loss_func1(src, q, q_minus1, outputs, one_hot, input_mask, timestep, Q, Q_prod) #* n_tokens
                     ce_loss = loss_func2(outputs, one_hot, input_mask)
                     nll_loss = ce_loss
                     loss = lvb_loss + _lambda * ce_loss
@@ -399,7 +401,7 @@ def train(gpu, args):
             with torch.cuda.amp.autocast():
                 outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
                 if args.mask == 'blosum' or args.mask == 'random':
-                    lvb_loss = loss_func1(q, outputs, one_hot, input_mask, timestep, Q, Q_prod)  # * n_tokens
+                    lvb_loss = loss_func1(src, q, outputs, one_hot, input_mask, timestep, Q, Q_prod)  # * n_tokens
                     ce_loss = loss_func2(outputs, one_hot, input_mask)
                     nll_loss = ce_loss
                     loss = lvb_loss + _lambda * ce_loss

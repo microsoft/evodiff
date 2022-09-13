@@ -1,8 +1,8 @@
 from dms.data import loadMatrix
 import torch
 import numpy as np
-from sequence_models.constants import MASK
-from dms.constants import ALL_AAS, PROTEIN_ALPHABET, PAD
+from sequence_models.constants import MASK, MSA_PAD
+from dms.constants import ALL_AAS, PROTEIN_ALPHABET
 from sklearn.preprocessing import normalize
 
 def matrixMul(a, n):
@@ -87,7 +87,7 @@ def parse_fasta(seq_file, idx):
 
 class Tokenizer(object):
     """Convert between strings and index"""
-    def __init__(self, all_aas=ALL_AAS, protein_alphabet=PROTEIN_ALPHABET, pad=PAD, mask=MASK, path_to_blosum=None, masking_scheme='blosum'):
+    def __init__(self, all_aas=ALL_AAS, protein_alphabet=PROTEIN_ALPHABET, pad=MSA_PAD, mask=MASK, path_to_blosum=None, masking_scheme='blosum'):
         self.all_aas = list(all_aas)
         self.alphabet = list("".join(protein_alphabet))
         self.pad = pad
@@ -151,7 +151,10 @@ class Tokenizer(object):
         return q_t
 
     def tokenize(self, seq):
-        return np.array([self.a_to_i[a] for a in seq[0]]) # seq is a tuple with empty second dim
+        return np.array([self.a_to_i[a] for a in seq[0]]) # for nested lists
+
+    def tokenizeMSA(self, seq):
+        return np.array([self.a_to_i[a] for a in seq]) # not nested
 
     def untokenize(self, x):
         if torch.is_tensor(x):
@@ -165,6 +168,6 @@ class Tokenizer(object):
         return x_onehot.to(torch.double)
 
     def undo_one_hot(self, x_onehot):
-        "one hot encode according to indexing"
-        tokenized = [np.where(r==1)[0] for r in x_onehot]
+        "one hot -> seq"
+        tokenized = [np.where(r==1)[0] for r in x_onehot] # TODO may need to fix now that using torch nn have not double checked
         return tokenized
