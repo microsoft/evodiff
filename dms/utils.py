@@ -1,8 +1,8 @@
 from dms.data import loadMatrix
 import torch
 import numpy as np
-from sequence_models.constants import MASK, MSA_PAD
-from dms.constants import ALL_AAS, PROTEIN_ALPHABET
+from sequence_models.constants import MASK
+from dms.constants import ALL_AAS, PROTEIN_ALPHABET, MSA_PAD
 from sklearn.preprocessing import normalize
 
 def matrixMul(a, n):
@@ -11,14 +11,15 @@ def matrixMul(a, n):
     else:
         return torch.matmul(matrixMul(a, n-1), a)
 
-def matrixProd(a):
-    "Takes a matrix of size T total timesteps as input and calculates the cumulative product at each t step"
-    matrix = torch.zeros(a.shape[0], a.shape[1], a.shape[2])
+def cumprod_matrix(a):
+    "takes a list of transition matricies and ouputs a list of the cum prod"
+    a_bar = [a[0]]  # initialize w/ first item in list
     start = a[0]
-    for i in range(len(a)):
-        start = torch.matmul(start, a[i])
-        matrix[i] = start
-    return matrix.to(torch.double)
+    for i in range(len(a) - 1):
+        a_prod_temp = torch.mm(start, a[i + 1])
+        start = a_prod_temp
+        a_bar.append(a_prod_temp)  # update start
+    return a_bar
 
 def softmax(x):
     return np.exp(x)/np.sum(np.exp(x),axis=0)
@@ -114,41 +115,44 @@ class Tokenizer(object):
         q = double_stochastic(q)
         return q
 
-    def q_blosum_schedule(self, timesteps=500, schedule='exp'):
+    def q_blosum_schedule(self, timesteps=500, schedule='exp', max=8):
         """
         betas = None; Natural mutation pattern for blosum - no schedule
         betas = 'exp' use exp scheme for beta schedule
         """
+        print(schedule)
         K = len(self.all_aas)
         q = torch.tensor(self.q_blosum())
-        _betas = _beta_schedule(timesteps, schedule=schedule, max=6)
+        _betas = _beta_schedule(timesteps, schedule=schedule, max=max)
         betas = (_betas - _betas.min())
         betas = betas / betas.max()
-        q_t = []
+        Q_t = [] # scheduled matrix
         for i in range(timesteps):
             q_non_diag = torch.ones((K,K)) * q * betas[i]
             norm_constant = (1 - (q_non_diag).sum(axis=0))
             q_diag = torch.tensor(np.identity(K)) * norm_constant
             R = q_diag + q_non_diag
-            q_temp = matrixMul(R, i)
-            q_t.append(q_temp)
-        q_t = torch.stack(q_t)
-        return q_t
+            Q_t.append(R)
+        Q_prod = cumprod_matrix(Q_t)
+        Q_prod = torch.stack(Q_prod) # cumprod of matrices
+        Q_t = torch.stack(Q_t) # scheduled matrix
+        return Q_prod, Q_t
 
     def q_random_schedule(self, timesteps=500, schedule='linear'):
         print(schedule)
         betas = _beta_schedule(timesteps, schedule=schedule)
         K = len(self.all_aas)
-        q_t = []
+        Q_t = []  # scheduled matrix
         for i in range(len(betas)):
             q_non_diag = torch.ones((K,K)) / K * betas[i]
             norm_constant = (1 - (q_non_diag).sum(axis=0))
             q_diag = torch.tensor(np.identity(K)) * norm_constant
             R = q_diag + q_non_diag
-            #print(R.sum(axis=0), R.sum(axis=1))
-            q_t.append(R)
-        q_t = torch.stack(q_t)
-        return q_t
+            Q_t.append(R)
+        Q_prod = cumprod_matrix(Q_t)
+        Q_prod = torch.stack(Q_prod)  # cumprod of matrices
+        Q_t = torch.stack(Q_t)  # scheduled matrix
+        return Q_prod, Q_t
 
     def tokenize(self, seq):
         return np.array([self.a_to_i[a] for a in seq[0]]) # for nested lists

@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from dms.utils import Tokenizer, matrixMul
+from dms.utils import Tokenizer
 
 
 def _pad(tokenized, value, dim=2):
@@ -47,11 +47,15 @@ def _unpad(x, value):
     x = x[mask_pad].to(torch.int64)
     return x
 
-def sample_transition_matrix(x_0, Q, time):
-    "Sample a markov transition according to next_step = x_0 * q ^ time"
-    p_next_step = torch.matmul(x_0, matrixMul(Q, time))
+def sample_transition_matrix(x_0, Q_bar):
+    """
+    Sample a markov transition according to next_step = x_0 * q ^ time,
+    where Q_bar = q ^t or cumprod of scheduled transition matrices
+    returns sample and probabilities
+    """
+    p_next_step = torch.mm(x_0, Q_bar)
     next_step = torch.multinomial(p_next_step, num_samples=1)
-    return next_step.squeeze(), p_next_step
+    return next_step.squeeze(), p_next_step # sample and probabilities
 
 
 class OAMaskCollater(object):
@@ -123,21 +127,21 @@ class D3PMCollater(object):
         Q : markov matrix
         q_x : forward transition probabilities
     """
-    def __init__(self, tokenizer=Tokenizer(), num_timesteps=100, transition_matrix=None):
+    def __init__(self, tokenizer=Tokenizer(), num_timesteps=100, Q=None, Q_bar=None):
         self.tokenizer = tokenizer
         self.num_timesteps = num_timesteps # Only needed for markov trans, doesnt depend on seq len
         self.alphabet = self.tokenizer.tokenize([self.tokenizer.alphabet])
         self.all_aas = self.tokenizer.tokenize([self.tokenizer.all_aas])
-        self.Q = transition_matrix
+        self.Q = Q
+        self.Q_bar =Q_bar
 
     def __call__(self, sequences):
         tokenized = [torch.tensor(self.tokenizer.tokenize(s)) for s in sequences]
         one_hot = []
         ## This is to deal with an empty sequence ##
-        #print("first",len(tokenized))
         del_index = None
         for i,t in enumerate(tokenized):
-            if len(t) == 0: # ignore empty sequence in MNIST dataset
+            if len(t) == 0: # TODO: was this an old bug? can i delete now -check ignore empty sequence in MNIST dataset
                 one_hot.append(torch.zeros(len(self.all_aas), dtype=torch.double))
                 del_index = i
             else:
@@ -145,11 +149,9 @@ class D3PMCollater(object):
         if del_index is not None:
             tokenized.pop(del_index)
             one_hot.pop(del_index)
-        #print("second", len(tokenized), len(one_hot))
         max_len = max(len(t) for t in tokenized)
         src=[]
         timesteps = []
-        masks=[]
         # Pre pad one-hot arrays
         pad_one_hot = torch.zeros((len(self.all_aas)))
         q_x = pad_one_hot.repeat((len(tokenized), max_len, 1))
@@ -159,36 +161,29 @@ class D3PMCollater(object):
             t = np.random.randint(1, self.num_timesteps) # randomly sample timestep
             # Append timestep
             timesteps.append(t)
-            # Calculate target
-            x_t, q_x_t = sample_transition_matrix(x, self.Q[t], 1) # x = tgt, x_t = src, Q is already a function of time here
-            x_tminus1, q_x_tminus1 = sample_transition_matrix(x, self.Q[t-1], 1)
-            #print(q_x_t.shape)
+            # Calculate forward at time t and t-1
+            x_t, q_x_t = sample_transition_matrix(x, self.Q_bar[t]) # x = tgt, x_t = src, Q_bar accounts for time
+            x_tminus1, q_x_tminus1 = sample_transition_matrix(x, self.Q_bar[t-1])
             src.append(x_t)
             q_x[i, :D, :] = q_x_t
             q_x_minus1[i, :D, :] = q_x_tminus1
-            # mask = determines which tokens were mutated
-            #print(i, "third",len(tokenized[i]), len(x_t))
-            #print(tokenized[i], x_t)
-            mask = torch.ne(tokenized[i], x_t)
-            masks.append(mask)
         # PAD out
         src = _pad(src, self.tokenizer.pad_id)
-        masks = _pad(masks*1, 0)
         tokenized = _pad(tokenized, self.tokenizer.pad_id)
-        one_hot = _pad(one_hot, self.tokenizer.pad_id, dim=3)
-        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), one_hot, masks.to(torch.long),
+        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long),
                 self.Q,  q_x.to(torch.double), q_x_minus1.to(torch.double))
 
 class D3PMCollaterMSA(object):
     """
     D3PM Collater for MSAs
     """
-    def __init__(self, tokenizer=Tokenizer(), num_timesteps=100, transition_matrix=None, num_seqs=64):
+    def __init__(self, tokenizer=Tokenizer(), num_timesteps=100,  Q=None, Q_bar=None, num_seqs=64):
         self.tokenizer = tokenizer
         self.num_timesteps = num_timesteps # Only needed for markov trans, doesnt depend on seq len
         self.alphabet = self.tokenizer.tokenize([self.tokenizer.alphabet])
         self.all_aas = self.tokenizer.tokenize([self.tokenizer.all_aas])
-        self.Q = transition_matrix
+        self.Q = Q
+        self.Q_bar = Q_bar
         self.num_seqs = num_seqs
 
     def __call__(self, msas):
@@ -196,8 +191,8 @@ class D3PMCollaterMSA(object):
         tokenized = list(msas) # tgt
         one_hot = tokenized.copy()
         src = tokenized.copy()
-        masks = tokenized.copy()
-        max_seq_len = max(len(t[0]) for t in tokenized)
+        src_one_hot = tokenized.copy()
+        max_seq_len = max(len(t[0]) for t in tokenized) # all seqs in MSA are the same len
         timesteps = []
         # Pre pad one-hot arrays
         pad_one_hot = torch.zeros((len(self.all_aas)))
@@ -208,30 +203,26 @@ class D3PMCollaterMSA(object):
             one_hot[i] = [self.tokenizer.one_hot(t) for t in tokenized[i]]
             curr_msa = torch.stack(one_hot[i])
             length, depth, tokens = curr_msa.shape  # length = number of seqs in MSA, depth = # AA in MSA
-            curr_msa = curr_msa.reshape(length*depth, tokens)
-            curr_msa_tokenized = torch.stack(tokenized[i]).reshape(length*depth)
-            t = np.random.randint(1, self.num_timesteps) # randomly sample timestep
+            curr_msa = curr_msa.flatten(start_dim=0, end_dim=1)
             # Append timestep
+            t = np.random.randint(1, self.num_timesteps) # randomly sample timestep
             timesteps.append(t)
             # Calculate target
-            x_t, q_x_t = sample_transition_matrix(curr_msa, self.Q[t], 1) # x = tgt, x_t = src, Q is already a function of time here
-            x_tminus1, q_x_tminus1 = sample_transition_matrix(curr_msa, self.Q[t - 1], 1)
-            # mask = tracks which tokens were mutated
-            mask = torch.ne(curr_msa_tokenized, x_t)
+            x_t, q_x_t = sample_transition_matrix(curr_msa, self.Q_bar[t])  # x = tgt, x_t = src, Q_bar accounts for time
+            x_tminus1, q_x_tminus1 = sample_transition_matrix(curr_msa, self.Q_bar[t-1])  # x = tgt, x_t = src, Q_bar accounts for time
             x_t = x_t.reshape(length, depth)
             q_x_t = q_x_t.reshape(length, depth, tokens)
             q_x_tminus1 = q_x_tminus1.reshape(length, depth, tokens)
-            mask = mask.reshape(length, depth)
             src[i] = x_t
+            src_one_hot[i] = [self.tokenizer.one_hot(t) for t in x_t]
             q_x[i, :, :depth, :] = q_x_t
             q_x_minus1[i, :, :depth, :] = q_x_tminus1
-            masks[i] = mask
             tokenized[i] = torch.stack(tokenized[i]) # replace list with stack
             one_hot[i] = torch.stack(one_hot[i])
+            src_one_hot[i] = torch.stack(src_one_hot[i])
         # PAD out
         src = _pad_msa(src, self.num_seqs, max_seq_len, self.tokenizer.pad_id)
-        masks = _pad_msa(masks*1, self.num_seqs, max_seq_len, 0)
         tokenized = _pad_msa(tokenized, self.num_seqs, max_seq_len, self.tokenizer.pad_id)
-        one_hot = _pad_msa(one_hot, self.num_seqs, max_seq_len, self.tokenizer.pad_id, dim=4)
-        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), one_hot.to(torch.double),
-                masks.to(torch.long), self.Q,  q_x.to(torch.double), q_x_minus1.to(torch.double))
+        src_one_hot = _pad_msa(src_one_hot, self.num_seqs, max_seq_len, self.tokenizer.pad_id, dim=4)
+        return (src.to(torch.long), src_one_hot.to(torch.double), torch.tensor(timesteps), tokenized.to(torch.long),
+                self.Q,  q_x.to(torch.double), q_x_minus1.to(torch.double))

@@ -1,6 +1,7 @@
-from sequence_models.constants import AAINDEX_ALPHABET, AMB_AAS, MSA_PAD, OTHER_AAS, GAP, MASK, SPECIALS, STOP, MASK, START
+from sequence_models.constants import AAINDEX_ALPHABET, AMB_AAS, OTHER_AAS, GAP, MASK, SPECIALS, STOP, MASK, START
 
 # ORDER is important for BLOSUM indexing
+MSA_PAD='!'
 
 BLOSUM62_AAS = AAINDEX_ALPHABET + AMB_AAS + OTHER_AAS # In order of BLOSUM indices for matrix creation
 

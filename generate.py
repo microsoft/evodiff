@@ -1,14 +1,14 @@
 from sequence_models.convolutional import ByteNetLM # TODO NEED TO USE BYTENETLMTIME for BLOSUM
 import numpy as np
 import argparse
-from dms.constants import ALL_AAS
-from sequence_models.constants import MASK, MSA_PAD, PROTEIN_ALPHABET, PAD
+from dms.constants import ALL_AAS, MSA_PAD, PROTEIN_ALPHABET
+from sequence_models.constants import MASK, PAD
 import torch
 import os
 import json
 from dms.utils import Tokenizer
 
-### SET RANDOM SEEDS ###
+### SET RANDOM SEEDS ####
 random_seed = 1
 torch.random.manual_seed(random_seed)
 np.random.seed(random_seed)
@@ -48,8 +48,10 @@ def main():
     else:
         activation = 'relu'
     seq_len = args.seq_len
-    causal = True
-    padding_idx = PROTEIN_ALPHABET.index(PAD)
+    causal = False
+    tokenizer=Tokenizer()
+    masking_idx = tokenizer.mask_id
+    padding_idx = tokenizer.pad_id
 
     model = ByteNetLM(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
                       causal=causal, padding_idx=padding_idx, rank=weight_rank, dropout=args.dropout,
@@ -73,9 +75,9 @@ def main():
     print('Loading weights from ' + args.state_dict + '...')
     sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
     msd = sd['model_state_dict']
-    print(list(msd.keys())[0:10])
-    msd = {k.split('module.')[1]: v for k,v in msd.items()} # TODO: this was zero (for OAARDM)
-    print(list(msd.keys())[0:10], list(model.state_dict().keys())[0:10])
+    #print(list(msd.keys())[0:10])
+    msd = {k.split('module.')[0]: v for k,v in msd.items()} # TODO: this was zero (for OAARDM)
+    #print(list(msd.keys())[0:10], list(model.state_dict().keys())[0:10])
     model.load_state_dict(msd) # TODO: why is this not saving the same
 
     sequences = args.num_seqs

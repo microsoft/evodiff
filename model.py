@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from sequence_models.layers import PositionFeedForward, PositionFeedForward2d, DoubleEmbedding
-from sequence_models.convolutional import MaskedConv1d, MaskedCausalConv1d, ByteNetBlock
+from sequence_models.convolutional import MaskedCausalConv1d, ByteNetBlock
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model=8, length=500):
