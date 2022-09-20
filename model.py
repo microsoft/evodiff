@@ -2,8 +2,11 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 import numpy as np
-from sequence_models.layers import PositionFeedForward, PositionFeedForward2d, DoubleEmbedding
-from sequence_models.convolutional import MaskedCausalConv1d, ByteNetBlock
+from torch.utils.checkpoint import checkpoint
+from sequence_models.layers import PositionFeedForward, DoubleEmbedding
+from sequence_models.convolutional import ByteNetBlock
+from sequence_models.constants import PROTEIN_ALPHABET, PAD, MASK
+from esm.modules import TransformerLayer, LearnedPositionalEmbedding, RobertaLMHead, ESM1bLayerNorm, AxialTransformerLayer
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model=8, length=500):
@@ -13,6 +16,10 @@ class PositionalEncoding(nn.Module):
 
     def forward(self, x):
         """
+        Taken from https://github.com/wzlxjtu/PositionalEncoding2D/blob/master/positionalembedding2d.py
+
+        Here used for adding positional encoding to D3PM model
+
         :param d_model: dimension of the model
         :param length: length of positions
         :return: length*d_model position matrix
@@ -140,3 +147,80 @@ class ByteNetLMTime(nn.Module):
         e = self.embedder(x, y, input_mask=input_mask)
         e = self.last_norm(e)
         return self.decoder(e)
+
+
+class MSATransformerTime(nn.Module):
+    """
+    Based on implementation described by Rao et al. in "MSA Transformer"
+    https://doi.org/10.1101/2021.02.12.430858
+    Args:
+        d_model: int,
+            embedding dimension of model
+        d_hidden: int,
+            embedding dimension of feed forward network
+       n_layers: int,
+           number of layers
+       n_heads: int,
+           number of attention heads
+   """
+
+    def __init__(self, d_model, d_hidden, n_layers, n_heads, use_ckpt=False, n_tokens=len(PROTEIN_ALPHABET),
+                 padding_idx=PROTEIN_ALPHABET.index(PAD), mask_idx=PROTEIN_ALPHABET.index(MASK),
+                 max_positions=1024, timesteps=None):
+        super(MSATransformerTime, self).__init__()
+
+        self.timesteps = timesteps
+        self.time_encoding = PositionalEncoding(64, length=timesteps) # TODO 64 to match output of pos embedding
+
+        self.embed_tokens = nn.Embedding(
+            n_tokens, d_model, padding_idx=mask_idx
+        )
+        self.layers = nn.ModuleList(
+            [
+                AxialTransformerLayer(
+                    d_model, d_hidden, n_heads
+                )
+                for _ in range(n_layers)
+            ]
+        )
+        self.padding_idx = padding_idx
+
+        # self.contact_head = ContactPredictionHead()
+        self.embed_positions = LearnedPositionalEmbedding(max_positions, d_model, padding_idx)
+        self.emb_layer_norm_before = nn.LayerNorm(d_model)
+        self.emb_layer_norm_after = nn.LayerNorm(d_model)
+        self.lm_head = RobertaLMHead(
+            embed_dim=d_model,
+            output_dim=n_tokens,
+            weight=self.embed_tokens.weight
+        )
+
+        self.use_ckpt = use_ckpt
+
+    def forward(self, tokens, timesteps):
+        assert tokens.ndim == 3
+        batch_size, num_alignments, seqlen = tokens.size()
+        padding_mask = tokens.eq(self.padding_idx)  # B, R, C
+
+        x = self.embed_tokens(tokens)
+        x = x + self.embed_positions(tokens.view(batch_size * num_alignments, seqlen)).view(x.size())
+        x = self.emb_layer_norm_before(x)
+        x = x * (1 - padding_mask.unsqueeze(-1).type_as(x))
+
+        # encode time TODO: have kevin check this
+        y = self.time_encoding(timesteps)
+        y = y.unsqueeze(-1).unsqueeze(-1)  # match dimensions of token embedding
+        y = y.expand(y.shape[0], x.shape[1], x.shape[2], x.shape[3])
+        x = x + y
+        #
+
+        # B x R x C x D -> R x C x B x D
+        x = x.permute(1, 2, 0, 3)
+
+        for layer_idx, layer in enumerate(self.layers):
+            x = checkpoint(layer, x, None, padding_mask, False)
+
+        x = self.emb_layer_norm_after(x)
+        x = x.permute(2, 0, 1, 3)  # R x C x B x D -> B x R x C x D
+        x = self.lm_head(x)
+        return x

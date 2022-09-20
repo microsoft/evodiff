@@ -159,7 +159,6 @@ class D3PMLVBLoss(KLDivLoss):
                 losses.append(kl_loss_i)
         losses = torch.stack(losses)
         lvb = ((losses.sum()) / (tgt.shape[0]))  # loss per batch, norm by batchsize
-        print(lvb)
         return lvb
 
 
