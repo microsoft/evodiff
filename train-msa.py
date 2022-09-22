@@ -429,7 +429,7 @@ def train(gpu, args):
         elif split == 'valid' or split == 'test':
 
             with torch.cuda.amp.autocast():
-                outputs = model(src)
+                outputs = model(src, timestep)
                 if args.mask == 'blosum' or args.mask == 'random':
                     lvb_loss = loss_func1(src, q, q_minus1, outputs, tgt, nonpad_mask, timestep, Q, Q_prod)  # * n_tokens
                     ce_loss = loss_func2(outputs, tgt, nonpad_mask)
