@@ -134,7 +134,7 @@ def train(gpu, args):
         if args.mask == 'random':
             Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=diffusion_timesteps)
         if args.mask == 'blosum':
-            Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=diffusion_timesteps, max=6)
+            Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=diffusion_timesteps, max=10)
         collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=diffusion_timesteps, Q=Q_t, Q_bar=Q_prod)
         Q_prod = Q_prod.to(device)
     else:
@@ -431,7 +431,7 @@ def train(gpu, args):
             with torch.cuda.amp.autocast():
                 outputs = model(src, timestep)
                 if args.mask == 'blosum' or args.mask == 'random':
-                    lvb_loss = loss_func1(src, q, q_minus1, outputs, tgt, nonpad_mask, timestep, Q, Q_prod)  # * n_tokens
+                    lvb_loss = loss_func1(src, src_one_hot, q, q_minus1, outputs, tgt, nonpad_mask, timestep, Q, Q_prod)  # * n_tokens
                     ce_loss = loss_func2(outputs, tgt, nonpad_mask)
                     nll_loss = ce_loss
                     loss = lvb_loss + _lambda * ce_loss
