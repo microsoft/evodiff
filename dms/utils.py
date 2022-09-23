@@ -86,6 +86,35 @@ def parse_fasta(seq_file, idx):
     return sequence
 
 
+def convert_mappings(tokenized, alphabet1, alphabet2):
+    """"
+    takes in:
+    tokenized; a tokenized sequence
+    alphabet1: current alphabet
+    alphabet2: desired alphabet mapping
+
+    returns;
+    tokenized2; a tokenized sequence with new mappings that correspond to alphabet2
+
+    example;
+    sample = tensor([18,  2, 22, 21, 14, 15, 21,  0, 21, 22])
+    Tokenizer(protein_alphabet=alphabet1).untokenize(sample) # returns the sequence untokenized
+    retokenized = convert_mappings(sample, alphabet1, alphabet2)
+    Tokenizer(protein_alphabet=alphabet2).untokenize(retokenized) # should return the same sequence
+    """
+
+    a_to_i1 = {u: i for i, u in enumerate(alphabet1)}
+    a_to_i2 = {u: i for i, u in enumerate(alphabet2)}
+
+    i_to_a1 = np.array(list(alphabet1))
+    i_to_a2 = np.array(list(alphabet2))
+
+    untokenize1 = i_to_a1[tokenized]
+    tokenized2 = [a_to_i2[u] for u in untokenize1]
+
+    return tokenized2
+
+
 class Tokenizer(object):
     """Convert between strings and index"""
     def __init__(self, all_aas=ALL_AAS, protein_alphabet=PROTEIN_ALPHABET, pad=MSA_PAD, mask=MASK, path_to_blosum=None, masking_scheme='blosum'):
