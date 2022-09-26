@@ -295,9 +295,9 @@ def train(gpu, args):
             ns.append(new_n.item())
             n_seen += new_seqs.item()
             total_n = sum(ns)
-            r_loss = sum(losses) / len(losses)
-            r_ce_loss = sum(ce_losses) / len(ce_losses)
-            r_nll_loss = sum(nll_losses) / len(nll_losses)
+            r_loss = sum(losses) / total_n
+            r_ce_loss = sum(ce_losses) / total_n
+            r_nll_loss = sum(nll_losses) / total_n
             raccu = sum(accus) / total_n
             if train:
                 nsteps = current_step + i + 1
@@ -315,6 +315,7 @@ def train(gpu, args):
                       % (t, e + 1, epochs, nsteps, tokens_trained, n_seen, n_total, r_loss, r_ce_loss, r_nll_loss, raccu),
                       end=end)
             if train:
+                print(nsteps)
                 losses = losses[-999:]
                 ce_losses = ce_losses[-999:]
                 accus = accus[-999:]
@@ -379,19 +380,23 @@ def train(gpu, args):
         n_processed = input_mask.sum()
         if train:
             optimizer.zero_grad() # reset gradients of model parameters
-            # Enables autocasting for the forward pass (model + loss) #
-            with torch.cuda.amp.autocast():
-                outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
-                if args.mask == 'blosum' or args.mask == 'random':
-                    lvb_loss = loss_func1(src, q, q_minus1, outputs, tgt, input_mask, timestep, Q, Q_prod) #* n_tokens
-                    ce_loss = loss_func2(outputs, tgt, input_mask)
-                    nll_loss = ce_loss
-                    loss = lvb_loss + _lambda * ce_loss
-                    accu = accu_func(outputs, tgt, input_mask) * n_tokens
-                elif args.mask == 'autoreg':
-                    ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask) #* n_tokens
-                    loss = ce_loss
-                    accu = accu_func(outputs, tgt, mask) * n_tokens
+        # Enables autocasting for the forward pass (model + loss) #
+        with torch.cuda.amp.autocast():
+            outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
+            if args.mask == 'blosum' or args.mask == 'random':
+                lvb_loss = loss_func1(src, q, q_minus1, outputs, tgt, input_mask, timestep, Q, Q_prod) * n_tokens
+                ce_loss = loss_func2(outputs, tgt, input_mask) * n_tokens
+                nll_loss = ce_loss
+                print("lvb", lvb_loss)
+                print("ce", ce_loss)
+                print("nll", nll_loss)
+                loss = lvb_loss + _lambda * ce_loss
+                accu = accu_func(outputs, tgt, input_mask) * n_tokens
+            elif args.mask == 'autoreg':
+                ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask) * n_tokens
+                loss = ce_loss
+                accu = accu_func(outputs, tgt, mask) * n_tokens
+        if train:
             # Exits the context manager before backward()
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -400,19 +405,19 @@ def train(gpu, args):
             skip_scheduler = (scale > scaler.get_scale())
             if not skip_scheduler:
                 scheduler.step()
-        else: # dont step through model during val
-            with torch.cuda.amp.autocast():
-                outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
-                if args.mask == 'blosum' or args.mask == 'random':
-                    lvb_loss = loss_func1(src, q, q_minus1, outputs, tgt, input_mask, timestep, Q, Q_prod)  # * n_tokens
-                    ce_loss = loss_func2(outputs, tgt, input_mask)
-                    nll_loss = ce_loss
-                    loss = lvb_loss + _lambda * ce_loss
-                    accu = accu_func(outputs, tgt, input_mask) * n_tokens
-                elif args.mask == 'autoreg':
-                    ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
-                    loss = ce_loss
-                    accu = accu_func(outputs, tgt, mask) * n_tokens
+        # else: # dont step through model during val
+        #     with torch.cuda.amp.autocast():
+        #         outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
+        #         if args.mask == 'blosum' or args.mask == 'random':
+        #             lvb_loss = loss_func1(src, q, q_minus1, outputs, tgt, input_mask, timestep, Q, Q_prod)  # * n_tokens
+        #             ce_loss = loss_func2(outputs, tgt, input_mask)
+        #             nll_loss = ce_loss
+        #             loss = lvb_loss + _lambda * ce_loss
+        #             accu = accu_func(outputs, tgt, input_mask) * n_tokens
+        #         elif args.mask == 'autoreg':
+        #             ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
+        #             loss = ce_loss
+        #             accu = accu_func(outputs, tgt, mask) * n_tokens
         n_seqs = torch.tensor(len(src), device=device)
         return loss, ce_loss, nll_loss, accu, n_tokens, n_seqs, n_processed
 
