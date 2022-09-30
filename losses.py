@@ -1,8 +1,7 @@
 import torch
 from torch.nn import CrossEntropyLoss, KLDivLoss
 from dms.utils import Tokenizer
-#from sequence_models.constants import MSA_ALPHABET
-from dms.constants import MSA_AAS, MSA_ALPHABET
+from sequence_models.constants import MSA_ALPHABET, MSA_AAS
 from torch.nn.functional import normalize
 
 def sample_prior(a,b, _len=len(MSA_AAS)): # TODO dont need len anymore

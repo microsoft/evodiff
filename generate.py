@@ -2,7 +2,7 @@
 from model import ByteNetLMTime
 import numpy as np
 import argparse
-from dms.constants import ALL_AAS, MSA_PAD, PROTEIN_ALPHABET
+from sequence_models.constants import ALL_AAS, MSA_PAD, PROTEIN_ALPHABET
 from sequence_models.constants import MASK, PAD
 import torch
 import os

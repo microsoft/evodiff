@@ -19,7 +19,7 @@ from dms.utils import Tokenizer
 from torch.utils.data import Subset
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 from sequence_models.datasets import UniRefDataset
-from dms.constants import MSA_ALPHABET
+from sequence_models.constants import MSA_ALPHABET
 from dms.collaters import OAMaskCollater, D3PMCollater
 from losses import MaskedCrossEntropyLoss, D3PMCELoss, D3PMLVBLoss
 from sequence_models.metrics import MaskedAccuracy
