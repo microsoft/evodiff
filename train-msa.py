@@ -382,8 +382,8 @@ def train(gpu, args):
         src = src.to(device)
         # print('y', rank)
         tgt = tgt.to(device)
-        input_mask = (src != MSA_ALPHABET_NEW.index(MASK)).float()
-        nonpad_mask = (src != MSA_ALPHABET_NEW.index(MSA_PAD)).float()
+        input_mask = (src != MSA_ALPHABET.index(MASK)).float()
+        nonpad_mask = (src != MSA_ALPHABET.index(MSA_PAD)).float()
         if args.mask == 'blosum' or args.mask == 'random':
             n_tokens = nonpad_mask.sum()
         else:
