@@ -19,7 +19,7 @@ import torch.distributed as dist
 # from apex import amp
 from dms.collaters import D3PMCollaterMSA
 from dms.utils import Tokenizer
-from dms.constants import MSA_ALPHABET_NEW, MSA_ALL_AAS
+from dms.constants import MSA_ALPHABET
 from losses import  D3PMCELossMSA,  D3PMLVBLossMSA
 from sequence_models.esm import MSATransformer
 from model import MSATransformerTime
@@ -129,8 +129,7 @@ def train(gpu, args):
         diffusion_timesteps = None # Not input to model
     elif args.mask == 'blosum' or args.mask == 'random':
         diffusion_timesteps = config['diffusion_timesteps']
-        tokenizer = Tokenizer(path_to_blosum=data_top_dir+"blosum62-special-MSA.mat", protein_alphabet=MSA_ALPHABET_NEW,
-                              all_aas=MSA_ALL_AAS)
+        tokenizer = Tokenizer(path_to_blosum=data_top_dir+"blosum62-special-MSA.mat")
         if args.mask == 'random':
             Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=diffusion_timesteps)
         if args.mask == 'blosum':
@@ -394,8 +393,8 @@ def train(gpu, args):
         src = src.to(device)
         # print('y', rank)
         tgt = tgt.to(device)
-        input_mask = (src != MSA_ALPHABET_NEW.index(MASK)).float()
-        nonpad_mask = (src != MSA_ALPHABET_NEW.index(MSA_PAD)).float()
+        input_mask = (src != MSA_ALPHABET.index(MASK)).float()
+        nonpad_mask = (src != MSA_ALPHABET.index(MSA_PAD)).float()
         if args.mask == 'blosum' or args.mask == 'random':
             n_tokens = nonpad_mask.sum()
         else:

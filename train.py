@@ -15,11 +15,11 @@ import torch.distributed as dist
 from torch.cuda.amp import GradScaler
 
 from model import ByteNetLMTime
-from dms.constants import PROTEIN_ALPHABET, ALL_AAS
 from dms.utils import Tokenizer
 from torch.utils.data import Subset
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 from sequence_models.datasets import UniRefDataset
+from dms.constants import MSA_ALPHABET
 from dms.collaters import OAMaskCollater, D3PMCollater
 from losses import MaskedCrossEntropyLoss, D3PMCELoss, D3PMLVBLoss
 from sequence_models.metrics import MaskedAccuracy
@@ -70,7 +70,7 @@ def main():
         pass
     else:
         os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = '8889'
+        os.environ['MASTER_PORT'] = '8890'
 
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
@@ -89,7 +89,7 @@ def train(gpu, args):
     device = torch.device('cuda:' + str(gpu + args.offset))
     with open(args.config_fpath, 'r') as f:
         config = json.load(f)
-    n_tokens = len(PROTEIN_ALPHABET)
+    n_tokens = len(MSA_ALPHABET)
     print(n_tokens)
     d_embed = config['d_embed']
     d_model = config['d_model']
@@ -137,7 +137,7 @@ def train(gpu, args):
         diffusion_timesteps = None # Not input to model
     elif args.mask == 'blosum' or args.mask == 'random':
         diffusion_timesteps = config['diffusion_timesteps']
-        tokenizer = Tokenizer(path_to_blosum=data_top_dir+"blosum62-special.mat")
+        tokenizer = Tokenizer(path_to_blosum=data_top_dir+"blosum62-special-MSA.mat")
         if args.mask == 'random':
             Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=diffusion_timesteps)
         if args.mask == 'blosum':
@@ -315,7 +315,7 @@ def train(gpu, args):
                       % (t, e + 1, epochs, nsteps, tokens_trained, n_seen, n_total, r_loss, r_ce_loss, r_nll_loss, raccu),
                       end=end)
             if train:
-                print(nsteps)
+                #print(nsteps)
                 losses = losses[-999:]
                 ce_losses = ce_losses[-999:]
                 accus = accus[-999:]
@@ -368,6 +368,16 @@ def train(gpu, args):
         else:
             src, timestep, tgt, mask = batch
             mask = mask.to(device)
+        # ## TODO DELETE LATER
+        # seqs = ""
+        # for t in tgt:
+        #     temp = tokenizer.untokenize(t)
+        #     seqs += (str(temp) + '\n')
+        # with open(args.out_fpath + 'seqs.csv', 'a') as f:
+        #     f.write(','.join(
+        #         [seqs]))
+        #     f.write('\n')
+        ## TODO END
         print("Batchsize", len(timestep))
         timestep = timestep.to(device)
         src = src.to(device)
@@ -380,20 +390,19 @@ def train(gpu, args):
         n_processed = input_mask.sum()
         if train:
             optimizer.zero_grad() # reset gradients of model parameters
-        # Enables autocasting for the forward pass (model + loss) #
+        # Enables autocasting for the forward pass (model + loss)
         with torch.cuda.amp.autocast():
             outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
             if args.mask == 'blosum' or args.mask == 'random':
                 lvb_loss = loss_func1(src, q, q_minus1, outputs, tgt, input_mask, timestep, Q, Q_prod) * n_tokens
                 ce_loss = loss_func2(outputs, tgt, input_mask) * n_tokens
                 nll_loss = ce_loss
-                print("lvb", lvb_loss)
-                print("ce", ce_loss)
-                print("nll", nll_loss)
                 loss = lvb_loss + _lambda * ce_loss
                 accu = accu_func(outputs, tgt, input_mask) * n_tokens
             elif args.mask == 'autoreg':
-                ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask) * n_tokens
+                ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask)
+                ce_loss = ce_loss * n_tokens
+                nll_loss = nll_loss * n_tokens
                 loss = ce_loss
                 accu = accu_func(outputs, tgt, mask) * n_tokens
         if train:
@@ -405,19 +414,6 @@ def train(gpu, args):
             skip_scheduler = (scale > scaler.get_scale())
             if not skip_scheduler:
                 scheduler.step()
-        # else: # dont step through model during val
-        #     with torch.cuda.amp.autocast():
-        #         outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
-        #         if args.mask == 'blosum' or args.mask == 'random':
-        #             lvb_loss = loss_func1(src, q, q_minus1, outputs, tgt, input_mask, timestep, Q, Q_prod)  # * n_tokens
-        #             ce_loss = loss_func2(outputs, tgt, input_mask)
-        #             nll_loss = ce_loss
-        #             loss = lvb_loss + _lambda * ce_loss
-        #             accu = accu_func(outputs, tgt, input_mask) * n_tokens
-        #         elif args.mask == 'autoreg':
-        #             ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask)  # * n_tokens
-        #             loss = ce_loss
-        #             accu = accu_func(outputs, tgt, mask) * n_tokens
         n_seqs = torch.tensor(len(src), device=device)
         return loss, ce_loss, nll_loss, accu, n_tokens, n_seqs, n_processed
 

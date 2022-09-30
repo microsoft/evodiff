@@ -1,27 +1,26 @@
-import numpy as np
 import torch
 from torch.nn import CrossEntropyLoss, KLDivLoss
-from dms.utils import Tokenizer, matrixMul
-from dms.collaters import sample_transition_matrix
-from dms.constants import ALL_AAS
+from dms.utils import Tokenizer
+#from sequence_models.constants import MSA_ALPHABET
+from dms.constants import MSA_AAS, MSA_ALPHABET
 from torch.nn.functional import normalize
 
-def sample_prior(a,b, all_aas=ALL_AAS):
+def sample_prior(a,b, _len=len(MSA_AAS)): # TODO dont need len anymore
     """
     Returns prior for KL at T-> inf with same shape as q over total possible values (all_aas)
     Prior is a stationary distribution; uniform distribution over number of values
     """
     prior = torch.empty(a,b)
-    prior = torch.ones_like(prior) / len(all_aas)
+    prior = torch.ones_like(prior) / _len
     return prior
 
-def sample_prior3D(a,b,c, all_aas=ALL_AAS):
+def sample_prior3D(a,b,c, _len=MSA_AAS): # TODO dont need len anymore
     """
     Returns prior for KL at T-> inf with same shape as q over total possible values (all_aas)
     Prior is a stationary distribution; uniform distribution over number of values
     """
     prior = torch.empty(a,b,c)
-    prior = torch.ones_like(prior) / len(all_aas)
+    prior = torch.ones_like(prior) / len(_len)
     return prior
 
 class MaskedCrossEntropyLoss(CrossEntropyLoss):
@@ -94,7 +93,7 @@ class D3PMCELoss(CrossEntropyLoss):
         p = pred[:, :, :len(self.tokenizer.all_aas)]
         batch, length, tokens = p.shape
         nonpad_loc = input_mask.bool()
-        p_unpadded = torch.masked_select(p,nonpad_loc.unsqueeze(-1).expand(p.shape))
+        p_unpadded = torch.masked_select(p, nonpad_loc.unsqueeze(-1).expand(p.shape))
         p_unpadded = p_unpadded.reshape(-1, tokens)
         t_unpadded = torch.masked_select(tgt, nonpad_loc)
         ce_loss = super().forward(p_unpadded, t_unpadded)
@@ -116,14 +115,14 @@ class D3PMLVBLoss(KLDivLoss):
     def __init__(self, tmax=500, reduction='batchmean', log_target=False, tokenizer=Tokenizer()):
         self.tmax = tmax
         self.tokenizer = tokenizer
-        self.len_aa = len(self.tokenizer.all_aas)
         super().__init__(reduction=reduction, log_target=log_target)
 
     def forward(self, src, q, q_minus1, predictions, tgt, input_mask, timestep, Q, Q_bar):
-        p = torch.nn.functional.softmax(predictions[:, :, :self.len_aa], dim=2) # ignoring mask/pad
+        p = torch.nn.functional.softmax(predictions[:, :, :len(self.tokenizer.all_aas)], dim=2) # ignoring specials
         losses = []
         nonpad_loc = input_mask.sum(axis=1)
         for i in range(tgt.shape[0]): # enumerate over batch
+            D = int(nonpad_loc[i].item())  # want prior/q in shape of seq len (q has shape of longest seq in batch)
             if timestep[i] == 1:
                 # CE (L_t=0)
                 # Reconstruction loss
@@ -133,18 +132,16 @@ class D3PMLVBLoss(KLDivLoss):
             elif timestep[i] == self.tmax: # Not needed to compute gradients
                 # D KL (L_T)
                 # As T approches infinity, this term goes to zero
-                D = int(nonpad_loc[i].item()) # want prior/q in shape of seq len (q has shape of longest seq in batch)
                 q_true = q[i, :D]
-                prior = sample_prior(q_true.shape[0], q_true.shape[1], all_aas=self.tokenizer.all_aas)
+                prior = sample_prior(q_true.shape[0], q_true.shape[1], _len=len(self.tokenizer.all_aas))
                 prior = prior.to(tgt.device)
                 kl_loss_i = super().forward(prior.log(), q_true)  # fKLDivLoss expects input in log-space
                 #print("KL SHOULD BE ~ZERO", kl_loss_i)
                 losses.append(kl_loss_i)
             else:
-                # D KL (L_t-1) -> (q(x|x_t, x_0), p_theta)
-                D = int(nonpad_loc[i]) # non pad locations
+                # D KL (L_t-1) ->    (q(x|x_t, x_0), p_theta)
                 pred = p[i, :D]
-                q_true_minus1 = q_minus1[i,:D]
+                q_true_minus1 = q_minus1[i, :D]
                 x_t_tokenized = src[i, :D]
                 x_t = self.tokenizer.one_hot(x_t_tokenized)
                 #x_t = q[i,:D]
@@ -152,13 +149,28 @@ class D3PMLVBLoss(KLDivLoss):
                 B = Q_bar[timestep[i]-1] # [K x K]
                 q_t = torch.mul(A.unsqueeze(1), B) # [P x K x K]
                 pred = pred.to(torch.float64) # must use 64 not 32 or p_theta_marg
+                #print(q_t.shape, pred.shape)
                 p_theta_marg = torch.bmm(q_t, pred.unsqueeze(2)).squeeze() # [P x K] this marginalizes over dim=2
                 p_theta_marg = p_theta_marg/p_theta_marg.sum(axis=1, keepdim=True) # normalize probabilities at each position
                 p_theta_marg = p_theta_marg.to(tgt.device)
                 kl_loss_i = super().forward(p_theta_marg.log(), q_true_minus1)  # KLDivLoss expects input in log-space
+                # todo remove debug
+                print("timestep", timestep[i], kl_loss_i)
+                # if torch.isinf(kl_loss_i): # todo check isnan too
+                #     print(A.shape, B.shape, q_t.shape, p_theta_marg.shape, q_true_minus1.shape)
+                #     for j in range(len(p_theta_marg)):
+                #         kl_loss_j = super().forward(p_theta_marg[j].log(), q_true_minus1[j])
+                #         if torch.isinf(kl_loss_j):
+                #             print(self.tokenizer.untokenize([x_t_tokenized[j]]))
+                #             #print(x_t[j], torch.t(Q[timestep[i]]))
+                #             print(p_theta_marg[j])
+                #             print("ptheta/q_true i", p_theta_marg[j].log(), q_true_minus1[j]) # TODO lets just make this MSA
+                #             print("KL LOSS i", super().forward(p_theta_marg[j].log(), q_true_minus1[j]))
+                #     raise Exception
                 losses.append(kl_loss_i)
         losses = torch.stack(losses)
         lvb = ((losses.sum()) / (tgt.shape[0]))  # loss per batch, norm by batchsize
+        #print(lvb)
         return lvb
 
 
@@ -201,11 +213,11 @@ class D3PMLVBLossMSA(KLDivLoss):
     def __init__(self, tmax=500, reduction='batchmean', log_target=False, tokenizer=Tokenizer()):
         self.tmax = tmax
         self.tokenizer = tokenizer
-        self.len_aa = len(self.tokenizer.all_aas)
+        #self.len_aa = len(self.tokenizer.all_aas)
         super().__init__(reduction=reduction, log_target=log_target)
 
     def forward(self, src, one_hot, q, q_minus1, predictions, tgt, input_mask, timestep, Q, Q_bar):
-        p = torch.nn.functional.softmax(predictions[:, :, :, :self.len_aa], dim=3) # ignoring mask/pad
+        p = torch.nn.functional.softmax(predictions[:, :, :, :len(self.tokenizer.all_aas)], dim=3)  # ignoring specials
         losses = []
         nonpad_loc = input_mask.sum(axis=2)
         for i in range(len(tgt)): # enumerate over batch
@@ -221,7 +233,7 @@ class D3PMLVBLossMSA(KLDivLoss):
                 # D KL (L_T)
                 # As T approches infinity, this term goes to zero
                 q_true = q[i, :, :D, :]
-                prior = sample_prior3D(q_true.shape[0], q_true.shape[1], q_true.shape[2], all_aas=self.tokenizer.all_aas)
+                prior = sample_prior3D(q_true.shape[0], q_true.shape[1], q_true.shape[2], _len=self.tokenizer.alphabet)
                 prior = prior.to(tgt.device)
                 kl_loss_i = super().forward(prior.log(), q_true)  # fKLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
@@ -242,3 +254,6 @@ class D3PMLVBLossMSA(KLDivLoss):
         losses = torch.stack(losses)
         lvb = ((losses.sum()) / (tgt.shape[0]))  # loss per batch, norm by batchsize
         return lvb
+
+    # is it always generating C/K
+    # generate on full training checkpoint
