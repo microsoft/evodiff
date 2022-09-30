@@ -5,7 +5,7 @@ import numpy as np
 from torch.utils.checkpoint import checkpoint
 from sequence_models.layers import PositionFeedForward, DoubleEmbedding
 from sequence_models.convolutional import ByteNetBlock
-from sequence_models.constants import PROTEIN_ALPHABET, PAD, MASK
+from sequence_models.constants import PROTEIN_ALPHABET, PAD, MASK, MSA_ALPHABET
 from esm.modules import TransformerLayer, LearnedPositionalEmbedding, RobertaLMHead, ESM1bLayerNorm, AxialTransformerLayer
 
 class PositionalEncoding(nn.Module):
@@ -164,14 +164,13 @@ class MSATransformerTime(nn.Module):
            number of attention heads
    """
 
-    def __init__(self, d_model, d_hidden, n_layers, n_heads, use_ckpt=False, n_tokens=len(PROTEIN_ALPHABET),
-                 padding_idx=PROTEIN_ALPHABET.index(PAD), mask_idx=PROTEIN_ALPHABET.index(MASK),
+    def __init__(self, d_model, d_hidden, n_layers, n_heads, use_ckpt=False, n_tokens=len(MSA_ALPHABET),
+                 padding_idx=MSA_ALPHABET.index(PAD), mask_idx=MSA_ALPHABET.index(MASK),
                  max_positions=1024, timesteps=None):
         super(MSATransformerTime, self).__init__()
 
         self.timesteps = timesteps
-        self.time_encoding = PositionalEncoding(64, length=timesteps) # TODO 64 to match output of pos embedding
-
+        self.time_encoding = PositionalEncoding(64, length=timesteps)
         self.embed_tokens = nn.Embedding(
             n_tokens, d_model, padding_idx=mask_idx
         )

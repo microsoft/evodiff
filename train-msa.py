@@ -12,24 +12,18 @@ from torch.nn.utils import clip_grad_norm_
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
-# from apex.optimizers import FusedAdam
-# from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 import torch.distributed as dist
-# from apex.parallel import DistributedDataParallel as DDP
-# from apex import amp
 from dms.collaters import D3PMCollaterMSA
 from dms.utils import Tokenizer
-from dms.constants import MSA_ALPHABET_NEW, MSA_ALL_AAS
 from losses import  D3PMCELossMSA,  D3PMLVBLossMSA
-from sequence_models.esm import MSATransformer
 from model import MSATransformerTime
-from sequence_models.constants import MSA_PAD, MASK, MSA_ALPHABET
+from sequence_models.constants import MSA_PAD, MASK, MSA_ALPHABET, MSA_AAS
 from sequence_models.datasets import TRRMSADataset, A3MMSADataset
 from sequence_models.collaters import MSAAbsorbingCollater
 from sequence_models.losses import MaskedCrossEntropyLossMSA
 from sequence_models.metrics import MaskedAccuracy
-from torch.utils.data import Subset, SubsetRandomSampler
+from torch.utils.data import Subset
 from sequence_models.utils import warmup, transformer_lr
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 
@@ -130,12 +124,12 @@ def train(gpu, args):
     # build datasets, samplers, and loaders
     if args.mask == 'autoreg':
         tokenizer = Tokenizer()
-        collater = MSAAbsorbingCollater(MSA_ALPHABET_NEW)
+        collater = MSAAbsorbingCollater(MSA_ALPHABET)
         diffusion_timesteps = None # Not input to model
     elif args.mask == 'blosum' or args.mask == 'random':
         diffusion_timesteps = config['diffusion_timesteps']
-        tokenizer = Tokenizer(path_to_blosum=data_top_dir+"blosum62-special-MSA.mat", protein_alphabet=MSA_ALPHABET_NEW,
-                              all_aas=MSA_ALL_AAS)
+        tokenizer = Tokenizer(path_to_blosum=data_top_dir+"blosum62-special-MSA.mat", protein_alphabet=MSA_ALPHABET,
+                              all_aas=MSA_AAS)
         if args.mask == 'random':
             Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=diffusion_timesteps)
         if args.mask == 'blosum':
