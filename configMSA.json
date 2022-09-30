@@ -1,5 +1,5 @@
 {
-  "dataset": "trrosetta",
+  "dataset": "openfold",
   "selection_type": "MaxHamming",
   "d_embed": 768,
   "d_hidden": 3072,
@@ -14,5 +14,6 @@
   "max_square_tokens": 800000000000,
   "n_sequences": 64,
   "max_seq_len": 512,
-  "diffusion_timesteps": 500
+  "diffusion_timesteps": 10000,
+  "clip": 1.0
 }
