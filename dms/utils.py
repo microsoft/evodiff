@@ -31,7 +31,7 @@ def double_stochastic(q):
         q_norm = normalize(q_norm, axis=1, norm='l1')
     return q_norm
 
-def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=8, timesteps=500):
+def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=8):
     """
     Variance schedule for adding noise as introduced by Nichol and Dhariwal and adapted by Hoogeboom et al
     Coined as uniform schedule in Austin et al.
@@ -40,8 +40,8 @@ def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=
     if schedule == 'linear':
         betas = torch.linspace(start, end, num_timesteps)
     elif schedule == 'sohl-dickstein':
-        betas = torch.linspace(0,timesteps-1, timesteps)
-        betas = 1/(timesteps - betas + 1)
+        betas = torch.linspace(0,num_timesteps-1, num_timesteps)
+        betas = 1/(num_timesteps - betas + 1)
     elif schedule == "cosine":
         betas = torch.linspace(np.pi / 2, 0, num_timesteps)
         betas = torch.cos(betas) * (end - start) + start
@@ -138,7 +138,7 @@ class Tokenizer(object):
         Q_t = torch.stack(Q_t) # scheduled matrix
         return Q_prod, Q_t
 
-    def q_random_schedule(self, timesteps=500, schedule='linear'):
+    def q_random_schedule(self, timesteps=500, schedule='sohl-dickstein'):
         print(schedule)
         betas = _beta_schedule(timesteps, schedule=schedule)
         K = len(self.all_aas)
