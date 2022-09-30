@@ -1,8 +1,8 @@
 from dms.data import loadMatrix
 import torch
 import numpy as np
-from dms.constants import MASK, MSA_PAD #MSA_ALPHABET
-from dms.constants import BLOSUM_ALPHABET, MSA_ALPHABET, MSA_AAS
+from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS
+from dms.constants import BLOSUM_ALPHABET
 from sklearn.preprocessing import normalize
 
 
