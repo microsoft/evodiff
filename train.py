@@ -14,14 +14,14 @@ from torch.utils.data import DataLoader
 import torch.distributed as dist
 from torch.cuda.amp import GradScaler
 
-from model import ByteNetLMTime
+from dms.model import ByteNetLMTime
 from dms.utils import Tokenizer
 from torch.utils.data import Subset
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 from sequence_models.datasets import UniRefDataset
 from sequence_models.constants import MSA_ALPHABET
 from dms.collaters import OAMaskCollater, D3PMCollater
-from losses import MaskedCrossEntropyLoss, D3PMCELoss, D3PMLVBLoss
+from dms.losses import AutoregMaskedCrossEntropyLoss, D3PMCELoss, D3PMLVBLoss
 from sequence_models.metrics import MaskedAccuracy
 from sequence_models.utils import warmup, transformer_lr
 import sys
@@ -62,7 +62,7 @@ def main():
     parser.add_argument('--warmup', action='store_true')  # Set to True if running on subset of data
     parser.add_argument('--checkpoint_freq', type=float, default=1)  # in minutes
     parser.add_argument('--log_freq', type=float, default=10)  # in steps
-    parser.add_argument('--reweighting_term', type=float, default=0.01)  # lambda reweighting term from Austin D3PM
+    parser.add_argument('--reweighting_term', type=float, default=1)  # lambda reweighting term from Austin D3PM
 
     args = parser.parse_args()
     args.world_size = args.gpus * args.nodes
@@ -70,7 +70,7 @@ def main():
         pass
     else:
         os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = '8890'
+        os.environ['MASTER_PORT'] = '8889'
 
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
@@ -78,7 +78,6 @@ def train(gpu, args):
     _ = torch.manual_seed(0)
     if args.aml:
         args.nr = int(os.environ['OMPI_COMM_WORLD_RANK'])
-        #print(args.nr)
     rank = args.nr * args.gpus + gpu
     dist.init_process_group(
         backend='nccl',
@@ -236,7 +235,7 @@ def train(gpu, args):
     if args.warmup:
         scheduler = LambdaLR(optimizer, warmup(warmup_steps), verbose=False)
     if args.mask == 'autoreg':
-        loss_func = MaskedCrossEntropyLoss(reweight=True)
+        loss_func = AutoregMaskedCrossEntropyLoss(reweight=True)
     elif args.mask == 'blosum' or args.mask == 'random':
         # Austin = LVB + lambda * CE
         loss_func1 = D3PMLVBLoss(tmax=diffusion_timesteps)
@@ -261,6 +260,7 @@ def train(gpu, args):
         nll_losses = []
         accus = []
         ns = []
+        num_seqs = []
         chunk_time = datetime.now()
         n_seen = 0
         tokens_trained = current_tokens
@@ -293,11 +293,19 @@ def train(gpu, args):
             nll_losses.append(new_nll_loss.item())
             accus.append(new_accu.item())
             ns.append(new_n.item())
+            num_seqs.append(new_seqs.item())
             n_seen += new_seqs.item()
             total_n = sum(ns)
-            r_loss = sum(losses) / total_n
-            r_ce_loss = sum(ce_losses) / total_n
-            r_nll_loss = sum(nll_losses) / total_n
+            total_s = sum(num_seqs)
+            #print(total_n, sum(losses), sum(ce_losses), sum(nll_losses))
+            if args.mask == 'autoreg':
+                r_loss = sum(losses) / total_n
+                r_ce_loss = sum(ce_losses) / total_n
+                r_nll_loss = sum(nll_losses) / total_n
+            elif args.mask == 'blosum' or args.mask == 'random':
+                r_loss = sum(losses)
+                r_ce_loss = sum(ce_losses)
+                r_nll_loss = sum(nll_losses)
             raccu = sum(accus) / total_n
             if train:
                 nsteps = current_step + i + 1
@@ -368,16 +376,6 @@ def train(gpu, args):
         else:
             src, timestep, tgt, mask = batch
             mask = mask.to(device)
-        # ## TODO DELETE LATER
-        # seqs = ""
-        # for t in tgt:
-        #     temp = tokenizer.untokenize(t)
-        #     seqs += (str(temp) + '\n')
-        # with open(args.out_fpath + 'seqs.csv', 'a') as f:
-        #     f.write(','.join(
-        #         [seqs]))
-        #     f.write('\n')
-        ## TODO END
         print("Batchsize", len(timestep))
         timestep = timestep.to(device)
         src = src.to(device)
@@ -388,21 +386,23 @@ def train(gpu, args):
         else:
             n_tokens = mask.sum()
         n_processed = input_mask.sum()
+        n_seqs = torch.tensor(len(src), device=device)
         if train:
             optimizer.zero_grad() # reset gradients of model parameters
         # Enables autocasting for the forward pass (model + loss)
         with torch.cuda.amp.autocast():
             outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
             if args.mask == 'blosum' or args.mask == 'random':
-                lvb_loss = loss_func1(src, q, q_minus1, outputs, tgt, input_mask, timestep, Q, Q_prod) * n_tokens
-                ce_loss = loss_func2(outputs, tgt, input_mask) * n_tokens
+                lvb_loss = loss_func1(src, q, q_minus1, outputs, tgt, input_mask, timestep, Q, Q_prod) # loss
+                ce_loss = loss_func2(outputs, tgt, input_mask) # loss per batch
                 nll_loss = ce_loss
                 loss = lvb_loss + _lambda * ce_loss
+                print(lvb_loss)
+                print(ce_loss, nll_loss)
+                print(loss)
                 accu = accu_func(outputs, tgt, input_mask) * n_tokens
             elif args.mask == 'autoreg':
-                ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask)
-                ce_loss = ce_loss * n_tokens
-                nll_loss = nll_loss * n_tokens
+                ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask) # sum(loss per token) over entire batch
                 loss = ce_loss
                 accu = accu_func(outputs, tgt, mask) * n_tokens
         if train:
@@ -414,7 +414,6 @@ def train(gpu, args):
             skip_scheduler = (scale > scaler.get_scale())
             if not skip_scheduler:
                 scheduler.step()
-        n_seqs = torch.tensor(len(src), device=device)
         return loss, ce_loss, nll_loss, accu, n_tokens, n_seqs, n_processed
 
     if rank == 0:

@@ -1,10 +1,10 @@
 import torch
 from torch.nn import CrossEntropyLoss, KLDivLoss
 from dms.utils import Tokenizer
-from sequence_models.constants import MSA_ALPHABET, MSA_AAS
+from sequence_models.constants import MSA_AAS
 from torch.nn.functional import normalize
 
-def sample_prior(a,b, _len=len(MSA_AAS)): # TODO dont need len anymore
+def sample_prior(a,b, _len=len(MSA_AAS)):
     """
     Returns prior for KL at T-> inf with same shape as q over total possible values (all_aas)
     Prior is a stationary distribution; uniform distribution over number of values
@@ -13,7 +13,7 @@ def sample_prior(a,b, _len=len(MSA_AAS)): # TODO dont need len anymore
     prior = torch.ones_like(prior) / _len
     return prior
 
-def sample_prior3D(a,b,c, _len=MSA_AAS): # TODO dont need len anymore
+def sample_prior3D(a,b,c, _len=MSA_AAS):
     """
     Returns prior for KL at T-> inf with same shape as q over total possible values (all_aas)
     Prior is a stationary distribution; uniform distribution over number of values
@@ -22,16 +22,18 @@ def sample_prior3D(a,b,c, _len=MSA_AAS): # TODO dont need len anymore
     prior = torch.ones_like(prior) / len(_len)
     return prior
 
-class MaskedCrossEntropyLoss(CrossEntropyLoss):
+class AutoregMaskedCrossEntropyLoss(CrossEntropyLoss):
     """Masked cross-entropy loss for sequences.
-    Evaluates the cross-entropy loss at specified locations in a sequence, using a reweighting term for diffusion
-    models 1/(D-t+1) output in OAMaskCollater
+    Evaluates the cross-entropy loss at specified locations in a sequence
+    When reweight = True, reweights CE according to Hoogeboom et al.;
+    reweight term = 1/(D-t+1)
     Shape:
         Inputs:
             - pred: (N, L, n_tokens)
             - tgt: (N, L)
             - mask: (N, L) boolean
             - timestep (N, L) output from OAMaskCollater
+            - input mask (N, L)
             - weight: (C, ): class weights for nn.CrossEntropyLoss
 
     Returns
@@ -43,7 +45,6 @@ class MaskedCrossEntropyLoss(CrossEntropyLoss):
         self.tokenizer = tokenizer
         super().__init__(weight=weight, reduction=reduction)
     def forward(self, pred, tgt, mask, timesteps, input_mask):
-        alphabet = self.tokenizer.tokenize([self.tokenizer.alphabet])
         # Make sure we have that empty last dimension
         if len(mask.shape) == len(pred.shape) - 1:
             mask = mask.unsqueeze(-1)
@@ -52,28 +53,21 @@ class MaskedCrossEntropyLoss(CrossEntropyLoss):
         mask = mask.bool()
         input_mask = input_mask.bool() # padded seq
         # Select
-        #n = mask.sum() # len mask tokens
-        mask_tokens = mask.sum(axis=1) # len batch
-        n_tokens = input_mask.sum(axis=1) # len batch
-        nll_losses = 0
-        ce_losses = []
-        for i in range(tgt.shape[0]): # iterate over each sequence in batch
-            p = torch.masked_select(pred[i], mask[i]).view(mask_tokens[i], len(alphabet)) # predictions for each mask
-            t = torch.masked_select(tgt[i], mask[i].squeeze())#.squeeze())
-            loss = super().forward(p, t)
-            #print("loss", loss)
-            if self.reweight: # Uses autoreg reweighting term
-                # Reweight for summation over t
-                _timesteps = timesteps[i].repeat_interleave(timesteps[i])
-                rwt_term = 1. / _timesteps  # Hoogeboom OARDM
-                _n_tokens = torch.repeat_interleave(n_tokens[i], len(loss), axis=0)
-                ce_loss = _n_tokens * rwt_term * loss
-            if not self.reweight:  # For D3PM reweight in train loop
-                ce_loss = loss
-            ce_losses.append(ce_loss.sum()) # reduce mean
-            nll_losses += loss.sum()
-        nll_losses = nll_losses/mask.sum()
-        ce_losses = torch.stack(ce_losses, dim=0).sum()/n_tokens.sum() # divide by D so we can compare to bits per char
+        mask_tokens = mask.sum() # masked tokens
+        nonpad_tokens = input_mask.sum(dim=1) # nonpad tokens
+        p = torch.masked_select(pred, mask).view(mask_tokens, -1) # [T x K] predictions for each mask char
+        t = torch.masked_select(tgt, mask.squeeze()) # [ T ] true mask char
+        loss = super().forward(p, t) # [ T ] loss per mask char
+        # Calculate reweighted CE loss and NLL loss
+        nll_losses = loss.sum()
+        if self.reweight: # Uses Hoogeboom OARDM reweighting term
+            rwt_term = 1. / timesteps
+            rwt_term = rwt_term.repeat_interleave(timesteps)
+            _n_tokens = nonpad_tokens.repeat_interleave(timesteps)
+            ce_loss = _n_tokens * rwt_term * loss
+            ce_losses = ce_loss.sum()  # reduce mean
+        else:
+            ce_losses = nll_losses
         return ce_losses, nll_losses.to(torch.float64)
 
 
@@ -153,23 +147,9 @@ class D3PMLVBLoss(KLDivLoss):
                 p_theta_marg = p_theta_marg/p_theta_marg.sum(axis=1, keepdim=True) # normalize probabilities at each position
                 p_theta_marg = p_theta_marg.to(tgt.device)
                 kl_loss_i = super().forward(p_theta_marg.log(), q_true_minus1)  # KLDivLoss expects input in log-space
-                # todo remove debug
-                print("timestep", timestep[i], kl_loss_i)
-                # if torch.isinf(kl_loss_i): # todo check isnan too
-                #     print(A.shape, B.shape, q_t.shape, p_theta_marg.shape, q_true_minus1.shape)
-                #     for j in range(len(p_theta_marg)):
-                #         kl_loss_j = super().forward(p_theta_marg[j].log(), q_true_minus1[j])
-                #         if torch.isinf(kl_loss_j):
-                #             print(self.tokenizer.untokenize([x_t_tokenized[j]]))
-                #             #print(x_t[j], torch.t(Q[timestep[i]]))
-                #             print(p_theta_marg[j])
-                #             print("ptheta/q_true i", p_theta_marg[j].log(), q_true_minus1[j]) # TODO lets just make this MSA
-                #             print("KL LOSS i", super().forward(p_theta_marg[j].log(), q_true_minus1[j]))
-                #     raise Exception
                 losses.append(kl_loss_i)
         losses = torch.stack(losses)
-        lvb = ((losses.sum()) / (tgt.shape[0]))  # loss per batch, norm by batchsize
-        #print(lvb)
+        lvb = losses.sum() #((losses.sum()) / (tgt.shape[0]))  # loss per batch, norm by batchsize
         return lvb
 
 
@@ -192,7 +172,6 @@ class D3PMCELossMSA(CrossEntropyLoss):
         p_unpadded = p_unpadded.reshape(-1, tokens)
         t_unpadded = torch.masked_select(tgt, nonpad_loc)
         ce_loss = super().forward(p_unpadded, t_unpadded)
-        #[print("ce", ce_loss) # TODO why is CE loss so large?
         return ce_loss
 
 
