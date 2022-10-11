@@ -21,7 +21,7 @@ from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 from sequence_models.datasets import UniRefDataset
 from sequence_models.constants import MSA_ALPHABET
 from dms.collaters import OAMaskCollater, D3PMCollater
-from dms.losses import AutoregMaskedCrossEntropyLoss, D3PMCELoss, D3PMLVBLoss
+from dms.losses import OAMaskedCrossEntropyLoss, D3PMCELoss, D3PMLVBLoss
 from sequence_models.metrics import MaskedAccuracy
 from sequence_models.utils import warmup, transformer_lr
 import sys
@@ -235,7 +235,7 @@ def train(gpu, args):
     if args.warmup:
         scheduler = LambdaLR(optimizer, warmup(warmup_steps), verbose=False)
     if args.mask == 'autoreg':
-        loss_func = AutoregMaskedCrossEntropyLoss(reweight=True)
+        loss_func = OAMaskedCrossEntropyLoss(reweight=True)
     elif args.mask == 'blosum' or args.mask == 'random':
         # Austin = LVB + lambda * CE
         loss_func1 = D3PMLVBLoss(tmax=diffusion_timesteps)
@@ -281,6 +281,7 @@ def train(gpu, args):
                 optimizer.load_state_dict(sd['optimizer_state_dict'])
                 scheduler.load_state_dict(sd['scheduler_state_dict'])
             new_loss, new_ce_loss, new_nll_loss, new_accu, new_n, new_seqs, new_processed = step(model, batch, train)
+            #print("before reduce", new_loss, new_ce_loss)
             if train:
                 dist.reduce(new_loss, 0, op=dist.ReduceOp.SUM)
                 dist.reduce(new_ce_loss, 0, op=dist.ReduceOp.SUM)
@@ -288,6 +289,7 @@ def train(gpu, args):
                 dist.reduce(new_accu, 0, op=dist.ReduceOp.SUM)
                 dist.reduce(new_n, 0, op=dist.ReduceOp.SUM)
                 dist.reduce(new_seqs, 0, op=dist.ReduceOp.SUM)
+            #print("after reduce", new_loss, new_ce_loss)
             losses.append(new_loss.item())
             ce_losses.append(new_ce_loss.item())
             nll_losses.append(new_nll_loss.item())
@@ -298,14 +300,22 @@ def train(gpu, args):
             total_n = sum(ns)
             total_s = sum(num_seqs)
             #print(total_n, sum(losses), sum(ce_losses), sum(nll_losses))
+            #print(len(losses), len(ce_losses), len(nll_losses))
+            # if sum(losses) <= sum(ce_losses):
+            #     print("Bug")
+            #     print(losses)
+            #     print(ce_losses)
+            #     print(len(losses), len(ce_losses))
+            #     print(new_loss.item(), new_ce_loss.item())
+            #     import pdb; pdb.set_trace()
             if args.mask == 'autoreg':
                 r_loss = sum(losses) / total_n
                 r_ce_loss = sum(ce_losses) / total_n
                 r_nll_loss = sum(nll_losses) / total_n
             elif args.mask == 'blosum' or args.mask == 'random':
-                r_loss = sum(losses)
-                r_ce_loss = sum(ce_losses)
-                r_nll_loss = sum(nll_losses)
+                 r_loss = sum(losses) / total_n
+                 r_ce_loss = sum(ce_losses) / total_n
+                 r_nll_loss = sum(nll_losses) /total_n
             raccu = sum(accus) / total_n
             if train:
                 nsteps = current_step + i + 1
@@ -328,6 +338,7 @@ def train(gpu, args):
                 ce_losses = ce_losses[-999:]
                 accus = accus[-999:]
                 ns = ns[-999:]
+                nll_losses = nll_losses[-999:]
                 if nsteps % args.log_freq == 0:  # write to checkpoint frequency
                     if rank == 0:
                         mlflow.log_metrics({'train_loss': r_loss,
@@ -392,19 +403,22 @@ def train(gpu, args):
         # Enables autocasting for the forward pass (model + loss)
         with torch.cuda.amp.autocast():
             outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
-            if args.mask == 'blosum' or args.mask == 'random':
-                lvb_loss = loss_func1(src, q, q_minus1, outputs, tgt, input_mask, timestep, Q, Q_prod) # loss
-                ce_loss = loss_func2(outputs, tgt, input_mask) # loss per batch
-                nll_loss = ce_loss
-                loss = lvb_loss + _lambda * ce_loss
-                print(lvb_loss)
-                print(ce_loss, nll_loss)
-                print(loss)
-                accu = accu_func(outputs, tgt, input_mask) * n_tokens
-            elif args.mask == 'autoreg':
+            if args.mask == 'autoreg':
                 ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask) # sum(loss per token) over entire batch
                 loss = ce_loss
                 accu = accu_func(outputs, tgt, mask) * n_tokens
+            elif args.mask == 'blosum' or args.mask == 'random':
+                lvb_loss = loss_func1(src, q, q_minus1, outputs, tgt, input_mask, timestep, Q, Q_prod) * n_tokens
+                ce_loss = loss_func2(outputs, tgt, input_mask) * n_tokens
+                loss = lvb_loss + _lambda * ce_loss
+                #lvb_loss *= n_seqs
+                #ce_loss *= n_processed
+                #loss *= n_seqs
+                nll_loss = ce_loss
+                #print("out of loop", loss, ce_loss)
+                if loss < ce_loss:
+                    print("in loop", loss, ce_loss)
+                accu = accu_func(outputs, tgt, input_mask) * n_tokens
         if train:
             # Exits the context manager before backward()
             scaler.scale(loss).backward()
@@ -428,7 +442,6 @@ def train(gpu, args):
     for e in range(initial_epoch, epochs):
         if not args.mini_run:
             train_sortish_sampler.set_epoch(e + 1)
-        #print("epoch ", e)
         s, t = epoch(model, True, current_step=total_steps, current_tokens=total_tokens)
         total_steps += s
         total_tokens += t

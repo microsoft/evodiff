@@ -22,7 +22,7 @@ def sample_prior3D(a,b,c, _len=MSA_AAS):
     prior = torch.ones_like(prior) / len(_len)
     return prior
 
-class AutoregMaskedCrossEntropyLoss(CrossEntropyLoss):
+class OAMaskedCrossEntropyLoss(CrossEntropyLoss):
     """Masked cross-entropy loss for sequences.
     Evaluates the cross-entropy loss at specified locations in a sequence
     When reweight = True, reweights CE according to Hoogeboom et al.;
@@ -68,7 +68,7 @@ class AutoregMaskedCrossEntropyLoss(CrossEntropyLoss):
             ce_losses = ce_loss.sum()  # reduce mean
         else:
             ce_losses = nll_losses
-        return ce_losses, nll_losses.to(torch.float64)
+        return ce_losses, nll_losses.to(torch.float64) # normalize by # of tokens
 
 
 class D3PMCELoss(CrossEntropyLoss):
@@ -132,7 +132,7 @@ class D3PMLVBLoss(KLDivLoss):
                 #print("KL SHOULD BE ~ZERO", kl_loss_i)
                 losses.append(kl_loss_i)
             else:
-                # D KL (L_t-1) ->    (q(x|x_t, x_0), p_theta)
+                # D KL (L_t-1) -> (q(x|x_t, x_0), p_theta)
                 pred = p[i, :D]
                 q_true_minus1 = q_minus1[i, :D]
                 x_t_tokenized = src[i, :D]
@@ -148,8 +148,8 @@ class D3PMLVBLoss(KLDivLoss):
                 p_theta_marg = p_theta_marg.to(tgt.device)
                 kl_loss_i = super().forward(p_theta_marg.log(), q_true_minus1)  # KLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
-        losses = torch.stack(losses)
-        lvb = losses.sum() #((losses.sum()) / (tgt.shape[0]))  # loss per batch, norm by batchsize
+        losses = torch.stack(losses) # loss per sequence in batch
+        lvb = losses.mean()
         return lvb
 
 
