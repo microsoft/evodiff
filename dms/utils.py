@@ -2,7 +2,6 @@ from dms.data import loadMatrix
 import torch
 import numpy as np
 from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS
-from dms.constants import BLOSUM_ALPHABET
 from sklearn.preprocessing import normalize
 
 
@@ -123,15 +122,15 @@ class Tokenizer(object):
         #             q_expand[i, j] = 0.0
         # REORDER BLOSUM MATRIX BASED ON MSA_ALPHABET (self.alphabet, self.a_to_i)
         new_q = q.clone()
-        i2_to_a = np.array(list(BLOSUM_ALPHABET))
-        for i, row in enumerate(new_q):
-            for j, value in enumerate(row):
-                ind1, ind2 = [i, j]
-                key = i2_to_a[ind1], i2_to_a[ind2]
-                new1, new2 = [self.a_to_i[k] for k in key]
-                #print([ind1, ind2], key, [new1, new2])
-                #print("before", new_q[new1,new2])
-                new_q[new1, new2] = q[ind1, ind2]
+        # i2_to_a = np.array(list(BLOSUM_ALPHABET))
+        # for i, row in enumerate(new_q):
+        #     for j, value in enumerate(row):
+        #         ind1, ind2 = [i, j]
+        #         key = i2_to_a[ind1], i2_to_a[ind2]
+        #         new1, new2 = [self.a_to_i[k] for k in key]
+        #         #print([ind1, ind2], key, [new1, new2])
+        #         #print("before", new_q[new1,new2])
+        #         new_q[new1, new2] = q[ind1, ind2]
                 #print("after", new_q[new1,new2])
         #print(new_q == q)
         #print(new_q.sum(axis=0), new_q.sum(axis=1))
@@ -164,7 +163,6 @@ class Tokenizer(object):
     def q_random_schedule(self, timesteps=500, schedule='sohl-dickstein'):
         print(schedule)
         betas = _beta_schedule(timesteps, schedule=schedule)
-        betas = betas / betas.max()
         K = len(self.all_aas)
         Q_t = []  # scheduled matrix
         for i in range(len(betas)):
