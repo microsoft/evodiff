@@ -2,6 +2,7 @@ from dms.data import loadMatrix
 import torch
 import numpy as np
 from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS
+from dms.constants import BLOSUM_ALPHABET
 from sklearn.preprocessing import normalize
 
 
@@ -27,8 +28,7 @@ def double_stochastic(q):
 
 def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=8):
     """
-    Variance schedule for adding noise as introduced by Nichol and Dhariwal and adapted by Hoogeboom et al
-    Coined as uniform schedule in Austin et al.
+    Variance schedule for adding noise
     Start/End will control the magnitude of sigmoidal and cosine schedules..
     """
     if schedule == 'linear':
@@ -108,46 +108,26 @@ class Tokenizer(object):
         q = softmax(q)
         q = double_stochastic(q)
         q = torch.tensor(q)
-        #print(q.sum(axis=0), q.sum(axis=1))
-        #EXPAND DIMENSIONS TO MATCH MSA_ALPHABET
-        # P = len(self.alphabet)
-        # q_expand = torch.zeros(P, P)
-        # q_i, q_j = q.shape
-        # for i, row in enumerate(q_expand):
-        #     for j, value in enumerate(row):
-        #         # columns
-        #         if (i <= q_i - 1) and (j <= q_j - 1):
-        #             q_expand[i, j] = q[i, j]
-        #         else: # fill anything not in matrix with zeros
-        #             q_expand[i, j] = 0.0
         # REORDER BLOSUM MATRIX BASED ON MSA_ALPHABET (self.alphabet, self.a_to_i)
         new_q = q.clone()
-        # i2_to_a = np.array(list(BLOSUM_ALPHABET))
-        # for i, row in enumerate(new_q):
-        #     for j, value in enumerate(row):
-        #         ind1, ind2 = [i, j]
-        #         key = i2_to_a[ind1], i2_to_a[ind2]
-        #         new1, new2 = [self.a_to_i[k] for k in key]
-        #         #print([ind1, ind2], key, [new1, new2])
-        #         #print("before", new_q[new1,new2])
-        #         new_q[new1, new2] = q[ind1, ind2]
-                #print("after", new_q[new1,new2])
-        #print(new_q == q)
-        #print(new_q.sum(axis=0), new_q.sum(axis=1))
+        i2_to_a = np.array(list(BLOSUM_ALPHABET))
+        for i, row in enumerate(new_q):
+            for j, value in enumerate(row):
+                ind1, ind2 = [i, j]
+                key = i2_to_a[ind1], i2_to_a[ind2]
+                new1, new2 = [self.a_to_i[k] for k in key]
+                new_q[new1, new2] = q[ind1, ind2]
         return new_q
 
     def q_blosum_schedule(self, timesteps=500, schedule='exp', max=6):
         """
-        betas = None; Natural mutation pattern for blosum - no schedule
         betas = 'exp' use exp scheme for beta schedule
         """
         print(schedule)
         K = len(self.all_aas)
-        #print(self.alphabet)
         q = self.q_blosum()
-        _betas = _beta_schedule(timesteps, schedule=schedule, max=max)
-        betas = (_betas - _betas.min())
-        betas = betas / betas.max()
+        betas = _beta_schedule(timesteps, schedule=schedule, max=max)
+        betas = betas / betas.max() + 1/timesteps
         Q_t = [] # scheduled matrix
         for i in range(timesteps):
             q_non_diag = torch.ones((K,K)) * q * betas[i]
