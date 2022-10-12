@@ -7,7 +7,7 @@ from sklearn.preprocessing import normalize
 
 
 def cumprod_matrix(a):
-    "takes a list of transition matricies and ouputs a list of the cum prod"
+    "takes a list of transition matrices and ouputs a list of the cum prod (Q_bar) at each timestep"
     a_bar = [a[0]]  # initialize w/ first item in list
     start = a[0]
     for i in range(len(a) - 1):
@@ -148,16 +148,10 @@ class Tokenizer(object):
         q = self.q_blosum()
         _betas = _beta_schedule(timesteps, schedule=schedule, max=max)
         betas = (_betas - _betas.min())
-        betas = betas / betas.max() + 0.002
+        betas = betas / betas.max()
         Q_t = [] # scheduled matrix
         for i in range(timesteps):
             q_non_diag = torch.ones((K,K)) * q * betas[i]
-            #q_diag = torch.tensor(np.identity(K))
-            # for j, row in enumerate(q):
-            #     # print(j)
-            #     if row.sum() == 0:  # keep zero rows zero (not affected by scheduler)
-            #         norm_constant = 0
-            #     else:
             norm_constant = (1 - (q_non_diag).sum(axis=0))
             q_diag = torch.tensor(np.identity(K)) * norm_constant
             R = q_diag + q_non_diag
@@ -170,18 +164,13 @@ class Tokenizer(object):
     def q_random_schedule(self, timesteps=500, schedule='sohl-dickstein'):
         print(schedule)
         betas = _beta_schedule(timesteps, schedule=schedule)
+        betas = betas / betas.max()
         K = len(self.all_aas)
         Q_t = []  # scheduled matrix
         for i in range(len(betas)):
             q_non_diag = torch.ones((K,K)) / K * betas[i]
             norm_constant = (1 - (q_non_diag).sum(axis=0))
             q_diag = torch.tensor(np.identity(K)) * norm_constant
-            R = torch.tensor(np.identity(K))
-            # for j, row in enumerate(R):
-            #     # print(j)
-            #     if self.untokenize([j]) in BLOSUM_SPECIALS:
-            #         R[j] = torch.zeros(K)
-            #     else:
             R = q_diag + q_non_diag
             Q_t.append(R)
         Q_prod = cumprod_matrix(Q_t)
