@@ -298,24 +298,9 @@ def train(gpu, args):
             num_seqs.append(new_seqs.item())
             n_seen += new_seqs.item()
             total_n = sum(ns)
-            total_s = sum(num_seqs)
-            #print(total_n, sum(losses), sum(ce_losses), sum(nll_losses))
-            #print(len(losses), len(ce_losses), len(nll_losses))
-            # if sum(losses) <= sum(ce_losses):
-            #     print("Bug")
-            #     print(losses)
-            #     print(ce_losses)
-            #     print(len(losses), len(ce_losses))
-            #     print(new_loss.item(), new_ce_loss.item())
-            #     import pdb; pdb.set_trace()
-            if args.mask == 'autoreg':
-                r_loss = sum(losses) / total_n
-                r_ce_loss = sum(ce_losses) / total_n
-                r_nll_loss = sum(nll_losses) / total_n
-            elif args.mask == 'blosum' or args.mask == 'random':
-                 r_loss = sum(losses) / total_n
-                 r_ce_loss = sum(ce_losses) / total_n
-                 r_nll_loss = sum(nll_losses) /total_n
+            r_loss = sum(losses) / total_n
+            r_ce_loss = sum(ce_losses) / total_n
+            r_nll_loss = sum(nll_losses) / total_n
             raccu = sum(accus) / total_n
             if train:
                 nsteps = current_step + i + 1
@@ -338,6 +323,7 @@ def train(gpu, args):
                 ce_losses = ce_losses[-999:]
                 accus = accus[-999:]
                 ns = ns[-999:]
+                num_seqs = num_seqs[-999:]
                 nll_losses = nll_losses[-999:]
                 if nsteps % args.log_freq == 0:  # write to checkpoint frequency
                     if rank == 0:
@@ -404,20 +390,14 @@ def train(gpu, args):
         with torch.cuda.amp.autocast():
             outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
             if args.mask == 'autoreg':
-                ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask) # sum(loss per token) over entire batch
+                ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask) # sum(loss per token)
                 loss = ce_loss
                 accu = accu_func(outputs, tgt, mask) * n_tokens
             elif args.mask == 'blosum' or args.mask == 'random':
                 lvb_loss = loss_func1(src, q, q_minus1, outputs, tgt, input_mask, timestep, Q, Q_prod) * n_tokens
                 ce_loss = loss_func2(outputs, tgt, input_mask) * n_tokens
-                loss = lvb_loss + _lambda * ce_loss
-                #lvb_loss *= n_seqs
-                #ce_loss *= n_processed
-                #loss *= n_seqs
+                loss = (lvb_loss + _lambda * ce_loss)
                 nll_loss = ce_loss
-                #print("out of loop", loss, ce_loss)
-                if loss < ce_loss:
-                    print("in loop", loss, ce_loss)
                 accu = accu_func(outputs, tgt, input_mask) * n_tokens
         if train:
             # Exits the context manager before backward()

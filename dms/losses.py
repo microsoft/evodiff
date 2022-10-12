@@ -90,7 +90,7 @@ class D3PMCELoss(CrossEntropyLoss):
         p_unpadded = p_unpadded.reshape(-1, tokens)
         t_unpadded = torch.masked_select(tgt, nonpad_loc)
         ce_loss = super().forward(p_unpadded, t_unpadded)
-        return ce_loss
+        return ce_loss # mean for entire batch
 
 class D3PMLVBLoss(KLDivLoss):
     """
@@ -149,7 +149,7 @@ class D3PMLVBLoss(KLDivLoss):
                 kl_loss_i = super().forward(p_theta_marg.log(), q_true_minus1)  # KLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
         losses = torch.stack(losses) # loss per sequence in batch
-        lvb = losses.mean()
+        lvb = ((losses.sum()) / (tgt.shape[0]))  # loss per batch, norm by batchsize
         return lvb
 
 
