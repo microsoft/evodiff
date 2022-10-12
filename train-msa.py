@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import pathlib
 
 import numpy as np
-# import mlflow
 import torch
 import torch.multiprocessing as mp
 from torch.nn.utils import clip_grad_norm_
@@ -109,14 +108,14 @@ def train(gpu, args):
         config['dataset'] = args.dataset
 
     try:
-        data_top_dir = os.getenv('AMLT_DATA_DIR') + '/'
         data_dir = os.getenv('AMLT_DATA_DIR') + '/'
+        blosum_dir = data_dir + 'blosum/'
         data_dir += config['dataset'] + '/'
         ptjob = True
     except:
-        data_top_dir = 'data/'
         #print(data_top_dir)
         data_dir = '/data/'
+        blosum_dir = 'data/'
         data_dir += config['dataset'] + '/'
         #print(data_dir)
         ptjob = False
@@ -128,7 +127,7 @@ def train(gpu, args):
         diffusion_timesteps = None # Not input to model
     elif args.mask == 'blosum' or args.mask == 'random':
         diffusion_timesteps = config['diffusion_timesteps']
-        tokenizer = Tokenizer(path_to_blosum=data_top_dir+"blosum62-special-MSA.mat")
+        tokenizer = Tokenizer(path_to_blosum=blosum_dir+"blosum62-special-MSA.mat")
         if args.mask == 'random':
             Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=diffusion_timesteps)
         if args.mask == 'blosum':
@@ -319,7 +318,6 @@ def train(gpu, args):
                     start + '%s Epoch %d of %d Step %d Example %d of %d ardm_loss = %.4f nll_loss = %.4f accu = %.4f'
                     % (t, e + 1, epochs, nsteps, n_seen, n_total, rloss_ardm, rloss_nll, raccu),
                     end=end)
-                print('\n')
 
             if split == 'train':
                 ardm_losses = ardm_losses[-999:]
@@ -420,8 +418,8 @@ def train(gpu, args):
             with torch.cuda.amp.autocast():
                 outputs = model(src, timestep)
                 if args.mask == 'blosum' or args.mask == 'random':
-                    lvb_loss = loss_func1(src, src_one_hot, q, q_minus1, outputs, tgt, nonpad_mask, timestep, Q, Q_prod)  # * n_tokens
-                    ce_loss = loss_func2(outputs, tgt, nonpad_mask)
+                    lvb_loss = loss_func1(src, src_one_hot, q, q_minus1, outputs, tgt, nonpad_mask, timestep, Q, Q_prod) * n_tokens
+                    ce_loss = loss_func2(outputs, tgt, nonpad_mask) * n_tokens
                     nll_loss = ce_loss
                     loss = lvb_loss + _lambda * ce_loss
                     accu = accu_func(outputs, tgt, nonpad_mask) * n_tokens
