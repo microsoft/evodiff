@@ -75,8 +75,8 @@ class D3PMCELoss(CrossEntropyLoss):
     """
     Standard cross entropy loss
     Wrapped to deal with padding and normalize by # of non-padded locations
-    pred: batchsize x seq_len x n_tokens(PROTEIN_ALPHABET)
-    tgt: batchsize x seq_len
+    pred: (N x L x n_tokens) (PROTEIN_ALPHABET)
+    tgt: (N x L)
     input_mask: bool of non-padded locations
     """
     def __init__(self, weight=None, reduction='mean', tokenizer=Tokenizer()):
@@ -97,11 +97,14 @@ class D3PMLVBLoss(KLDivLoss):
     Lower variational bound loss as defined in Austin et al.
         Shape:
             Inputs:
-                - q: (N, L, n_tokens) forward prob dist
-                - pred: (N, L, n_tokens) predicted reverse dist
-                - tgt: (N, L)
+                - q: (N, L, n_tokens) forward prob dist at time t
+                - q_minus1: (N, L, n_tokens) forward prob dist at time t-1
+                - predictions: (N, L, n_tokens) predicted reverse dist (model out)
+                - tgt: (N, L) true x_0 sequence
+                - input mask (N, L) non-pad locations bool
                 - timestep (N)
                 - Q (n_tokens x n_tokens) transition matrix
+                - Q_bar (n_tokens x n_tokens) cum product of trans matrix at time t
 
         # Returns
         """
@@ -111,6 +114,7 @@ class D3PMLVBLoss(KLDivLoss):
         super().__init__(reduction=reduction, log_target=log_target)
 
     def forward(self, src, q, q_minus1, predictions, tgt, input_mask, timestep, Q, Q_bar):
+        print(timestep.min(), timestep.max(), self.tmax)
         p = torch.nn.functional.softmax(predictions[:, :, :len(self.tokenizer.all_aas)], dim=2) # ignoring specials
         losses = []
         nonpad_loc = input_mask.sum(axis=1)
@@ -122,7 +126,7 @@ class D3PMLVBLoss(KLDivLoss):
                 reconstruction_loss = D3PMCELoss()
                 r_loss = reconstruction_loss(predictions[i].unsqueeze(0), tgt[i].unsqueeze(0), input_mask[i].unsqueeze(0))
                 losses.append(r_loss)
-            elif timestep[i] == self.tmax: # Not needed to compute gradients
+            elif timestep[i] == self.tmax-1: # Not needed to compute gradients
                 # D KL (L_T)
                 # As T approches infinity, this term goes to zero
                 q_true = q[i, :D]
@@ -134,17 +138,17 @@ class D3PMLVBLoss(KLDivLoss):
             else:
                 # D KL (L_t-1) -> (q(x|x_t, x_0), p_theta)
                 pred = p[i, :D]
+                pred = pred.to(torch.float64)
                 q_true_minus1 = q_minus1[i, :D]
                 x_t_tokenized = src[i, :D]
                 x_t = self.tokenizer.one_hot(x_t_tokenized)
-                #x_t = q[i,:D]
+                # Calculate p_theta_marg, simplified for loops
                 A = torch.mm(x_t, torch.t(Q[timestep[i]])) # [P x K]
                 B = Q_bar[timestep[i]-1] # [K x K]
                 q_t = torch.mul(A.unsqueeze(1), B) # [P x K x K]
                 pred = pred.to(torch.float64) # must use 64 not 32 or p_theta_marg
-                #print(q_t.shape, pred.shape)
                 p_theta_marg = torch.bmm(q_t, pred.unsqueeze(2)).squeeze() # [P x K] this marginalizes over dim=2
-                p_theta_marg = p_theta_marg/p_theta_marg.sum(axis=1, keepdim=True) # normalize probabilities at each position
+                p_theta_marg = p_theta_marg / p_theta_marg.sum(axis=1, keepdim=True)  # re-normalize probs per residue
                 p_theta_marg = p_theta_marg.to(tgt.device)
                 kl_loss_i = super().forward(p_theta_marg.log(), q_true_minus1)  # KLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
@@ -225,13 +229,10 @@ class D3PMLVBLossMSA(KLDivLoss):
                 q_t = torch.mul(A.unsqueeze(1), B)  # confirmed this is the same as for loop
                 pred = pred.to(torch.float64)  # must use 64 not 32 or p_theta_marg
                 p_theta_marg = torch.bmm(q_t, pred.unsqueeze(2)).squeeze()  # this marginalizes over dim=2
-                p_theta_marg = p_theta_marg / p_theta_marg.sum(axis=1,keepdim=True)  # normalize probabilities at each position
+                p_theta_marg = p_theta_marg / p_theta_marg.sum(axis=1, keepdim=True)  # normalize probabilities at each position
                 p_theta_marg = p_theta_marg.to(tgt.device)
                 kl_loss_i = super().forward(p_theta_marg.log(), q_true_minus1)  # KLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
         losses = torch.stack(losses)
         lvb = ((losses.sum()) / (tgt.shape[0]))  # loss per batch, norm by batchsize
         return lvb
-
-    # is it always generating C/K
-    # generate on full training checkpoint
