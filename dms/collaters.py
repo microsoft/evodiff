@@ -205,7 +205,7 @@ class D3PMCollaterMSA(object):
             length, depth, tokens = curr_msa.shape  # length = number of seqs in MSA, depth = # AA in MSA
             curr_msa = curr_msa.flatten(start_dim=0, end_dim=1)
             # Append timestep
-            t = np.random.randint(1, self.num_timesteps+1) # randomly sample timestep
+            t = np.random.randint(1, self.num_timesteps) # randomly sample timestep
             timesteps.append(t)
             # Calculate target
             x_t, q_x_t = sample_transition_matrix(curr_msa, self.Q_bar[t])  # x = tgt, x_t = src, Q_bar accounts for time
