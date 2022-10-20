@@ -162,7 +162,7 @@ class D3PMCollater(object):
             # Append timestep
             timesteps.append(t)
             # Calculate forward at time t and t-1
-            x_t, q_x_t = sample_transition_matrix(x, self.Q_bar[t]) # x = tgt, x_t = src, Q_bar accounts for time
+            x_t, q_x_t = sample_transition_matrix(x, self.Q_bar[t]) # x = tgt, x_t = src, Q_bar[t] is cum prod @ time t
             x_tminus1, q_x_tminus1 = sample_transition_matrix(x, self.Q_bar[t-1])
             src.append(x_t)
             q_x[i, :D, :] = q_x_t
