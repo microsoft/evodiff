@@ -82,7 +82,8 @@ def parse_fasta(seq_file, idx):
 
 class Tokenizer(object):
     """Convert between strings and index"""
-    def __init__(self, protein_alphabet=MSA_ALPHABET, pad=MSA_PAD, mask=MASK, all_aas=MSA_AAS, path_to_blosum=None):
+    def __init__(self, protein_alphabet=MSA_ALPHABET, pad=MSA_PAD, mask=MASK, all_aas=MSA_AAS, path_to_blosum=None,
+                 sequences=False):
         self.alphabet = list("".join(protein_alphabet))
         self.all_aas = list("".join(all_aas))
         self.pad = pad
@@ -92,6 +93,11 @@ class Tokenizer(object):
         if path_to_blosum is not None:
             self.matrix = loadMatrix(path_to_blosum)
             self.matrix_dict = dict(self.matrix)
+        self.sequences = sequences
+        self.K = len(self.all_aas)
+        if self.sequences:
+            self.K = len(self.all_aas[:-1]) # slice out GAPS for sequences
+            print("K is :", self.K)
 
     @property
     def pad_id(self):
@@ -102,9 +108,8 @@ class Tokenizer(object):
         return self.tokenize(self.mask)[0]
 
     def q_blosum(self):
-        K = len(self.all_aas)
         q = np.array([i for i in self.matrix_dict.values()])
-        q = q.reshape((K,K))
+        q = q.reshape((len(self.all_aas),len(self.all_aas)))
         q = softmax(q)
         q = double_stochastic(q)
         q = torch.tensor(q)
@@ -117,6 +122,9 @@ class Tokenizer(object):
                 key = i2_to_a[ind1], i2_to_a[ind2]
                 new1, new2 = [self.a_to_i[k] for k in key]
                 new_q[new1, new2] = q[ind1, ind2]
+        #IF TRAINING SEQUENCES - DROP GAP
+        if self.sequences:
+            new_q = new_q[:-1, :-1]
         return new_q
 
     def q_blosum_schedule(self, timesteps=500, schedule='exp', max=6):
@@ -124,15 +132,14 @@ class Tokenizer(object):
         betas = 'exp' use exp scheme for beta schedule
         """
         print(schedule)
-        K = len(self.all_aas)
         q = self.q_blosum()
         betas = _beta_schedule(timesteps, schedule=schedule, max=max)
         betas = betas / betas.max() + 1/timesteps
         Q_t = [] # scheduled matrix
         for i in range(timesteps):
-            q_non_diag = torch.ones((K,K)) * q * betas[i]
+            q_non_diag = torch.ones((self.K,self.K)) * q * betas[i]
             norm_constant = (1 - (q_non_diag).sum(axis=0))
-            q_diag = torch.tensor(np.identity(K)) * norm_constant
+            q_diag = torch.tensor(np.identity(self.K)) * norm_constant
             R = q_diag + q_non_diag
             Q_t.append(R)
         Q_prod = cumprod_matrix(Q_t)
@@ -143,12 +150,11 @@ class Tokenizer(object):
     def q_random_schedule(self, timesteps=500, schedule='sohl-dickstein'):
         print(schedule)
         betas = _beta_schedule(timesteps, schedule=schedule)
-        K = len(self.all_aas)
         Q_t = []  # scheduled matrix
         for i in range(len(betas)):
-            q_non_diag = torch.ones((K,K)) / K * betas[i]
+            q_non_diag = torch.ones((self.K,self.K)) / self.K * betas[i]
             norm_constant = (1 - (q_non_diag).sum(axis=0))
-            q_diag = torch.tensor(np.identity(K)) * norm_constant
+            q_diag = torch.tensor(np.identity(self.K)) * norm_constant
             R = q_diag + q_non_diag
             Q_t.append(R)
         Q_prod = cumprod_matrix(Q_t)
@@ -170,7 +176,7 @@ class Tokenizer(object):
 
     def one_hot(self, tokenized):
         "one hot encode according to indexing"
-        x_onehot = torch.nn.functional.one_hot(tokenized, num_classes=len(self.all_aas))
+        x_onehot = torch.nn.functional.one_hot(tokenized, num_classes=self.K)
         return x_onehot.to(torch.double)
 
     def undo_one_hot(self, x_onehot):
