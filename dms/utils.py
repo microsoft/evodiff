@@ -1,7 +1,7 @@
 from dms.data import loadMatrix
 import torch
 import numpy as np
-from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS
+from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS, GAP
 from dms.constants import BLOSUM_ALPHABET
 from sklearn.preprocessing import normalize
 
@@ -82,22 +82,23 @@ def parse_fasta(seq_file, idx):
 
 class Tokenizer(object):
     """Convert between strings and index"""
-    def __init__(self, protein_alphabet=MSA_ALPHABET, pad=MSA_PAD, mask=MASK, all_aas=MSA_AAS, path_to_blosum=None,
-                 sequences=False):
+    def __init__(self, protein_alphabet=MSA_ALPHABET, pad=MSA_PAD, mask=MASK, all_aas=MSA_AAS, gap=GAP,
+                 path_to_blosum=None, sequences=False):
         self.alphabet = list("".join(protein_alphabet))
         self.all_aas = list("".join(all_aas))
         self.pad = pad
         self.mask = mask
+        self.gap = gap
         self.a_to_i = {u: i for i, u in enumerate(self.alphabet)}
         self.i_to_a = np.array(self.alphabet)
         if path_to_blosum is not None:
             self.matrix = loadMatrix(path_to_blosum)
             self.matrix_dict = dict(self.matrix)
         self.sequences = sequences
-        self.K = len(self.all_aas)
+        self.K = len(self.alphabet)
         if self.sequences:
             self.K = len(self.all_aas[:-1]) # slice out GAPS for sequences
-            print("K is :", self.K)
+        #print("K is :", self.K)
 
     @property
     def pad_id(self):
@@ -106,6 +107,10 @@ class Tokenizer(object):
     @property
     def mask_id(self):
         return self.tokenize(self.mask)[0]
+
+    @property
+    def gap_id(self):
+        return self.tokenize(self.gap)[0]
 
     def q_blosum(self):
         q = np.array([i for i in self.matrix_dict.values()])
@@ -176,6 +181,7 @@ class Tokenizer(object):
 
     def one_hot(self, tokenized):
         "one hot encode according to indexing"
+        #print(tokenized, self.K)
         x_onehot = torch.nn.functional.one_hot(tokenized, num_classes=self.K)
         return x_onehot.to(torch.double)
 

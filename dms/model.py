@@ -3,12 +3,20 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from torch.utils.checkpoint import checkpoint
+from torch.nn import TransformerEncoder, TransformerEncoderLayer, TransformerDecoder, TransformerDecoderLayer
 from sequence_models.layers import PositionFeedForward, DoubleEmbedding
 from sequence_models.convolutional import ByteNetBlock
 from sequence_models.constants import MSA_PAD, MASK, MSA_ALPHABET
 from esm.modules import TransformerLayer, LearnedPositionalEmbedding, RobertaLMHead, ESM1bLayerNorm, AxialTransformerLayer
 
-class PositionalEncoding(nn.Module):
+
+# TODO fix encoding
+# time encoding - 1D
+# sequence pos encoding - 1D (for transformer POS is also 2d?)
+# MSA pos encoding - 2D
+
+
+class PositionalEncoding1D(nn.Module):
     def __init__(self, d_model=8, length=500):
         super().__init__()
         self.d_model = d_model
@@ -17,8 +25,6 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         """
         Taken from https://github.com/wzlxjtu/PositionalEncoding2D/blob/master/positionalembedding2d.py
-
-        Here used for adding positional encoding to D3PM model
 
         :param d_model: dimension of the model
         :param length: length of positions
@@ -34,6 +40,50 @@ class PositionalEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(position.float() * div_term)
         return pe[x].to(x.device)
 
+class TimeEncoding(nn.Module):
+
+    def __init__(self, d_model, max_len, add_inplace=True):
+        super().__init__()
+        self.add_inplace = add_inplace
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-np.log(10000.0) / d_model))
+        te = torch.zeros(max_len, 1, d_model)
+        te[:, 0, 0::2] = torch.sin(position * div_term)
+        te[:, 0, 1::2] = torch.cos(position * div_term)
+
+        self.register_buffer('te', te)
+
+    def forward(self, x):
+        """
+            x: timestep sequence fed to the positional encoder model [batchsize]
+            output: [batch size, embed dim]
+        """
+        if self.add_inplace:
+            x = x + self.te[x]
+        else:
+            x = self.te[x]
+        return x.to(x.device)
+
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_model, max_len=2048):
+        super().__init__()
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-np.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        """
+        Args:
+            x: Tensor, shape [seq_len, batch_size, embedding_dim]
+        """
+        x = x + self.pe[:x.size(0)]
+        return x.reshape(x.shape[1], x.shape[0], x.shape[2]) # [b x l x e]
 
 class ByteNetTime(nn.Module):
     """Stacked residual blocks from ByteNet paper defined by n_layers
@@ -65,7 +115,8 @@ class ByteNetTime(nn.Module):
         """
         super().__init__()
         self.timesteps = timesteps
-        self.time_encoding = PositionalEncoding(d_embedding, timesteps)
+        self.time_encoding = PositionalEncoding1D(d_embedding, timesteps) # TODO switch back, only for checkpointing
+        #self.time_encoding = TimeEncoding(d_embedding, timesteps, add_inplace=False) # TODO switch back, only for checkpointing
         if n_tokens is not None:
             if n_frozen_embs is None:
                 self.embedder = nn.Embedding(n_tokens, d_embedding, padding_idx=padding_idx)
@@ -103,15 +154,18 @@ class ByteNetTime(nn.Module):
         return self._convolve(e, input_mask=input_mask)
 
     def _embed(self, x, y, timesteps=None):
+        #e = self.embedder(x) # TODO switch back - only for checkpointing
+        # if timesteps is not None:
+        #     y = self.time_encoding(y)
+        #     y = y.expand(e.shape[0], e.shape[1], e.shape[2])
+        #     e += y
         e1 = self.embedder(x)
         if timesteps is not None:
             e2 = self.time_encoding(y)
             # expand dim of e2 to match e1
             e2 = e2.expand(e1.shape[1], e2.shape[0], e2.shape[1])
             e2 = e2.reshape(e1.shape[0], e1.shape[1], e1.shape[2])
-            e = torch.add(e2,e1)
-        else:
-            e = e1
+            e = torch.add(e2, e1)
         e = self.up_embedder(e)
         return e
 
@@ -170,7 +224,7 @@ class MSATransformerTime(nn.Module):
         super(MSATransformerTime, self).__init__()
 
         self.timesteps = timesteps
-        self.time_encoding = PositionalEncoding(64, length=timesteps)
+        self.time_encoding = TimeEncoding(d_model, timesteps, add_inplace=False)
         self.embed_tokens = nn.Embedding(
             n_tokens, d_model, padding_idx=mask_idx
         )
@@ -207,9 +261,9 @@ class MSATransformerTime(nn.Module):
         x = x * (1 - padding_mask.unsqueeze(-1).type_as(x))
 
         y = self.time_encoding(timesteps)
-        y = y.unsqueeze(-1).unsqueeze(-1)  # match dimensions of token embedding
+        y = y.unsqueeze(2)  # match dimensions of token embedding
         y = y.expand(y.shape[0], x.shape[1], x.shape[2], x.shape[3])
-        x = x + y
+        x += y
         #
 
         # B x R x C x D -> R x C x B x D
@@ -222,3 +276,62 @@ class MSATransformerTime(nn.Module):
         x = x.permute(2, 0, 1, 3)  # R x C x B x D -> B x R x C x D
         x = self.lm_head(x)
         return x
+
+
+class TransformerTime(nn.Module):
+    """
+    """
+    def __init__(self, n_tokens, d_embedding, d_model, n_layers, n_head, d_feedforward, padding_idx=None,
+                 max_positions=1024, bidirectional=True, dropout=0.0, activation='relu',
+                 norm_first=False, timesteps=None): # TODO try turning norm_first on to see if helps
+        """
+        """
+        super().__init__()
+        self.d_model = d_model
+        self.bidirectional = bidirectional
+        self.embedder = nn.Embedding(n_tokens, d_embedding, padding_idx=padding_idx) # TODO not ignoring padding in autoreg oa/so models right now --> fix
+        self.pos_encoding = PositionalEncoding(d_embedding, max_positions)
+        self.timesteps = timesteps
+        if self.timesteps is not None:
+             self.time_encoding = TimeEncoding(d_embedding, timesteps, add_inplace=False)
+        self.up_embedder = PositionFeedForward(d_embedding, d_model)
+        if bidirectional: # for oa autoregressive model, d3pm models
+            encoder_layers = TransformerEncoderLayer(d_model, n_head, dim_feedforward=d_feedforward, dropout=dropout,
+                                                     activation=activation, batch_first=True, norm_first=norm_first)
+            self.transformer = TransformerEncoder(encoder_layers, n_layers)
+        else: # for single-order autoregressive model
+            decoder_layers = TransformerDecoderLayer(d_model, n_head, dim_feedforward=d_feedforward, dropout=dropout,
+                                                     activation=activation, batch_first=True, norm_first=norm_first)
+            self.transformer = TransformerDecoder(decoder_layers, n_layers)
+        self.decoder = nn.Linear(d_model, n_tokens)
+
+        # self.init_weights()
+
+    # def init_weights(self):
+    #     initrange = 0.1
+    #     self.embedder.weight.data.uniform_(-initrange, initrange)
+    #     self.decoder.bias.data.zero_()
+    #     self.decoder.weight.data.uniform_(-initrange, initrange)
+
+    def forward(self, src, tgt, t, input_mask=None):
+        src = self.embedder(src) * np.sqrt(self.d_model)
+        src = self.pos_encoding(src.reshape(src.shape[1], src.shape[0], src.shape[2]))
+        tgt = self.embedder(tgt) * np.sqrt(self.d_model)
+        tgt = self.pos_encoding(tgt.reshape(tgt.shape[1], tgt.shape[0], tgt.shape[2]))
+
+        if self.timesteps is not None:
+            t_tgt = self.time_encoding(torch.ones((t.shape), dtype=torch.long, device=t.device))
+            t_tgt = t_tgt.expand(tgt.shape[0], tgt.shape[1], tgt.shape[2])
+            t = self.time_encoding(t)
+            t = t.expand(src.shape[0], src.shape[1], src.shape[2])
+            src += t
+            tgt += t_tgt
+
+        src = self.up_embedder(src)
+        tgt = self.up_embedder(tgt)
+
+        if self.bidirectional:
+            out = self.transformer(src, src_key_padding_mask=input_mask)
+        else:
+            out = self.transformer(tgt, src, tgt_key_padding_mask=input_mask)
+        return self.decoder(out)

@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 import torch.distributed as dist
 from torch.cuda.amp import GradScaler
 
-from dms.model import ByteNetLMTime
+from dms.model import ByteNetLMTime, TransformerTime
 from dms.utils import Tokenizer
 from torch.utils.data import Subset
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
@@ -57,12 +57,15 @@ def main():
     parser.add_argument('-sd', '--state_dict', default=None)
     parser.add_argument('--decay', action='store_true')
     parser.add_argument('--final_norm', action='store_true')
+    parser.add_argument('--norm_first', action='store_true') # turns norm_first on in transformer model
     parser.add_argument('--mini_run', action='store_true') # Set to True if running on subset of data
     parser.add_argument('--mask', type=str, default='autoreg')  # Set to True if running on subset of data
     parser.add_argument('--warmup', action='store_true')  # Set to True if running on subset of data
     parser.add_argument('--checkpoint_freq', type=float, default=1)  # in minutes
     parser.add_argument('--log_freq', type=float, default=10)  # in steps
-    parser.add_argument('--reweighting_term', type=float, default=1)  # lambda reweighting term from Austin D3PM
+    parser.add_argument('--reweighting_term', type=float, default=0.001)  # lambda reweighting term from Austin D3PM
+    parser.add_argument('--model_type', type=str, default='ByteNet',
+                        help='ByteNet or Transformer')
 
     args = parser.parse_args()
     args.world_size = args.gpus * args.nodes
@@ -89,10 +92,15 @@ def train(gpu, args):
     with open(args.config_fpath, 'r') as f:
         config = json.load(f)
     n_tokens = len(MSA_ALPHABET)
-    print(n_tokens)
     d_embed = config['d_embed']
     d_model = config['d_model']
     n_layers = config['n_layers']
+    if args.model_type == 'Transformer':
+        n_head = config['n_head']
+        d_feedforward = config['d_feedforward']
+    if args.model_type == 'ByteNet':
+        kernel_size = config['kernel_size']
+        r = config['r']
     if 'slim' in config:
         slim = config['slim']
     else:
@@ -101,8 +109,6 @@ def train(gpu, args):
         activation = config['activation']
     else:
         activation = 'relu'
-    kernel_size = config['kernel_size']
-    r = config['r']
     bucket_size = config['bucket_size']
     max_tokens = config['max_tokens']
     max_batch_size = config['max_batch_size']
@@ -126,7 +132,7 @@ def train(gpu, args):
         ptjob = False
     data_dir = data_top_dir + config['dataset'] + '/'
     if args.mini_run:
-        mini_size = 10000 # For troubleshooting
+        mini_size = 100 # For troubleshooting
     # ----------------------------------------------------------
     ### COLLATORS ###
     # ----------------------------------------------------------
@@ -134,6 +140,10 @@ def train(gpu, args):
         tokenizer = Tokenizer()
         collater = OAMaskCollater(tokenizer=tokenizer)
         diffusion_timesteps = None # Not input to model
+    elif args.mask == 'so':
+        tokenizer = Tokenizer()
+        collater = MaskCollater(tokenizer=tokenizer) # TODO fix
+        diffusion_timesteps = None  # Not input to model
     elif args.mask == 'blosum' or args.mask == 'random':
         diffusion_timesteps = config['diffusion_timesteps']
         tokenizer = Tokenizer(path_to_blosum=data_top_dir+"blosum62-special-MSA.mat", sequences=True)
@@ -144,8 +154,12 @@ def train(gpu, args):
         collater = D3PMCollater(tokenizer=tokenizer, num_timesteps=diffusion_timesteps, Q=Q_t, Q_bar=Q_prod)
         #Q_prod = Q_prod.to(device)
     else:
-        print("mask must be: 'autoreg', 'blosum', or 'random'")
+        print("mask must be: 'autoreg', 'so', 'blosum', or 'random'")
     causal = False
+    bidirectional=True
+    if args.mask == 'so':
+        causal = True
+        bidirectional = False
     # ----------------------------------------------------------
     ### DATALOADER ###
     # ----------------------------------------------------------
@@ -199,10 +213,17 @@ def train(gpu, args):
     masking_idx = tokenizer.mask_id
     print('Using {} as padding index'.format(padding_idx))
     print('Using {} as masking index'.format(masking_idx))
-    model = ByteNetLMTime(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
-                      causal=causal, padding_idx=masking_idx, rank=weight_rank, dropout=args.dropout,
-                      tie_weights=args.tie_weights, final_ln=args.final_norm, slim=slim, activation=activation,
-                      timesteps=diffusion_timesteps)
+    if args.model_type == 'ByteNet':
+        model = ByteNetLMTime(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
+                          causal=causal, padding_idx=masking_idx, rank=weight_rank, dropout=args.dropout,
+                          tie_weights=args.tie_weights, final_ln=args.final_norm, slim=slim, activation=activation,
+                          timesteps=diffusion_timesteps)
+    elif args.model_type == 'Transformer':
+        model = TransformerTime(n_tokens, d_embed, d_model, n_layers, n_head, d_feedforward, padding_idx=masking_idx,
+                                bidirectional=bidirectional, dropout=args.dropout,
+                                norm_first=args.norm_first, activation=activation, timesteps=diffusion_timesteps)
+    else:
+        print("choose ByteNet or Transformer for --model_type")
     optimizer = Adam(model.parameters(), lr=lr, weight_decay=args.weight_decay)
     outputs = os.listdir(args.out_fpath)
     if len(outputs) > 0:
@@ -234,7 +255,7 @@ def train(gpu, args):
     # ----------------------------------------------------------
     if args.warmup:
         scheduler = LambdaLR(optimizer, warmup(warmup_steps), verbose=False)
-    if args.mask == 'autoreg':
+    if args.mask == 'autoreg' or args.mask == 'so':
         loss_func = OAMaskedCrossEntropyLoss(reweight=True)
     elif args.mask == 'blosum' or args.mask == 'random':
         # Austin = LVB + lambda * CE
@@ -348,7 +369,7 @@ def train(gpu, args):
                                     'scheduler_state_dict': scheduler.state_dict(),
                                     'epoch': e
                                 }, ckpt_fpath)
-                                _ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
+                                #_ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
                         chunk_time = datetime.now()
         if not train:
             if rank == 0:
@@ -392,16 +413,21 @@ def train(gpu, args):
         # step through model
         if train:
             optimizer.zero_grad() # reset gradients of model parameters
+
         # Enables autocasting for the forward pass (model + loss)
         with torch.cuda.amp.autocast():
-            outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
+            if args.model_type=='ByteNet':
+                outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
+            elif args.model_type=='Transformer':
+                outputs = model(src, tgt, timestep, input_mask=~input_mask.bool())
+            #print(outputs.dtype)
             if args.mask == 'blosum' or args.mask == 'random':
                 lvb_loss = loss_func1(src, src_onehot, q, outputs, tgt, tgt_onehot, input_mask, timestep, Q, Q_bar) * n_tokens
                 ce_loss = loss_func2(outputs, tgt, input_mask) * n_tokens
                 loss = (lvb_loss + _lambda * ce_loss)
                 nll_loss = ce_loss
                 accu = accu_func(outputs, tgt, input_mask) * n_tokens
-            elif args.mask == 'autoreg':
+            elif args.mask == 'autoreg' or args.mask=='so':
                 ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask)  # sum(loss per token)
                 loss = ce_loss
                 accu = accu_func(outputs, tgt, mask) * n_tokens
@@ -413,7 +439,7 @@ def train(gpu, args):
             scaler.update()
             skip_scheduler = (scale > scaler.get_scale())
             if not skip_scheduler:
-                scheduler.step()
+               scheduler.step()
         return loss, ce_loss, nll_loss, accu, n_tokens, n_seqs, n_processed
 
     if rank == 0:
