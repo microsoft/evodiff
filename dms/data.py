@@ -182,9 +182,7 @@ class A3MMSADataset(Dataset):
             filtered_files = np.array(all_files)[keep_idx]
 
         self.filenames = filtered_files  # IDs of samples to include
-        self.lengths = lengths
-        ## Add attribute here: Get new lengths for batching self.length, pass dataset.lengths to batch sampler (instead of loading twice)
-        ## TODO: self.lengths= # where is this being used?
+        self.lengths = lengths # pass to batch sampler
 
         self.n_sequences = n_sequences
         self.max_seq_len = max_seq_len
