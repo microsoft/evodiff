@@ -20,12 +20,14 @@ from dms.losses import  D3PMCELossMSA,  D3PMLVBLossMSA
 from dms.model import MSATransformerTime
 from sequence_models.esm import MSATransformer
 from sequence_models.constants import MSA_ALPHABET
-from sequence_models.datasets import TRRMSADataset, A3MMSADataset
-#from sequence_models.collaters import MSAAbsorbingCollater
+#from sequence_models.datasets import TRRMSADataset #, A3MMSADataset
+from dms.data import TRRMSADataset, A3MMSADataset
+#from sequence_models.collaters import MSAAbsorbingCollater # TODO replace if not the problem
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 from dms.collaters import MSAAbsorbingARDMCollater
 from sequence_models.losses import MaskedCrossEntropyLossMSA
-from sequence_models.metrics import MaskedAccuracy
+#from sequence_models.metrics import MaskedAccuracy
+from dms.metrics import MaskedAccuracyMSA
 from torch.utils.data import Subset
 from sequence_models.utils import warmup, transformer_lr
 
@@ -59,7 +61,7 @@ def main():
     parser.add_argument('--decay', action='store_true')
     parser.add_argument('--dummy', required=False)
     parser.add_argument('--mask', default='blosum')
-    parser.add_argument('--reweighting_term', type=float, default=1.0)
+    parser.add_argument('--reweighting_term', type=float, default=0.001)
 
 
     args = parser.parse_args()
@@ -101,6 +103,7 @@ def train(gpu, args):
     warmup_steps = config['warmup']
     max_square_tokens = config['max_square_tokens']
     n_sequences = config['n_sequences']
+    min_depth = config['n_sequences'] # Will filter out sequences smaller than this number
     max_seq_len = config['max_seq_len']
     config['decay'] = args.decay
     if 'clip' in config:
@@ -135,11 +138,19 @@ def train(gpu, args):
             Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=diffusion_timesteps)
         if args.mask == 'blosum':
             Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=diffusion_timesteps)
-        collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=diffusion_timesteps, Q=Q_t, Q_bar=Q_prod)
-        Q_prod = Q_prod.to(device)
+        collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=diffusion_timesteps, Q=Q_t, Q_bar=Q_prod,
+                                   padding_idx=tokenizer.pad_id)
+        #Q_prod = Q_prod.to(device)
     else:
         print("mask must be: 'autoreg', 'blosum', or 'random'")
 
+    padding_idx = tokenizer.pad_id  # PROTEIN_ALPHABET.index(PAD)
+    masking_idx = tokenizer.mask_id
+    gap_idx = tokenizer.gap_id
+    print(tokenizer.alphabet)
+    print('Using {} as padding index'.format(padding_idx))
+    print('Using {} as masking index'.format(masking_idx))
+    print('Using {} as gap index'.format(gap_idx))
 
     if config['dataset'] == 'trrosetta':
         dataset = TRRMSADataset(data_dir=data_dir, selection_type=selection_type, n_sequences=n_sequences,
@@ -147,8 +158,7 @@ def train(gpu, args):
         train_size = len(dataset)
         random_ind = np.random.choice(train_size, size=int(train_size * 0.8), replace=False)
     elif config['dataset'] == 'openfold':
-        dataset = A3MMSADataset(data_dir=data_dir, selection_type=selection_type, n_sequences=n_sequences,
-                                max_seq_len=max_seq_len)
+        dataset = A3MMSADataset(selection_type, n_sequences, max_seq_len, data_dir=data_dir, min_depth=min_depth)
         train_size = len(dataset)
         print("TRAIN SIZE:", train_size, rank)
         random_ind = np.random.choice(train_size, size=(train_size - 10000), replace=False)
@@ -163,8 +173,10 @@ def train(gpu, args):
                               collate_fn=collater,
                               num_workers=8)
     elif  config['dataset'] == 'openfold':
-        metadata = np.load(data_dir + config['dataset'] + '_lengths.npz')['ells']
+        #metadata = np.load(data_dir + config['dataset'] + '_lengths.npz')['ells']
+        metadata = np.array(dataset.lengths)
         train_idx = ds_train.indices
+        #print(train_idx)
         len_train = metadata[train_idx]
 
         len_train = np.minimum(len_train, max_seq_len)
@@ -182,7 +194,7 @@ def train(gpu, args):
         ds_valid = Subset(dataset, val_ind)
         if config['dataset'] == 'trrosetta':
             dl_valid = DataLoader(dataset=ds_valid,
-                                  batch_size=1,
+                                  batch_size=4,
                                   # batch_sampler=valid_sampler,
                                   collate_fn=collater,
                                   num_workers=8)
@@ -200,10 +212,6 @@ def train(gpu, args):
                                   collate_fn=collater,
                                   num_workers=8)
 
-    padding_idx = tokenizer.pad_id  # PROTEIN_ALPHABET.index(PAD)
-    masking_idx = tokenizer.mask_id
-    print('Using {} as padding index'.format(padding_idx))
-    print('Using {} as masking index'.format(masking_idx))
     # Initiate model
     if args.mask == 'autoreg':
         model = MSATransformer(d_embed, d_hidden, n_layers, n_heads, use_ckpt=True, n_tokens=len(MSA_ALPHABET),
@@ -216,7 +224,7 @@ def train(gpu, args):
         scheduler = LambdaLR(optimizer, transformer_lr(warmup_steps))
     else:
         scheduler = LambdaLR(optimizer, warmup(warmup_steps))
-    scaler = torch.cuda.amp.GradScaler()
+    #scaler = torch.cuda.amp.GradScaler()
 
     outputs = os.listdir(args.out_fpath)
 
@@ -236,7 +244,7 @@ def train(gpu, args):
         model.load_state_dict(msd)
         optimizer.load_state_dict(sd['optimizer_state_dict'])
         scheduler.load_state_dict(sd['scheduler_state_dict'])
-        scaler.load_state_dict(sd['scaler_state_dict']),
+        #scaler.load_state_dict(sd['scaler_state_dict']),
         initial_epoch = sd['epoch'] + 1
         total_steps = sd['step']
         total_tokens = sd['tokens']
@@ -245,27 +253,19 @@ def train(gpu, args):
         total_steps = 0
         total_tokens = 0
 
-    # optimizer.state = {}
-    # model, optimizer = amp.initialize(model, optimizer, opt_level=opt_level)
     model = model.to(device)
     model = DDP(model, device_ids=[gpu + args.offset], output_device=args.offset)
-
-    # if args.state_dict is not None:
-    #     if 'amp_state_dict' in sd:
-    #         amp.load_state_dict(sd['amp_state_dict'])
-    #     else:
-    #         amp.load_state_dict({'loss_scaler0': {'loss_scale': 512., 'unskipped': 0}})
 
     if args.mask == 'autoreg':
         loss_func = MaskedCrossEntropyLossMSA(ignore_index=padding_idx)
     elif args.mask == 'blosum' or args.mask == 'random':
         # Austin = LVB + lambda * CE
-        loss_func1 = D3PMLVBLossMSA(tmax=diffusion_timesteps)
-        loss_func2 = D3PMCELossMSA()
+        loss_func1 = D3PMLVBLossMSA(tmax=diffusion_timesteps, tokenizer=tokenizer)
+        loss_func2 = D3PMCELossMSA(tokenizer=tokenizer)
         _lambda = args.reweighting_term
 
 
-    accu_func = MaskedAccuracy()
+    accu_func = MaskedAccuracyMSA()
 
     with open(args.config_fpath, 'r') as f_from, open(args.out_fpath + "config.json", "w") as f_to:
         f_to.write(f_from.read())
@@ -299,7 +299,7 @@ def train(gpu, args):
             if split == 'train' and i == 1 and e == initial_epoch and args.state_dict is not None:
                 optimizer.load_state_dict(sd['optimizer_state_dict'])
                 scheduler.load_state_dict(sd['scheduler_state_dict'])
-                scaler.load_state_dict(sd['scaler_state_dict'])
+                #scaler.load_state_dict(sd['scaler_state_dict'])
             ardm_loss, nll_loss, new_accu, new_n, new_seqs, new_processed = step(model, batch, split)
 
             if split == 'train':
@@ -348,7 +348,12 @@ def train(gpu, args):
                 accus = accus[-999:]
                 ns = ns[-999:]
                 num_seqs = num_seqs[-999:]
-                if datetime.now() - chunk_time > timedelta(hours=6):
+                if nsteps % 1000 == 0:
+                    with open(args.out_fpath + 'metrics_train.csv', 'a') as f:
+                        f.write(','.join(
+                            [str(rloss_ardm), str(rloss_nll), str(raccu), str(int(current_tokens)), str(current_step)]))
+                        f.write('\n')  # Can add for train too
+                if datetime.now() - chunk_time > timedelta(minutes=60): # TODO change back to hours
                     print('Training complete in ' + str(datetime.now() - chunk_time))
                     with torch.no_grad():
                         if rank == 0:
@@ -359,7 +364,7 @@ def train(gpu, args):
                                 'model_state_dict': model.state_dict(),
                                 'optimizer_state_dict': optimizer.state_dict(),
                                 'scheduler_state_dict': scheduler.state_dict(),
-                                'scaler_state_dict': scaler.state_dict(),
+                                #'scaler_state_dict': scaler.state_dict(),
                                 'epoch': e,
                                 # 'amp_state_dict': amp.state_dict()
                             }, ckpt_fpath)
@@ -390,11 +395,13 @@ def train(gpu, args):
 
     def step(model, batch, split):
         if args.mask == 'blosum' or args.mask == 'random':
-            src, src_one_hot, timestep, tgt, Q, q, q_minus1 = batch
+            src, src_one_hot, timestep, tgt, tgt_one_hot, Q, Q_prod, q = batch
             src_one_hot = src_one_hot.to(device)
+            tgt_one_hot = tgt_one_hot.to(device)
             q = q.to(device)
-            q_minus1 = q_minus1.to(device)
+            #q_minus1 = q_minus1.to(device)
             Q = Q.to(device)
+            Q_prod = Q_prod.to(device)
             timestep = timestep.to(device)
         else:
             src, tgt, mask = batch
@@ -416,45 +423,38 @@ def train(gpu, args):
         if split == 'train':
             optimizer.zero_grad()
 
-        with torch.cuda.amp.autocast():
-            if args.mask == 'blosum' or args.mask == 'random':
-                outputs = model(src, timestep)
-                lvb_loss = loss_func1(src_one_hot, q, q_minus1, outputs, tgt, nonpad_mask, timestep, Q, Q_prod) * n_tokens
-                ce_loss = loss_func2(outputs, tgt, nonpad_mask) * n_tokens
-                nll_loss = ce_loss
-                accu = accu_func(outputs, tgt, nonpad_mask) * n_tokens
-                loss = lvb_loss + _lambda * ce_loss
-            elif args.mask == 'autoreg':
-                #print(src.shape)
-                #import pdb; pdb.set_trace()
-                outputs = model(src)
-                #print(outputs.shape)
-                ce_loss, nll_loss = loss_func(outputs, tgt, mask, nonpad_mask)
-                loss = ce_loss
-                accu = accu_func(outputs, tgt, mask) * n_tokens
+        #with torch.cuda.amp.autocast(): # TODO enable debug
+        if args.mask == 'blosum' or args.mask == 'random':
+            outputs = model(src, timestep)
+            lvb_loss = loss_func1(src_one_hot, q, outputs, tgt, tgt_one_hot, nonpad_mask, timestep, Q, Q_prod) * n_tokens
+            ce_loss = loss_func2(outputs, tgt, nonpad_mask) * n_tokens
+            nll_loss = ce_loss
+            accu = accu_func(outputs, tgt, nonpad_mask) * n_tokens
+            loss = lvb_loss + _lambda * ce_loss
+        elif args.mask == 'autoreg':
+            #print(src.shape)
+            #import pdb; pdb.set_trace()
+            outputs = model(src)
+            #print(outputs.shape)
+            ce_loss, nll_loss = loss_func(outputs, tgt, mask, nonpad_mask)
+            loss = ce_loss
+            accu = accu_func(outputs, tgt, mask) * n_tokens
+
         if split == 'train':
-            scaler.scale(loss).backward()
+            #scaler.scale(loss).backward()
+            #_ = clip_grad_norm_(model.parameters(), clip)
+            #scaler.step(optimizer)
+            #scale = scaler.get_scale()
+            #scaler.update()
+            #skip_scheduler = (scale > scaler.get_scale())
+            #if not skip_scheduler:
+            #    scheduler.step()
+            # remove mixed precision for debugging TODO
+            loss.backward()
             _ = clip_grad_norm_(model.parameters(), clip)
-            scaler.step(optimizer)
-            scale = scaler.get_scale()
-            scaler.update()
-            skip_scheduler = (scale > scaler.get_scale())
-            if not skip_scheduler:
-                scheduler.step()
-        # elif split == 'valid' or split == 'test':
-        #
-        #     with torch.cuda.amp.autocast():
-        #         outputs = model(src, timestep)
-        #         if args.mask == 'blosum' or args.mask == 'random':
-        #             lvb_loss = loss_func1(src, src_one_hot, q, q_minus1, outputs, tgt, nonpad_mask, timestep, Q, Q_prod)  # * n_tokens
-        #             ce_loss = loss_func2(outputs, tgt, nonpad_mask)
-        #             nll_loss = ce_loss
-        #             loss = lvb_loss + _lambda * ce_loss
-        #             accu = accu_func(outputs, tgt, nonpad_mask) * n_tokens
-        #         elif args.mask == 'autoreg':
-        #             ce_loss, nll_loss = loss_func(outputs, tgt, mask, nonpad_mask)
-        #             loss = ce_loss
-        #             accu = accu_func(outputs, tgt, mask) * n_tokens
+            optimizer.step()
+            scheduler.step()
+
         n_seqs = torch.tensor(len(src), device=device)
         return loss, nll_loss, accu, n_tokens, n_seqs, n_processed
 

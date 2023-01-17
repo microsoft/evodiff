@@ -256,7 +256,7 @@ class D3PMCollaterMSA(object):
         self.Q_bar = Q_bar
         self.num_seqs = num_seqs
         self.padding_idx=padding_idx
-        self.dim = self.K-4 # dont include special tokens in mat mul
+        self.dim = self.K-4# dont include special tokens in mat mul
 
     def __call__(self, msas):
         batch_size = len(msas)
@@ -266,9 +266,8 @@ class D3PMCollaterMSA(object):
         tgt_one_hot = [[self.tokenizer.one_hot(t) for t in tokenized[i]] for i in range(batch_size)]
         tgt_one_hot = [torch.stack(t) for t in tgt_one_hot]
 
-        #one_hot = tgt_one_hot
+        # init new arrays
         src = tokenized
-
         src_one_hot = tgt_one_hot
         #tgt_one_hot = tokenized.copy()
 
@@ -279,55 +278,72 @@ class D3PMCollaterMSA(object):
         q_x = pad_one_hot.repeat((batch_size, self.num_seqs, max_seq_len, 1))
         #q_x_minus1 = pad_one_hot.repeat((batch_size, self.num_seqs, max_seq_len, 1))
         for i in range(batch_size): # enumerate over batch
-            length, depth = tokenized[i].shape  # length = number of seqs in MSA, depth = # AA in MSA
-            nonpad_mask = (tokenized[i] != self.padding_idx)
-            nonpad_mask_onehot = nonpad_mask.unsqueeze(-1).expand((nonpad_mask.shape[0], nonpad_mask.shape[1], self.K))
-            num_pad = (~nonpad_mask).sum()
-            padding = torch.full((num_pad,), self.tokenizer.pad_id)
-            #tokenized_unpadded = torch.masked_select(tokenized[i], nonpad_mask)
-            #one_hot_unpadded = torch.stack([self.tokenizer.one_hot(t) for t in tokenized_unpadded])
-            onehot_unpadded = torch.masked_select(tgt_one_hot[i], nonpad_mask_onehot).reshape(-1, self.K)[:, :self.dim]
+            # Deal with input pads to colater (TODO delete once fixed)
+            # length, depth = tokenized[i].shape  # length = number of seqs in MSA, depth = # AA in MSA
+            # #print(tokenized[i])
+            # #import pdb; pdb.set_trace()
+            # nonpad_mask = (tokenized[i] != self.padding_idx)
+            # nonpad_mask_onehot = nonpad_mask.unsqueeze(-1).expand((nonpad_mask.shape[0], nonpad_mask.shape[1], self.K))
+            # num_pad = (~nonpad_mask).sum()
+            # if num_pad > 0:
+            #     print("num of pads in input", num_pad)
+            #     raise ValueError("There should not be pads input to colater, something is wrong in dataset")
+            # padding = torch.full((num_pad,), self.tokenizer.pad_id)
+            # #tokenized_unpadded = torch.masked_select(tokenized[i], nonpad_mask)
+            # #one_hot_unpadded = torch.stack([self.tokenizer.one_hot(t) for t in tokenized_unpadded])
+            # onehot_unpadded = torch.masked_select(tgt_one_hot[i], nonpad_mask_onehot).reshape(-1, self.K)[:, :self.dim]
+            #
+            # # Append timestep
+            # t = np.random.randint(1, self.num_timesteps)  # randomly sample timestep
+            # timesteps.append(t)
+            # Q_bar_temp = self.Q_bar[t][:self.dim, :self.dim]
+            # #print(onehot_unpadded.shape)
+            # # Calculate target
+            # x_t, q_x_t = sample_transition_matrix(onehot_unpadded, Q_bar_temp)  # x = tgt, x_t = src, Q_bar accounts for time
+            # # Reshape back to MSA
+            # x_t = torch.concat([x_t, padding])
+            # #print(self.tokenizer.untokenize(x_t))
+            # x_t = x_t.reshape(length, depth)
+            # q_x_t = torch.concat([q_x_t, pad_one_hot.repeat((num_pad, 1))])
+            # q_x_t = q_x_t.reshape(length, depth, -1)
+            # src[i] = x_t
+            # src_one_hot[i] = torch.stack([self.tokenizer.one_hot(t) for t in x_t])
+            # q_x[i, :, :depth, :] = q_x_t
 
+
+            #tokenized[i] = [torch.tensor(self.tokenizer.tokenizeMSA(s)) for s in msas[i]]
+            nonpad_mask = (tokenized[i] != self.padding_idx)
+            num_pad = (~nonpad_mask).sum()
+            if num_pad > 0:
+                print("num of pads in input", num_pad)
+                raise ValueError("There should not be pads input to colater, something is wrong in dataset")
+
+            #tgt_one_hot[i] = [self.tokenizer.one_hot(t) for t in tokenized[i]]
+            curr_msa = tgt_one_hot[i][:, :, :self.dim]
+            length, depth, tokens = curr_msa.shape  # length = number of seqs in MSA, depth = # AA in MSA
+            curr_msa = curr_msa.flatten(start_dim=0, end_dim=1)
             # Append timestep
-            t = np.random.randint(1, self.num_timesteps)  # randomly sample timestep
+            t = np.random.randint(1, self.num_timesteps) # randomly sample timestep
             timesteps.append(t)
-            Q_bar_temp = self.Q_bar[t][:self.dim, :self.dim]
-            #print(onehot_unpadded.shape)
             # Calculate target
-            x_t, q_x_t = sample_transition_matrix(onehot_unpadded, Q_bar_temp)  # x = tgt, x_t = src, Q_bar accounts for time
+            #print("currmsa", curr_msa.shape)
+            x_t, q_x_t = sample_transition_matrix(curr_msa, self.Q_bar[t][:self.dim, :self.dim])  # x = tgt, x_t = src, Q_bar accounts for time
+            #x_tminus1, q_x_tminus1 = sample_transition_matrix(curr_msa, self.Q_bar[t-1])  # x = tgt, x_t = src, Q_bar accounts for time
             # Reshape back to MSA
-            x_t = torch.concat([x_t, padding])
-            #print(self.tokenizer.untokenize(x_t))
             x_t = x_t.reshape(length, depth)
-            q_x_t = torch.concat([q_x_t, pad_one_hot.repeat((num_pad, 1))])
-            q_x_t = q_x_t.reshape(length, depth, -1)
+            q_x_t = q_x_t.reshape(length, depth, tokens)
+            #q_x_tminus1 = q_x_tminus1.reshape(length, depth, tokens)
             src[i] = x_t
             src_one_hot[i] = torch.stack([self.tokenizer.one_hot(t) for t in x_t])
             q_x[i, :, :depth, :] = q_x_t
-
-            #tokenized[i] = [torch.tensor(self.tokenizer.tokenizeMSA(s)) for s in msas[i]]
-            #tgt_one_hot[i] = [self.tokenizer.one_hot(t) for t in tokenized[i]]
-            # curr_msa = tgt_one_hot[i]
-            # length, depth, tokens = curr_msa.shape  # length = number of seqs in MSA, depth = # AA in MSA
-            # curr_msa = curr_msa.flatten(start_dim=0, end_dim=1)
-            # # Append timestep
-            # t = np.random.randint(1, self.num_timesteps) # randomly sample timestep
-            # timesteps.append(t)
-            # # Calculate target
-            # x_t, q_x_t = sample_transition_matrix(curr_msa, self.Q_bar[t])  # x = tgt, x_t = src, Q_bar accounts for time
-            # #x_tminus1, q_x_tminus1 = sample_transition_matrix(curr_msa, self.Q_bar[t-1])  # x = tgt, x_t = src, Q_bar accounts for time
-            # # Reshape back to MSA
-            # x_t = x_t.reshape(length, depth)
-            # q_x_t = q_x_t.reshape(length, depth, tokens)
-            # #q_x_tminus1 = q_x_tminus1.reshape(length, depth, tokens)
-            # src[i] = x_t
-            # src_one_hot[i] = [self.tokenizer.one_hot(t) for t in x_t]
-            # q_x[i, :, :depth, :] = q_x_t
-            # #q_x_minus1[i, :, :depth, :] = q_x_tminus1
-            # tokenized[i] = torch.stack(tokenized[i]) # replace list with stack
-            # #one_hot[i] = torch.stack(one_hot[i])
-            # src_one_hot[i] = torch.stack(src_one_hot[i])
-            # tgt_one_hot[i] = torch.stack(tgt_one_hot[i])
+            #q_x_minus1[i, :, :depth, :] = q_x_tminus1
+            #tokenized[i] = torch.stack(tokenized[i]) # replace list with stack
+            #one_hot[i] = torch.stack(one_hot[i])
+            #src_one_hot[i] = torch.stack(src_one_hot[i])
+            #tgt_one_hot[i] = torch.stack(tgt_one_hot[i])
+            #print(tokenized[i], src[i])
+            #print(tokenized[i].shape, src[i].shape)
+            #import pdb; pdb.set_trace()
         # PAD out
         src = _pad_msa(src, self.num_seqs, max_seq_len, self.tokenizer.pad_id)
         tokenized = _pad_msa(tokenized, self.num_seqs, max_seq_len, self.tokenizer.pad_id)
