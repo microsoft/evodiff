@@ -1,15 +1,16 @@
 import os
-from os import path
 from tqdm import tqdm
 from scipy.spatial.distance import hamming, cdist
 
 import numpy as np
 from torch.utils.data import Dataset
 import pandas as pd
+import re
 
 from dms.utils import Tokenizer
 from sequence_models.utils import parse_fasta
 from sequence_models.constants import PROTEIN_ALPHABET, trR_ALPHABET, PAD, GAP
+from collections import Counter
 
 
 class TRRMSADataset(Dataset):
@@ -118,21 +119,33 @@ class TRRMSADataset(Dataset):
         #import pdb; pdb.set_trace()
         return output
 
-def get_msa_depth(data_dir, all_files, save_file, dataset='openfold'): # TODO combine this function w/ nitya old functions (find nitya old functions)
+
+def read_openfold_files(data_dir, filename):
+    if os.path.exists(data_dir + filename + '/a3m/uniclust30.a3m'):
+        path = data_dir + filename + '/a3m/uniclust30.a3m'
+    elif os.path.exists(data_dir + filename + '/a3m/bfd_uniclust_hits.a3m'):
+        path = data_dir + filename + '/a3m/bfd_uniclust_hits.a3m'
+    else:
+        raise Exception("Missing filepaths")
+    return path
+
+def get_msa_depth_openfold(data_dir, all_files, save_file): # TODO combine this function w/ nitya old functions (find nitya old functions)
     msa_depth = []
     for filename in tqdm(all_files):
-        path = data_dir + filename
-        if dataset == 'openfold':
-            path+='/a3m/bfd_uniclust_hits.a3m'
-        #data = np.load(path, allow_pickle=True)
-        if os.path.exists(path):
-            parsed_msa = parse_fasta(path)
-        else:
-            parsed_msa = parse_fasta(data_dir + filename + '/a3m/uniclust30.a3m') # TODO why are there two different filenames?
+        path = read_openfold_files(data_dir, filename)
+        parsed_msa = parse_fasta(path)
         msa_depth.append(len(parsed_msa))
-        #if len(parsed_msa) < 64:
-        #    print(len(parsed_msa))
     np.savez_compressed(data_dir+save_file, np.asarray(msa_depth))
+
+def get_sliced_gap_depth_openfold(data_dir, all_files, save_file, max_seq_len=512):
+    sliced_depth = []
+    for filename in tqdm(all_files):
+        path=read_openfold_files(data_dir, filename)
+        parsed_msa = parse_fasta(path)
+        sliced_msa_depth = [seq for seq in parsed_msa if (Counter(seq)[GAP]) <= max_seq_len] # Only append seqs with gaps<512
+        sliced_depth.append(len(sliced_msa_depth))
+
+    np.savez_compressed(data_dir + save_file, np.asarray(sliced_depth))
 
 
 class A3MMSADataset(Dataset):
@@ -150,6 +163,10 @@ class A3MMSADataset(Dataset):
             data_dir: str,
                 if you have a specified data directory
         """
+        alphabet = PROTEIN_ALPHABET
+        self.tokenizer = Tokenizer(alphabet)
+        self.alpha = np.array(list(alphabet))
+        self.gap_idx = self.tokenizer.alphabet.index(GAP)
 
         # Get npz_data dir
         if data_dir is not None:
@@ -157,67 +174,55 @@ class A3MMSADataset(Dataset):
         else:
             raise FileNotFoundError(data_dir)
 
-        all_files = os.listdir(self.data_dir) # TODO clean this up, why is rosetta_lengths in this dir? have code create these files in this class
-        if 'openfold_lengths.npz' in all_files:
-            all_files.remove('openfold_lengths.npz')
-        if 'trrosetta_test_lengths.npz' in all_files:
-            all_files.remove('trrosetta_test_lengths.npz')
-        if 'openfold_depths.npz' in all_files:
-            all_files.remove('openfold_depths.npz')
-        elif 'openfold_depths.npz' not in all_files:
-            get_msa_depth(data_dir, sorted(all_files), 'openfold_depths.npz')
+        [print("Excluding", x) for x in os.listdir(self.data_dir) if x.endswith('.npz')]
+        all_files = [x for x in os.listdir(self.data_dir) if not x.endswith('.npz')]
         all_files = sorted(all_files)
+        print("unfiltered length", len(all_files))
 
-        #print(all_files)
-
-        ## Constructor; loop through once, find length>min, reindex file/length/depth
+        ## Filter based on depth (keep > 64 seqs/MSA)
+        if not os.path.exists(data_dir + 'openfold_depths.npz'):
+            get_msa_depth_openfold(data_dir, sorted(all_files), 'openfold_depths.npz')
         if min_depth is not None: # reindex, filtering out MSAs < min_depth
             _depths = np.load(data_dir+'openfold_depths.npz')['arr_0']
             depths = pd.DataFrame(_depths, columns=['depth'])
-            depths = depths[depths['depth'] >= 64]
+            depths = depths[depths['depth'] >= min_depth]
             keep_idx = depths.index
 
             _lengths = np.load(data_dir+'openfold_lengths.npz')['ells']
             lengths = np.array(_lengths)[keep_idx]
-            filtered_files = np.array(all_files)[keep_idx]
+            all_files = np.array(all_files)[keep_idx]
+            print("filter MSA depth > 64", len(all_files))
 
-        self.filenames = filtered_files  # IDs of samples to include
+        # Re-filter based on gap-rows (TODO: potentially can delete code above)
+        if not os.path.exists(data_dir + 'openfold_gap_depths.npz'):
+            get_sliced_gap_depth_openfold(data_dir, all_files, 'openfold_gap_depths.npz', max_seq_len=max_seq_len)
+        _gap_depths = np.load(data_dir + 'openfold_gap_depths.npz')['arr_0']
+        gap_depths = pd.DataFrame(_gap_depths, columns=['gapdepth'])
+        gap_depths = gap_depths[gap_depths['gapdepth'] >= min_depth]
+        filter_gaps_idx = gap_depths.index
+        lengths = np.array(lengths)[filter_gaps_idx]
+        all_files = np.array(all_files)[filter_gaps_idx]
+        print("filter rows with GAPs > 512", len(all_files))
+
+        self.filenames = all_files  # IDs of samples to include
         self.lengths = lengths # pass to batch sampler
-
         self.n_sequences = n_sequences
         self.max_seq_len = max_seq_len
         self.selection_type = selection_type
-        alphabet=PROTEIN_ALPHABET
-        self.tokenizer = Tokenizer(alphabet)
-        #self.tokenizer = tokenizer
-        self.alpha = np.array(list(alphabet))
 
     def __len__(self):
         return len(self.filenames)
 
     def __getitem__(self, idx):  # TODO: add error checking?
         filename = self.filenames[idx]
-        if path.exists(self.data_dir + filename + '/a3m/uniclust30.a3m'):
-            parsed_msa = parse_fasta(self.data_dir + filename + '/a3m/uniclust30.a3m')
-        elif path.exists(self.data_dir + filename + '/a3m/bfd_uniclust_hits.a3m'):
-            parsed_msa = parse_fasta(self.data_dir + filename + '/a3m/bfd_uniclust_hits.a3m')
-        else: # TODO what is this line for?
-            parsed_msa = parse_fasta(self.data_dir + filename)
-            # print(filename)
-            # raise ValueError("file does not exist")
-        #print("parsed", parsed_msa[0])
+        path = read_openfold_files(self.data_dir, filename)
+        parsed_msa = parse_fasta(path)
+
         aligned_msa = [[char for char in seq if (char.isupper() or char == '-') and not char == '.'] for seq in parsed_msa]
         aligned_msa = [''.join(seq) for seq in aligned_msa]
-        #print("aligned", aligned_msa[0])
-
-        # with open('/home/t-nthakkar/msa_' + str(idx) + '.txt', 'a') as f:
-        #     for seq in aligned_msa:
-        #         f.write(seq)
-        #         f.write('\n')
 
         tokenized_msa = [self.tokenizer.tokenizeMSA(seq) for seq in aligned_msa]
         tokenized_msa = np.array([l.tolist() for l in tokenized_msa])
-
         msa_seq_len = len(tokenized_msa[0])
 
         if msa_seq_len > self.max_seq_len:
@@ -227,21 +232,25 @@ class A3MMSADataset(Dataset):
             slice_start = 0
             seq_len = msa_seq_len
 
-        sliced_msa = tokenized_msa[:, slice_start: slice_start + self.max_seq_len]
-        anchor_seq = sliced_msa[0]  # This is the query sequence in MSA
+        # Slice to 512
+        sliced_msa_seq = tokenized_msa[:, slice_start: slice_start + self.max_seq_len]
+        anchor_seq = sliced_msa_seq[0]  # This is the query sequence in MSA
 
-        # gap_str = '-' * msa_seq_len
-        # parsed_msa = [seq.upper() for seq in parsed_msa if seq != gap_str]
-
-        sliced_msa = [seq for seq in sliced_msa if (list(set(seq)) != [self.tokenizer.alphabet.index('-')])]
+        # slice out all-gap rows
+        sliced_msa = [seq for seq in sliced_msa_seq if (list(set(seq)) != [self.gap_idx])]
         msa_num_seqs = len(sliced_msa)
-        #print("msa num seqs", msa_num_seqs)
-        # If fewer sequences in MSA than self.n_sequences, create sequences padded with PAD token based on 'random' or
-        # 'MaxHamming' selection strategy
+
         if msa_num_seqs < self.n_sequences: # TODO this should not be called anymore
+            print("before for len", len(sliced_msa_seq))
             print("msa_num_seqs < self.n_sequences should not be called")
-            print(msa_num_seqs)
-            print("seq len", seq_len)
+            print("tokenized msa shape", tokenized_msa.shape)
+            print("tokenized msa depth", len(tokenized_msa))
+            print("sliced msa depth", msa_num_seqs)
+            print("used to set slice")
+            print("msa_seq_len", msa_seq_len)
+            print("self max seq len", self.max_seq_len)
+            print(slice_start)
+            import pdb; pdb.set_trace()
             output = np.full(shape=(self.n_sequences, seq_len), fill_value=self.tokenizer.pad_id)
             output[:msa_num_seqs] = sliced_msa
         elif msa_num_seqs > self.n_sequences:
@@ -277,8 +286,5 @@ class A3MMSADataset(Dataset):
             output = sliced_msa
 
         output = [''.join(seq) for seq in self.alpha[output]]
-        # print("parsed", parsed_msa[1],
-        #       "\naligned", aligned_msa[1],
-        #       "\noutput", output[1]) # check that there are no all-msa rows
-        # print(len(parsed_msa), len(aligned_msa), len(output))
+
         return output
