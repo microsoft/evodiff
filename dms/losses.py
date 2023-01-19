@@ -223,7 +223,7 @@ class D3PMLVBLossMSA(KLDivLoss): # TODO make sure this matches seqs
         self.tmax = tmax
         self.tokenizer = tokenizer
         self.K = tokenizer.K
-        self.dim = self.K-4 # ignore special char for matrix math
+        self.dim = self.K # ignore special char for matrix math
         super().__init__(reduction=reduction, log_target=log_target)
 
     def forward(self, src_one_hot, q, predictions, tgt, tgt_one_hot, input_mask, timestep, Q, Q_bar):
@@ -273,23 +273,25 @@ class D3PMLVBLossMSA(KLDivLoss): # TODO make sure this matches seqs
                 num = torch.mul(A, B)
                 denom = torch.bmm(torch.mm(x_0, Q_bar_temp).unsqueeze(1), x_t.unsqueeze(2))
                 q_t_minus1 = num / denom.squeeze().unsqueeze(1)
+
                 # TODO debugging
                 # for r in range(p_theta_marg.shape[0]):
-                #     kl_temp = KLDivLoss(reduction="batchmean")
-                #     temp = kl_temp(p_theta_marg[r, :].log(), q_t_minus1[r, :])
-                #     if temp.sum().isinf() or temp.sum().isnan():
-                #         print(A[r].shape, Q_expand[r].shape, B_pred[r].shape)
-                #         print(pred[r])
-                        #print(A[r], B_pred[r])
-                        #q_t_test = torch.mul(A[r], B_pred[r])
-                        #print(q_t_test == q_t[r])
-                        #print(q_t_test)
-                        #print(q_t[r])
-                        #print(A.unsqueeze(1)[r], Q_expand[r])
-                        #print(q_t[r,:])
-                        # print(p_theta_marg[r,:], q_t_minus1[r,:])
-                        # print(kl_temp)
-                        # import pdb; pdb.set_trace()
+                #      kl_temp = KLDivLoss(reduction="none")
+                #      temp = kl_temp(p_theta_marg[r, :].log(), q_t_minus1[r, :])
+                #      print(temp)
+                #      if temp.sum().isinf() or temp.sum().isnan() or temp.sum() < 0:
+                #         #print(A[r].shape, Q_expand[r].shape, B_pred[r].shape)
+                #         #print(pred[r])
+                #         #print(A[r], B_pred[r])
+                #         #q_t_test = torch.mul(A[r], B_pred[r])
+                #         #print(q_t_test == q_t[r])
+                #         #print(q_t_test)
+                #         #print(q_t[r])
+                #         #print(A.unsqueeze(1)[r], Q_expand[r])
+                #         #print(q_t[r,:])
+                #         print(p_theta_marg[r,:], q_t_minus1[r,:])
+                #         #print(kl_temp)
+                #         import pdb; pdb.set_trace()
                 kl_loss_i = super().forward(p_theta_marg.log(), q_t_minus1)  # KLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
             #print(timestep[i], kl_loss_i)
