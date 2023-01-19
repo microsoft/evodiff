@@ -208,16 +208,13 @@ class D3PMCollater(object):
         ## This is to deal with an empty sequence ##
         del_index = None
         for i,t in enumerate(tokenized):
-            if len(t) == 0: # TODO: was this an old bug? can i delete now -check ignore empty sequence in MNIST dataset
-               #one_hot.append(torch.zeros(self.K, dtype=torch.double))
+            if len(t) == 0:
                del_index = i
             else:
                 one_hot[i, :len(t), :] = self.tokenizer.one_hot(t)
-                #one_hot.append(self.tokenizer.one_hot(t))
         if del_index is not None:
            tokenized.pop(del_index)
            one_hot = torch.cat((one_hot[:del_index], one_hot[del_index + 1:]))
-           #one_hot.pop(del_index)
         one_hot = one_hot.to(torch.double)
         src=[]
         timesteps = []
@@ -226,7 +223,6 @@ class D3PMCollater(object):
         for i,t in enumerate(tokenized): # enumerate over batch
             D = len(t)  # sequence length
             x = one_hot[i, :D, :] #self.tokenizer.one_hot(t)
-            #one_hot[i,:D,:] = x
             t = np.random.randint(1, self.num_timesteps) # randomly sample timestep
             # Append timestep
             timesteps.append(t)
@@ -236,9 +232,6 @@ class D3PMCollater(object):
             src.append(x_t)
             src_one_hot[i, :D, :] = self.tokenizer.one_hot(x_t)
             q_x[i, :D, :] = q_x_t
-            #q_x_minus1[i, :D, :] = q_x_tminus1
-        # PAD out
-        #one_hot = torch.stack(one_hot)
         src = _pad(src, self.tokenizer.pad_id)
         tokenized = _pad(tokenized, self.tokenizer.pad_id)
         return (src.to(torch.long), src_one_hot.to(torch.double), torch.tensor(timesteps), tokenized.to(torch.long),
