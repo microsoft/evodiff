@@ -148,11 +148,6 @@ class D3PMLVBLoss(KLDivLoss):
                 Q_expand = Q_bar[timestep[i] - 1].unsqueeze(0).expand(A.shape[0], self.K, self.K)  # [ P x K x K]
                 B_pred = torch.mul(pred.unsqueeze(2), Q_expand)
 
-                # print("b_pred pkk", B_pred.shape)
-                # print(pred.unsqueeze(2)[0][0], Q_expand[0][0], B_pred[0][0])
-                # import pdb; pdb.set_trace()
-                #B_expand = B.unsqueeze(1).expand(A.shape[0], self.K, self.K) # [ P x K x K]
-
                 q_t = torch.mul(A.unsqueeze(1), B_pred)
                 p_theta_marg = torch.bmm(torch.transpose(q_t, 1,2), pred.unsqueeze(2)).squeeze() # mul and sum over model logits
 
