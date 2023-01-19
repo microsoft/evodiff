@@ -10,13 +10,13 @@ class MaskedAccuracyMSA(object):
 
     def __call__(self, pred, tgt, mask):
         nonpad_loc = mask.bool()
-        pred = pred[:, :, :, :-4] # TODO cut out extra chars
+        pred = pred[:, :, :, :-4] # cut out extra chars not included in blosum matrix
         batchsize, length, depth, tokens = pred.shape
         masked_pred = torch.masked_select(pred, nonpad_loc.unsqueeze(-1).expand(pred.shape))
         masked_pred = masked_pred.reshape(-1, tokens)
         _, p = torch.max(torch.nn.functional.softmax(masked_pred, dim=-1), -1)
         masked_tgt = torch.masked_select(tgt, nonpad_loc)
-        #print("target", masked_tgt.shape, masked_tgt)
+        #print("target/pred", masked_tgt, p)
         #print("p", p.shape, p)
         accu = torch.mean((p == masked_tgt).float())
         return accu
