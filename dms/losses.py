@@ -2,7 +2,6 @@ import torch
 from torch.nn import CrossEntropyLoss, KLDivLoss
 from dms.utils import Tokenizer
 from sequence_models.constants import MSA_AAS
-from torch.nn.functional import normalize
 
 def sample_prior(a,b, _len=len(MSA_AAS)):
     """
@@ -73,18 +72,20 @@ class OAMaskedCrossEntropyLoss(CrossEntropyLoss):
 
 class D3PMCELoss(CrossEntropyLoss):
     """
-    Standard cross entropy loss
-    Wrapped to deal with padding and normalize by # of non-padded locations
-    pred: (N x L x n_tokens) (PROTEIN_ALPHABET)
-    tgt: (N x L)
-    input_mask: bool of non-padded locations
+    Wrapped Standard cross entropy loss to deal with padding in inputs
+    Shape:
+        Inputs:
+            - pred: (N, L, K)
+            - tgt: (N, L)
+            - input_mask: (N, L) bool of non-padded locations
+        Returns
+            ce_loss: cross entropy loss
     """
     def __init__(self, weight=None, reduction='mean', tokenizer=Tokenizer()):
         self.tokenizer = tokenizer
         super().__init__(weight=weight, reduction=reduction)
     def forward(self, pred, tgt, input_mask):
         p = pred[:, :, :self.tokenizer.K]
-        #batch, length, tokens = p.shape
         nonpad_loc = input_mask.bool()
         p_unpadded = torch.masked_select(p, nonpad_loc.unsqueeze(-1).expand(p.shape))
         p_unpadded = p_unpadded.reshape(-1, self.tokenizer.K)
@@ -94,27 +95,28 @@ class D3PMCELoss(CrossEntropyLoss):
 
 class D3PMLVBLoss(KLDivLoss):
     """
-    Lower variational bound loss as defined in Austin et al.
-        Shape:
-            Inputs:
-                - q: (N, L, n_tokens) forward prob dist at time t
-                - q_minus1: (N, L, n_tokens) forward prob dist at time t-1
-                - predictions: (N, L, n_tokens) predicted reverse dist (model out)
-                - tgt: (N, L) true x_0 sequence
-                - input mask (N, L) non-pad locations bool
-                - timestep (N)
-                - Q (n_tokens x n_tokens) transition matrix
-                - Q_bar (n_tokens x n_tokens) cum product of trans matrix at time t
+    Shape:
+        Inputs:
+            - src_one_hot: (B, L, K) original seq one hot encoded
+            - q: (B, L, K) forward prob dist
+            - predictions: (B, L, K) model predictions
+            - tgt: (B, L) corrupted MSA tokenized
+            - tgt_one_hot: (B, L, K) corrupted MSA one hot encoded
+            - input_mask: (B, L) bool mask indicating pad locations
+            - timestep (B)
+            - Q (K, K) transition matrix
+            - Q_bar (K, K) transition matrix accounting for time
 
-        # Returns
-        """
+        Returns
+            - lvb: lower var bound loss as defined in Structured Denoising Diffusion, Austin et. al
+    """
     def __init__(self, tmax=500, reduction='batchmean', log_target=False, tokenizer=Tokenizer()):
         self.tmax = tmax
         self.tokenizer = tokenizer
         self.K = self.tokenizer.K
         super().__init__(reduction=reduction, log_target=log_target)
 
-    def forward(self, src, src_onehot, q, predictions, tgt, tgt_onehot, input_mask, timestep, Q, Q_bar):
+    def forward(self, src_onehot, q, predictions, tgt, tgt_onehot, input_mask, timestep, Q, Q_bar):
         p = torch.nn.functional.softmax(predictions[:, :, :self.K], dim=2) # ignoring specials
         losses = []
         nonpad_loc = input_mask.sum(axis=1)
@@ -167,18 +169,22 @@ class D3PMLVBLoss(KLDivLoss):
 
 
 
-class D3PMLVBLossMSA(KLDivLoss): # TODO make sure this matches seqs
+class D3PMLVBLossMSA(KLDivLoss):
     """
-    Lower variational bound loss as defined in Austin et al.
         Shape:
             Inputs:
-                - q: (N, L, n_tokens) forward prob dist
-                - pred: (N, L, n_tokens) predicted reverse dist
-                - tgt: (N, L)
-                - timestep (N)
-                - Q (n_tokens x n_tokens) transition matrix
+                - src_one_hot: (B, D, L, K) original MSA one hot encoded
+                - q: (B, D, L, K) forward prob dist
+                - predictions: (B, D, L, K) model predictions
+                - tgt: (B, D, L) corrupted MSA tokenized
+                - tgt_one_hot: (B, D, L, K) corrupted MSA one hot encoded
+                - input_mask: (B, D, L) bool mask indicating pad locations
+                - timestep (B)
+                - Q (K, K) transition matrix
+                - Q_bar (K, K) transition matrix accounting for time
 
-        Returns
+            Returns
+                - lower var bound loss as defined in Structured Denoising Diffusion, Austin et. al
         """
     def __init__(self, tmax=500, reduction='batchmean', log_target=False, tokenizer=Tokenizer()):
         self.tmax = tmax

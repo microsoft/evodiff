@@ -422,7 +422,7 @@ def train(gpu, args):
                 outputs = model(src, tgt, timestep, input_mask=~input_mask.bool())
             #print(outputs.dtype)
             if args.mask == 'blosum' or args.mask == 'random':
-                lvb_loss = loss_func1(src, src_onehot, q, outputs, tgt, tgt_onehot, input_mask, timestep, Q, Q_bar) * n_tokens
+                lvb_loss = loss_func1(src_onehot, q, outputs, tgt, tgt_onehot, input_mask, timestep, Q, Q_bar) * n_tokens
                 ce_loss = loss_func2(outputs, tgt, input_mask) * n_tokens
                 loss = (lvb_loss + _lambda * ce_loss)
                 nll_loss = ce_loss
