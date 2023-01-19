@@ -223,11 +223,10 @@ class D3PMLVBLossMSA(KLDivLoss): # TODO make sure this matches seqs
         self.tmax = tmax
         self.tokenizer = tokenizer
         self.K = tokenizer.K
-        self.dim = self.K # ignore special char for matrix math
         super().__init__(reduction=reduction, log_target=log_target)
 
     def forward(self, src_one_hot, q, predictions, tgt, tgt_one_hot, input_mask, timestep, Q, Q_bar):
-        p = torch.nn.functional.softmax(predictions[:, :, :, :self.dim], dim=3)  # ignoring specials
+        p = torch.nn.functional.softmax(predictions[:, :, :, :self.K], dim=3)  # ignoring specials
         losses = []
         nonpad_loc = input_mask.sum(axis=2)
         for i in range(len(tgt)): # enumerate over batch
@@ -249,53 +248,29 @@ class D3PMLVBLossMSA(KLDivLoss): # TODO make sure this matches seqs
                 #print(timestep[i], kl_loss_i)
             else:
                 # D KL (L_t-1) -> (q(x|x_t, x_0), p_theta_marg)
-                pred = p[i, :, :D, :self.dim].flatten(start_dim=0, end_dim=1) # [pos x tokens]
+                pred = p[i, :, :D, :self.K].flatten(start_dim=0, end_dim=1) # [pos x tokens]
                 pred = pred.to(torch.float64)  # must use 64 not 32 or p_theta_marg
-                x_t = src_one_hot[i, :, :D, :self.dim].flatten(start_dim=0, end_dim=1)
-                x_0 = tgt_one_hot[i, :, :D, :self.dim].flatten(start_dim=0, end_dim=1)
-                #print(x_t.shape, x_0.shape)
-                Q_temp = Q[timestep[i]][:self.dim, :self.dim]
-                Q_bar_temp = Q_bar[timestep[i] - 1][:self.dim, :self.dim]
+                x_t = src_one_hot[i, :, :D, :self.K].flatten(start_dim=0, end_dim=1)
+                x_0 = tgt_one_hot[i, :, :D, :self.K].flatten(start_dim=0, end_dim=1)
 
                 # Calculate p_theta_marg, simplified for loops
-                A = torch.mm(x_t, torch.t(Q_temp))  # [P x K]
-                B = torch.mm(x_0, Q_bar_temp)  # P x K
-                Q_expand = Q_bar_temp.unsqueeze(0).expand(A.shape[0], self.dim, self.dim)  # [ P x K x K]
+                A = torch.mm(x_t, torch.t(Q[timestep[i]]))  # [P x K]
+                B = torch.mm(x_0, Q_bar[timestep[i] - 1])  # P x K
+                Q_expand = Q_bar[timestep[i] - 1].unsqueeze(0).expand(A.shape[0], self.K, self.K)  # [ P x K x K]
                 B_pred = torch.mul(pred.unsqueeze(2), Q_expand)
                 q_t = torch.mul(A.unsqueeze(1), B_pred)  # batch mul (broadcast logit dim)
-                #print(A.shape, Q_expand.shape, q_t.shape)
-                #print(pred.shape)
                 p_theta_marg = torch.bmm(torch.transpose(q_t, 1,2), pred.unsqueeze(2)).squeeze() # this marginalizes over logits
                 p_theta_marg = p_theta_marg / p_theta_marg.sum(axis=1, keepdim=True)  # renormalize probabilities at each position before KL
                 p_theta_marg = p_theta_marg.to(tgt.device)
 
                 # calculate q_t_minus_1, simplified for loops
                 num = torch.mul(A, B)
-                denom = torch.bmm(torch.mm(x_0, Q_bar_temp).unsqueeze(1), x_t.unsqueeze(2))
+                denom = torch.bmm(torch.mm(x_0, Q_bar[timestep[i] - 1]).unsqueeze(1), x_t.unsqueeze(2))
                 q_t_minus1 = num / denom.squeeze().unsqueeze(1)
 
-                # TODO debugging
-                # for r in range(p_theta_marg.shape[0]):
-                #      kl_temp = KLDivLoss(reduction="none")
-                #      temp = kl_temp(p_theta_marg[r, :].log(), q_t_minus1[r, :])
-                #      print(temp)
-                #      if temp.sum().isinf() or temp.sum().isnan() or temp.sum() < 0:
-                #         #print(A[r].shape, Q_expand[r].shape, B_pred[r].shape)
-                #         #print(pred[r])
-                #         #print(A[r], B_pred[r])
-                #         #q_t_test = torch.mul(A[r], B_pred[r])
-                #         #print(q_t_test == q_t[r])
-                #         #print(q_t_test)
-                #         #print(q_t[r])
-                #         #print(A.unsqueeze(1)[r], Q_expand[r])
-                #         #print(q_t[r,:])
-                #         print(p_theta_marg[r,:], q_t_minus1[r,:])
-                #         #print(kl_temp)
-                #         import pdb; pdb.set_trace()
                 kl_loss_i = super().forward(p_theta_marg.log(), q_t_minus1)  # KLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
-            #print(timestep[i], kl_loss_i)
+
         losses = torch.stack(losses)
-        #print(losses)
         lvb = ((losses.sum()) / (tgt.shape[0]))  # loss per batch, norm by batchsize
         return lvb
