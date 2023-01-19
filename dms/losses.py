@@ -171,40 +171,6 @@ class D3PMLVBLoss(KLDivLoss):
         return lvb
 
 
-class D3PMCELossMSA(CrossEntropyLoss):
-    """
-    TODO this is the same as D3PM CE LOSS FOR SEQUENCES ..
-
-    Standard cross entropy loss
-    Wrapped to deal with padding and normalize by # of non-padded locations
-    pred: batchsize x seq_len x n_tokens(PROTEIN_ALPHABET)
-    one_hot: batchsize x seq_len x n_tokens(ALL_AAS)
-
-    input_mask: bool of non-padded locations
-    """
-    def __init__(self, weight=None, reduction='mean', tokenizer=Tokenizer()):
-        self.tokenizer = tokenizer
-        super().__init__(weight=weight, reduction=reduction)
-    def forward(self, pred, tgt, input_mask):
-        p = pred[:, :, :, :self.tokenizer.K]
-        #batchsize, length, depth, tokens = p.shape
-        nonpad_loc = input_mask.bool()
-        p_unpadded = torch.masked_select(p, nonpad_loc.unsqueeze(-1).expand(p.shape))
-        p_unpadded = p_unpadded.reshape(-1, self.tokenizer.K)
-        t_unpadded = torch.masked_select(tgt, nonpad_loc)
-        ce_loss = super().forward(p_unpadded, t_unpadded)
-        # DEBUG
-        #p_temp = torch.multinomial(torch.nn.functional.softmax(p_unpadded, dim=-1), num_samples=1).squeeze()
-        # _, p_temp = torch.max(torch.nn.functional.softmax(p_unpadded, dim=-1), -1)
-        # print(p_temp.shape, t_unpadded.shape)
-        # print("pred", self.tokenizer.untokenize(p_temp)[-150:])
-        # print("targ", self.tokenizer.untokenize(t_unpadded)[-150:])
-        # print("different by", torch.ne(p_temp, t_unpadded).sum())
-        # print("accu", torch.mean((p_temp == t_unpadded).float()))
-        # #test_loss = CrossEntropyLoss(reduction='sum')
-        # print("ce", ce_loss) #test_loss(p_unpadded, t_unpadded))
-        return ce_loss
-
 
 class D3PMLVBLossMSA(KLDivLoss): # TODO make sure this matches seqs
     """
@@ -233,7 +199,7 @@ class D3PMLVBLossMSA(KLDivLoss): # TODO make sure this matches seqs
             D = int(nonpad_loc[i][0])  # all seq in one MSA are padded to the same length, use first seq as ref
             if timestep[i] == 1:
                 # CE (L_t=0)
-                reconstruction_loss = D3PMCELossMSA(tokenizer=self.tokenizer)
+                reconstruction_loss = D3PMCELoss(tokenizer=self.tokenizer)
                 r_loss = reconstruction_loss(predictions[i].unsqueeze(0), tgt[i].unsqueeze(0), input_mask[i].unsqueeze(0))
                 #print(timestep[i], r_loss)
                 losses.append(r_loss)
