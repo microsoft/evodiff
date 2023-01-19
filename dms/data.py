@@ -5,7 +5,6 @@ from scipy.spatial.distance import hamming, cdist
 import numpy as np
 from torch.utils.data import Dataset
 import pandas as pd
-import re
 
 from dms.utils import Tokenizer
 from sequence_models.utils import parse_fasta
@@ -129,7 +128,9 @@ def read_openfold_files(data_dir, filename):
         raise Exception("Missing filepaths")
     return path
 
-def get_msa_depth_openfold(data_dir, all_files, save_file): # TODO combine this function w/ nitya old functions (find nitya old functions)
+# TODO add Nitya's previous filtering functions here
+
+def get_msa_depth_openfold(data_dir, all_files, save_file):
     msa_depth = []
     for filename in tqdm(all_files):
         path = read_openfold_files(data_dir, filename)
@@ -193,7 +194,7 @@ class A3MMSADataset(Dataset):
             all_files = np.array(all_files)[keep_idx]
             print("filter MSA depth > 64", len(all_files))
 
-        # Re-filter based on gap-rows (TODO: potentially can delete code above)
+        # Re-filter based on high gap-contining rows
         if not os.path.exists(data_dir + 'openfold_gap_depths.npz'):
             get_sliced_gap_depth_openfold(data_dir, all_files, 'openfold_gap_depths.npz', max_seq_len=max_seq_len)
         _gap_depths = np.load(data_dir + 'openfold_gap_depths.npz')['arr_0']
@@ -213,7 +214,7 @@ class A3MMSADataset(Dataset):
     def __len__(self):
         return len(self.filenames)
 
-    def __getitem__(self, idx):  # TODO: add error checking?
+    def __getitem__(self, idx):
         filename = self.filenames[idx]
         path = read_openfold_files(self.data_dir, filename)
         parsed_msa = parse_fasta(path)
@@ -240,19 +241,20 @@ class A3MMSADataset(Dataset):
         sliced_msa = [seq for seq in sliced_msa_seq if (list(set(seq)) != [self.gap_idx])]
         msa_num_seqs = len(sliced_msa)
 
-        if msa_num_seqs < self.n_sequences: # TODO this should not be called anymore
-            print("before for len", len(sliced_msa_seq))
-            print("msa_num_seqs < self.n_sequences should not be called")
-            print("tokenized msa shape", tokenized_msa.shape)
-            print("tokenized msa depth", len(tokenized_msa))
-            print("sliced msa depth", msa_num_seqs)
-            print("used to set slice")
-            print("msa_seq_len", msa_seq_len)
-            print("self max seq len", self.max_seq_len)
-            print(slice_start)
-            import pdb; pdb.set_trace()
-            output = np.full(shape=(self.n_sequences, seq_len), fill_value=self.tokenizer.pad_id)
-            output[:msa_num_seqs] = sliced_msa
+        if msa_num_seqs < self.n_sequences:
+            # print("before for len", len(sliced_msa_seq))
+            # print("msa_num_seqs < self.n_sequences should not be called")
+            # print("tokenized msa shape", tokenized_msa.shape)
+            # print("tokenized msa depth", len(tokenized_msa))
+            # print("sliced msa depth", msa_num_seqs)
+            # print("used to set slice")
+            # print("msa_seq_len", msa_seq_len)
+            # print("self max seq len", self.max_seq_len)
+            # print(slice_start)
+            # import pdb; pdb.set_trace()
+            # output = np.full(shape=(self.n_sequences, seq_len), fill_value=self.tokenizer.pad_id)
+            # output[:msa_num_seqs] = sliced_msa
+            raise Exception("msa num_seqs < self.n_sequences, indicates dataset not filtered properly")
         elif msa_num_seqs > self.n_sequences:
             if self.selection_type == 'random':
                 random_idx = np.random.choice(msa_num_seqs - 1, size=self.n_sequences - 1, replace=False) + 1
