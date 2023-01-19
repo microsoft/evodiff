@@ -12,7 +12,7 @@ def sample_prior(a,b, _len=len(MSA_AAS)):
     prior = torch.ones_like(prior) / _len
     return prior
 
-def sample_prior3D(a,b,c, _len=MSA_AAS):
+def sample_priorMSA(a,b,c, _len=MSA_AAS):
     """
     Returns prior for KL at T-> inf with same shape as q over total possible values (all_aas)
     Prior is a stationary distribution; uniform distribution over number of values
@@ -208,7 +208,7 @@ class D3PMLVBLossMSA(KLDivLoss):
                 # D KL (L_T)
                 # As T approches infinity, this term goes to zero
                 q_true = q[i, :, :D, :]
-                prior = sample_prior3D(q_true.shape[0], q_true.shape[1], q_true.shape[2], _len=self.tokenizer.alphabet)
+                prior = sample_priorMSA(q_true.shape[0], q_true.shape[1], q_true.shape[2], _len=self.tokenizer.alphabet)
                 prior = prior.to(tgt.device)
                 kl_loss_i = super().forward(prior.log(), q_true)  # fKLDivLoss expects input in log-space
                 losses.append(kl_loss_i)
