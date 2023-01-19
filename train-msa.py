@@ -61,7 +61,7 @@ def main():
     parser.add_argument('--decay', action='store_true')
     parser.add_argument('--dummy', required=False)
     parser.add_argument('--mask', default='blosum')
-    parser.add_argument('--reweighting_term', type=float, default=0.001)
+    parser.add_argument('--reweighting_term', type=float, default=0.001) # lambda from D3PM
 
 
     args = parser.parse_args()
@@ -70,7 +70,7 @@ def main():
         pass
     else:
         os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = '8883'
+        os.environ['MASTER_PORT'] = '8884'
     mp.spawn(train, nprocs=args.gpus, args=(args,))  # calls train gpu number of times, passes in args
 
 
@@ -138,8 +138,7 @@ def train(gpu, args):
             Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=diffusion_timesteps)
         if args.mask == 'blosum':
             Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=diffusion_timesteps)
-        collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=diffusion_timesteps, Q=Q_t, Q_bar=Q_prod,
-                                   padding_idx=tokenizer.pad_id)
+        collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=diffusion_timesteps, Q=Q_t, Q_bar=Q_prod)
         #Q_prod = Q_prod.to(device)
     else:
         print("mask must be: 'autoreg', 'blosum', or 'random'")
@@ -353,7 +352,7 @@ def train(gpu, args):
                         f.write(','.join(
                             [str(rloss_ardm), str(rloss_nll), str(raccu), str(int(current_tokens)), str(current_step)]))
                         f.write('\n')  # Can add for train too
-                if datetime.now() - chunk_time > timedelta(minutes=60): # TODO change back to hours
+                if datetime.now() - chunk_time > timedelta(minutes=120): # TODO change back to hours
                     print('Training complete in ' + str(datetime.now() - chunk_time))
                     with torch.no_grad():
                         if rank == 0:

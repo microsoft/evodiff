@@ -146,7 +146,7 @@ class Tokenizer(object):
             self.matrix = loadMatrix(path_to_blosum)
             self.matrix_dict = dict(self.matrix)
         self.sequences = sequences
-        self.K = len(self.alphabet)
+        self.K = len(self.all_aas)
         if self.sequences:
             self.K = len(self.all_aas[:-1]) # slice out GAPS for sequences
         #print("K is :", self.K)
