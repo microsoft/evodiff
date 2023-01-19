@@ -224,7 +224,8 @@ class MSATransformerTime(nn.Module):
         super(MSATransformerTime, self).__init__()
 
         self.timesteps = timesteps
-        self.time_encoding = TimeEncoding(d_model, timesteps, add_inplace=False)
+        self.time_encoding = PositionalEncoding1D(d_model, timesteps)
+        #self.time_encoding = TimeEncoding(d_model, timesteps, add_inplace=False)
         self.embed_tokens = nn.Embedding(
             n_tokens, d_model, padding_idx=mask_idx
         )
@@ -261,7 +262,10 @@ class MSATransformerTime(nn.Module):
         x = x * (1 - padding_mask.unsqueeze(-1).type_as(x))
 
         y = self.time_encoding(timesteps)
-        y = y.unsqueeze(2)  # match dimensions of token embedding
+        #y = y.unsqueeze(2)  # match dimensions of token embedding
+        y = y.unsqueeze(1).unsqueeze(1)
+        #print(x.shape, y.shape)
+        #import pdb; pdb.set_trace()
         y = y.expand(y.shape[0], x.shape[1], x.shape[2], x.shape[3])
         x += y
         #
