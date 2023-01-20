@@ -142,7 +142,8 @@ def train(gpu, args):
         diffusion_timesteps = None # Not input to model
     elif args.mask == 'so':
         tokenizer = Tokenizer()
-        collater = MaskCollater(tokenizer=tokenizer) # TODO fix
+        raise Exception("Have not included single order autoregressive in this code yet")
+        collater = BertMaskCollater(tokenizer=tokenizer) # TODO add kevins Collater from sequence models
         diffusion_timesteps = None  # Not input to model
     elif args.mask == 'blosum' or args.mask == 'random':
         diffusion_timesteps = config['diffusion_timesteps']
@@ -255,6 +256,8 @@ def train(gpu, args):
     # ----------------------------------------------------------
     if args.warmup:
         scheduler = LambdaLR(optimizer, warmup(warmup_steps), verbose=False)
+    else:
+        raise Exception("add --warmup flag to runtime")
     if args.mask == 'autoreg' or args.mask == 'so':
         loss_func = OAMaskedCrossEntropyLoss(reweight=True)
     elif args.mask == 'blosum' or args.mask == 'random':
@@ -440,6 +443,7 @@ def train(gpu, args):
             skip_scheduler = (scale > scaler.get_scale())
             if not skip_scheduler:
                scheduler.step()
+
         return loss, ce_loss, nll_loss, accu, n_tokens, n_seqs, n_processed
 
     if rank == 0:

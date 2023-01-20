@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 import torch.distributed as dist
 from dms.collaters import D3PMCollaterMSA
 from dms.utils import Tokenizer
-from dms.losses import  D3PMCELossMSA,  D3PMLVBLossMSA
+from dms.losses import  D3PMCELoss,  D3PMLVBLossMSA
 from dms.model import MSATransformerTime
 from sequence_models.esm import MSATransformer
 from sequence_models.constants import MSA_ALPHABET
@@ -260,7 +260,7 @@ def train(gpu, args):
     elif args.mask == 'blosum' or args.mask == 'random':
         # Austin = LVB + lambda * CE
         loss_func1 = D3PMLVBLossMSA(tmax=diffusion_timesteps, tokenizer=tokenizer)
-        loss_func2 = D3PMCELossMSA(tokenizer=tokenizer)
+        loss_func2 = D3PMCELoss(tokenizer=tokenizer, sequences=False)
         _lambda = args.reweighting_term
 
 
