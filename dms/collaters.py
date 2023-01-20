@@ -193,7 +193,7 @@ class D3PMCollater(object):
     def __init__(self, tokenizer=Tokenizer(), num_timesteps=100, Q=None, Q_bar=None):
         self.tokenizer = tokenizer
         self.num_timesteps = num_timesteps # Only needed for markov trans, doesnt depend on seq len
-        self.K = self.tokenizer.K-4
+        self.K = self.tokenizer.K
         self.Q = Q
         self.Q_bar =Q_bar
 
@@ -228,7 +228,6 @@ class D3PMCollater(object):
             timesteps.append(t)
             # Calculate forward at time t and t-1
             x_t, q_x_t = sample_transition_matrix(x, self.Q_bar[t]) # x = tgt, x_t = src, Q_bar[t] is cum prod @ time t
-            #x_tminus1, q_x_tminus1 = sample_transition_matrix(x, self.Q_bar[t-1])
             src.append(x_t)
             src_one_hot[i, :D, :] = self.tokenizer.one_hot(x_t)
             q_x[i, :D, :] = q_x_t
