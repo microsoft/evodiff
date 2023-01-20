@@ -112,67 +112,6 @@ class OAMaskCollater(object):
         return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), masks)
 
 
-class MSAAbsorbingARDMCollater():
-    """Collater for MSA Absorbing Diffusion model.
-    Based on implementation described by Hoogeboom et al. in "Autoregressive Diffusion Models"
-    https://doi.org/10.48550/arXiv.2110.02037
-    Parameters:
-        alphabet: str,
-            protein alphabet to use
-        pad_token: str,
-            pad_token to use to pad MSAs, default is PAD token from sequence_models.constants
-        num_seqs: int,
-            number of sequences to include in each MSA
-    Input (list): a batch of Multiple Sequence Alignments (MSAs), each MSA contains 64 sequences
-    Output:
-        src (torch.LongTensor): corrupted input + padding
-        tgt (torch.LongTensor): input + padding
-        mask (torch.LongTensor): 1 where tgt is not padding
-    """
-
-    def __init__(self, alphabet: str, pad_token=PAD, num_seqs=64):
-        self.tokenizer = Tokenizer(alphabet)
-        self.pad_idx = self.tokenizer.alphabet.index(pad_token)
-        self.num_seqs = num_seqs
-
-    def __call__(self, batch_msa):
-        tgt = list(batch_msa)
-        src = tgt.copy()
-
-        longest_msa = 0
-        batch_size = len(batch_msa)
-
-        for i in range(batch_size):
-            # Tokenize MSA
-            tgt[i] = [torch.tensor(self.tokenizer.tokenizeMSA(s)) for s in tgt[i]]
-            src[i] = [self.tokenizer.tokenizeMSA(s) for s in src[i]]
-
-            curr_msa = src[i]
-
-            curr_msa = np.asarray(curr_msa)
-            length, depth = curr_msa.shape  # length = number of seqs in MSA, depth = # AA in MSA
-
-            curr_msa = curr_msa.flatten()  # Flatten MSA to 1D to mask tokens
-            d = len(curr_msa)  # number of residues in MSA
-            t = np.random.choice(d)  # Pick timestep t
-            t += 1  # ensure t cannot be 0
-
-            num_masked_tokens = d - t + 1
-            mask_idx = np.random.choice(d, num_masked_tokens, replace=False)  # Pick D-t+1 random indices to mask
-            curr_msa[mask_idx] = self.tokenizer.mask_id
-            curr_msa = curr_msa.reshape(length, depth)
-            src[i] = torch.tensor(curr_msa)
-
-            longest_msa = max(depth, longest_msa)  # Keep track of the longest MSA for padding
-            tgt[i] = torch.stack(tgt[i])
-        # Pad sequences
-        src = _pad_msa(src, self.num_seqs, longest_msa, self.pad_idx)
-        tgt = _pad_msa(tgt, self.num_seqs, longest_msa, self.pad_idx)
-        mask = (src == self.tokenizer.mask_id)
-        #print(src.shape, tgt.shape, mask.shape)
-        return src, tgt, mask
-
-
 class D3PMCollater(object):
     """
     D3PM Collater for generating batch data according to markov process according to Austin et al.
