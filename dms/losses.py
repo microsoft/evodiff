@@ -81,11 +81,15 @@ class D3PMCELoss(CrossEntropyLoss):
         Returns
             ce_loss: cross entropy loss
     """
-    def __init__(self, weight=None, reduction='mean', tokenizer=Tokenizer()):
+    def __init__(self, weight=None, reduction='mean', tokenizer=Tokenizer(), sequences=True):
         self.tokenizer = tokenizer
+        self.sequences=sequences
         super().__init__(weight=weight, reduction=reduction)
     def forward(self, pred, tgt, input_mask):
-        p = pred[:, :, :self.tokenizer.K]
+        if self.sequences:
+            p = pred[:, :, :self.tokenizer.K]
+        else: # MSAs
+            p = pred[:, :, :, :self.tokenizer.K]
         nonpad_loc = input_mask.bool()
         p_unpadded = torch.masked_select(p, nonpad_loc.unsqueeze(-1).expand(p.shape))
         p_unpadded = p_unpadded.reshape(-1, self.tokenizer.K)
@@ -124,7 +128,7 @@ class D3PMLVBLoss(KLDivLoss):
             D = int(nonpad_loc[i].item())  # want prior/q in shape of seq len (q has shape of longest seq in batch)
             if timestep[i] == 1:
                 # CE (L_t=0)
-                reconstruction_loss = D3PMCELoss()
+                reconstruction_loss = D3PMCELoss(tokenizer=self.tokenizer)
                 r_loss = reconstruction_loss(predictions[i].unsqueeze(0), tgt[i].unsqueeze(0), input_mask[i].unsqueeze(0))
                 losses.append(r_loss)
             elif timestep[i] == self.tmax-1: # Not needed to compute gradients
@@ -200,7 +204,7 @@ class D3PMLVBLossMSA(KLDivLoss):
             D = int(nonpad_loc[i][0])  # all seq in one MSA are padded to the same length, use first seq as ref
             if timestep[i] == 1:
                 # CE (L_t=0)
-                reconstruction_loss = D3PMCELoss(tokenizer=self.tokenizer)
+                reconstruction_loss = D3PMCELoss(tokenizer=self.tokenizer, sequences=False)
                 r_loss = reconstruction_loss(predictions[i].unsqueeze(0), tgt[i].unsqueeze(0), input_mask[i].unsqueeze(0))
                 #print(timestep[i], r_loss)
                 losses.append(r_loss)
