@@ -20,24 +20,17 @@ from dms.losses import  D3PMCELoss,  D3PMLVBLossMSA
 from dms.model import MSATransformerTime
 from sequence_models.esm import MSATransformer
 from sequence_models.constants import MSA_ALPHABET
-#from sequence_models.datasets import TRRMSADataset #, A3MMSADataset # Todo move datasets back to sequence_models
+#from sequence_models.datasets import TRRMSADataset #, A3MMSADataset # TODO move datasets back to sequence_models
 from dms.data import TRRMSADataset, A3MMSADataset
-#from sequence_models.collaters import MSAAbsorbingCollater # TODO replace if not the problem
+from sequence_models.collaters import MSAAbsorbingCollater
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
-from dms.collaters import MSAAbsorbingARDMCollater
 from sequence_models.losses import MaskedCrossEntropyLossMSA
-#from sequence_models.metrics import MaskedAccuracy # TOdo move this back to sequence_models?
+#from sequence_models.metrics import MaskedAccuracy # TODO move this back to sequence_models?
 from dms.metrics import MaskedAccuracyMSA
 from torch.utils.data import Subset
 from sequence_models.utils import warmup, transformer_lr
 
-# from torch.utils.tensorboard import SummaryWriter
-
 home = str(pathlib.Path.home())
-
-
-# writer = SummaryWriter()
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -70,7 +63,7 @@ def main():
         pass
     else:
         os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = '8884'
+        os.environ['MASTER_PORT'] = '8883'
     mp.spawn(train, nprocs=args.gpus, args=(args,))  # calls train gpu number of times, passes in args
 
 
@@ -129,7 +122,7 @@ def train(gpu, args):
     # build datasets, samplers, and loaders
     if args.mask == 'autoreg':
         tokenizer = Tokenizer()
-        collater = MSAAbsorbingARDMCollater(alphabet=MSA_ALPHABET)
+        collater = MSAAbsorbingCollater(alphabet=MSA_ALPHABET)
         diffusion_timesteps = None # Not input to model
     elif args.mask == 'blosum' or args.mask == 'random':
         diffusion_timesteps = config['diffusion_timesteps']
