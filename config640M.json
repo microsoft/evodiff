@@ -16,5 +16,7 @@
   "opt_level": "O2",
   "lr": 4e-4,
   "warmup_steps": 16000,
-  "train_steps": 8000
+  "train_steps": 8000,
+  "diffusion_timesteps": 500
+
 }
