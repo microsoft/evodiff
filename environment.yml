@@ -13,8 +13,9 @@ dependencies:
   - torchvision
   - pip
   - pip:
-      - sequence-models
+      - git+https://github.com/microsoft/protein-sequence-models.git
       - mlflow
       - scikit-learn
       - blosum
       - matplotlib
+      - fair-esm
