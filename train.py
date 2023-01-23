@@ -80,8 +80,9 @@ def main():
 def train(gpu, args):
     _ = torch.manual_seed(0)
     if args.aml:
-        args.nr = int(os.environ['OMPI_COMM_WORLD_RANK'])
+        args.nr = int(os.environ['RANK'])
     rank = args.nr * args.gpus + gpu
+    print(args.nr, args.gpus, gpu, rank)
     dist.init_process_group(
         backend='nccl',
         init_method='env://',
@@ -237,7 +238,7 @@ def train(gpu, args):
                    last_epoch = epoch
     model = model.to(device)
     if args.state_dict is not None:
-       print('Loading weightsweights from ' + args.state_dict + '...')
+       print('Loading weights from ' + args.state_dict + '...')
        sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
        msd = sd['model_state_dict']
        msd = {k.split('module.')[0]: v for k,v in msd.items()}
