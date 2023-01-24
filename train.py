@@ -69,12 +69,13 @@ def main():
 
     args = parser.parse_args()
     args.world_size = args.gpus * args.nodes
+    print(args.out_fpath)
     if args.aml:
         pass
     else:
         os.environ['MASTER_ADDR'] = 'localhost'
         os.environ['MASTER_PORT'] = '8889'
-
+    print(args.world_size, args.gpus, args.nodes)
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
 def train(gpu, args):
@@ -401,7 +402,7 @@ def train(gpu, args):
         else:
             src, timestep, tgt, mask = batch
             mask = mask.to(device)
-        print("Batchsize", len(timestep))
+        # print("Batchsize", len(timestep))
         timestep = timestep.to(device)
         src = src.to(device)
         tgt = tgt.to(device)
