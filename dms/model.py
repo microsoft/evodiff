@@ -38,7 +38,10 @@ class PositionalEncoding1D(nn.Module):
         div_term = torch.exp((torch.arange(0, self.d_model, 2, dtype=torch.float) * -(np.log(10000.0) / self.d_model)))
         pe[:, 0::2] = torch.sin(position.float() * div_term)
         pe[:, 1::2] = torch.cos(position.float() * div_term)
-        return pe[x].to(x.device)
+        #print(pe.device, x.device)
+        device = x.device
+        pe = pe.to(device)
+        return pe[x] # .to(x.device)
 
 class TimeEncoding(nn.Module):
 
