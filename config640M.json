@@ -14,7 +14,7 @@
   "max_batch_size": 800,
   "bucket_size": 1000,
   "opt_level": "O2",
-  "lr": 4e-4,
+  "lr": 1e-4,
   "warmup_steps": 16000,
   "train_steps": 8000,
   "diffusion_timesteps": 500
