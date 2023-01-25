@@ -5,10 +5,10 @@ from datetime import datetime, timedelta
 import pathlib
 
 import numpy as np
-import mlflow
 import torch
 import torch.multiprocessing as mp
 from torch.optim.lr_scheduler import LambdaLR
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 import torch.distributed as dist
@@ -253,6 +253,7 @@ def train(gpu, args):
        total_steps = 0
        total_tokens = 0
     scaler = GradScaler()
+    model = DDP(model)
     # ----------------------------------------------------------
     # Loss Function
     # ----------------------------------------------------------
@@ -353,10 +354,6 @@ def train(gpu, args):
                 nll_losses = nll_losses[-999:]
                 if nsteps % args.log_freq == 0:  # write to checkpoint frequency
                     if rank == 0:
-                        mlflow.log_metrics({'train_loss': r_loss,
-                                            'train_accu': raccu,
-                                            'n_tokens': total_n},
-                                            step=nsteps)
                         with open(args.out_fpath + 'train-metrics.csv', 'a') as f:
                             f.write(','.join([str(r_loss), str(r_ce_loss), str(r_nll_loss), str(raccu), str(int(current_tokens)), str(nsteps), str(e)]))
                             f.write('\n')
@@ -374,14 +371,10 @@ def train(gpu, args):
                                     'scheduler_state_dict': scheduler.state_dict(),
                                     'epoch': e
                                 }, ckpt_fpath)
-                                #_ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
+                                _ = epoch(model, False, current_step=nsteps, current_tokens=tokens_trained)
                         chunk_time = datetime.now()
         if not train:
             if rank == 0:
-                mlflow.log_metrics({'valid_loss': r_loss,
-                                    'valid_accu': raccu,
-                                    'n_tokens': current_tokens},
-                                    step=current_step)
                 with open(args.out_fpath + 'valid-metrics.csv', 'a') as f:
                     f.write(','.join([str(r_loss), str(r_ce_loss), str(r_nll_loss), str(raccu), str(int(current_tokens)), str(nsteps), str(e)]))
                     f.write('\n')
