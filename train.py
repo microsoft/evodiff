@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timedelta
 import pathlib
 
+import  mlflow
 import numpy as np
 import torch
 import torch.multiprocessing as mp
@@ -81,7 +82,7 @@ def main():
 def train(gpu, args):
     _ = torch.manual_seed(0)
     if args.aml:
-        args.nr = int(os.environ['RANK'])
+        args.nr = int(os.environ['LOCAL_RANK'])
     rank = args.nr * args.gpus + gpu
     print(args.nr, args.gpus, gpu, rank)
     dist.init_process_group(
@@ -376,7 +377,7 @@ def train(gpu, args):
         if not train:
             if rank == 0:
                 with open(args.out_fpath + 'valid-metrics.csv', 'a') as f:
-                    f.write(','.join([str(r_loss), str(r_ce_loss), str(r_nll_loss), str(raccu), str(int(current_tokens)), str(nsteps), str(e)]))
+                    f.write(','.join([str(r_loss), str(r_ce_loss), str(r_nll_loss), str(raccu), str(int(current_tokens)), str(current_step), str(e)]))
                     f.write('\n')
                 print('Validation complete in ' + str(datetime.now() - start_time))
         elif rank == 0:
