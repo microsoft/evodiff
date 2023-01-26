@@ -64,7 +64,7 @@ def main():
     parser.add_argument('--warmup', action='store_true')  # Set to True if running on subset of data
     parser.add_argument('--checkpoint_freq', type=float, default=1)  # in minutes
     parser.add_argument('--log_freq', type=float, default=10)  # in steps
-    parser.add_argument('--reweighting_term', type=float, default=0.001)  # lambda reweighting term from Austin D3PM
+    parser.add_argument('--reweighting_term', type=float, default=0.01)  # lambda reweighting term from Austin D3PM
     parser.add_argument('--model_type', type=str, default='ByteNet',
                         help='ByteNet or Transformer')
 
@@ -82,7 +82,7 @@ def main():
 def train(gpu, args):
     _ = torch.manual_seed(0)
     if args.aml:
-        args.nr = int(os.environ['LOCAL_RANK'])
+        args.nr = int(os.environ['RANK'])
     rank = args.nr * args.gpus + gpu
     print(args.nr, args.gpus, gpu, rank)
     dist.init_process_group(
@@ -284,7 +284,7 @@ def train(gpu, args):
             loader = dl_valid
             t = 'Validating:'
         losses = []
-        ce_losses = []
+        #ce_losses = []
         nll_losses = []
         accus = []
         ns = []
@@ -308,18 +308,18 @@ def train(gpu, args):
                 print("Restarting from checkpoint")
                 optimizer.load_state_dict(sd['optimizer_state_dict'])
                 scheduler.load_state_dict(sd['scheduler_state_dict'])
-            new_loss, new_ce_loss, new_nll_loss, new_accu, new_n, new_seqs, new_processed = step(model, batch, train)
+            new_loss, new_nll_loss, new_accu, new_n, new_seqs, new_processed = step(model, batch, train)
             #print("before reduce", new_loss, new_ce_loss)
             if train:
                 dist.reduce(new_loss, 0, op=dist.ReduceOp.SUM)
-                dist.reduce(new_ce_loss, 0, op=dist.ReduceOp.SUM)
+                #dist.reduce(new_ce_loss, 0, op=dist.ReduceOp.SUM)
                 dist.reduce(new_nll_loss, 0, op=dist.ReduceOp.SUM)
                 dist.reduce(new_accu, 0, op=dist.ReduceOp.SUM)
                 dist.reduce(new_n, 0, op=dist.ReduceOp.SUM)
                 dist.reduce(new_seqs, 0, op=dist.ReduceOp.SUM)
             #print("after reduce", new_loss, new_ce_loss)
             losses.append(new_loss.item())
-            ce_losses.append(new_ce_loss.item())
+            #ce_losses.append(new_ce_loss.item())
             nll_losses.append(new_nll_loss.item())
             accus.append(new_accu.item())
             ns.append(new_n.item())
@@ -327,7 +327,7 @@ def train(gpu, args):
             n_seen += new_seqs.item()
             total_n = sum(ns)
             r_loss = sum(losses) / total_n
-            r_ce_loss = sum(ce_losses) / total_n
+            #r_ce_loss = sum(ce_losses) / total_n
             r_nll_loss = sum(nll_losses) / total_n
             raccu = sum(accus) / total_n
             if train:
@@ -342,13 +342,13 @@ def train(gpu, args):
                 else:
                     start = ''
                     end = '\n'
-                print(start + '%s Epoch %d of %d Step %d ntokens %d Example %d of %d loss = %.4f ce loss = %.4f nll loss = %.4f accu = %.4f'
-                      % (t, e + 1, epochs, nsteps, tokens_trained, n_seen, n_total, r_loss, r_ce_loss, r_nll_loss, raccu),
+                print(start + '%s Epoch %d of %d Step %d ntokens %d Example %d of %d loss = %.4f nll loss = %.4f accu = %.4f'
+                      % (t, e + 1, epochs, nsteps, tokens_trained, n_seen, n_total, r_loss, r_nll_loss, raccu),
                       end=end)
             if train:
                 #print(nsteps)
                 losses = losses[-999:]
-                ce_losses = ce_losses[-999:]
+                #ce_losses = ce_losses[-999:]
                 accus = accus[-999:]
                 ns = ns[-999:]
                 num_seqs = num_seqs[-999:]
@@ -356,7 +356,7 @@ def train(gpu, args):
                 if nsteps % args.log_freq == 0:  # write to checkpoint frequency
                     if rank == 0:
                         with open(args.out_fpath + 'train-metrics.csv', 'a') as f:
-                            f.write(','.join([str(r_loss), str(r_ce_loss), str(r_nll_loss), str(raccu), str(int(current_tokens)), str(nsteps), str(e)]))
+                            f.write(','.join([str(r_loss), str(r_nll_loss), str(raccu), str(int(current_tokens)), str(nsteps), str(e)]))
                             f.write('\n')
                 if ((datetime.now() - chunk_time) > timedelta(minutes=args.checkpoint_freq)) or (n_seen == n_total):
                     if rank == 0:
@@ -377,7 +377,7 @@ def train(gpu, args):
         if not train:
             if rank == 0:
                 with open(args.out_fpath + 'valid-metrics.csv', 'a') as f:
-                    f.write(','.join([str(r_loss), str(r_ce_loss), str(r_nll_loss), str(raccu), str(int(current_tokens)), str(current_step), str(e)]))
+                    f.write(','.join([str(r_loss), str(r_nll_loss), str(raccu), str(int(current_tokens)), str(current_step), str(e)]))
                     f.write('\n')
                 print('Validation complete in ' + str(datetime.now() - start_time))
         elif rank == 0:
@@ -421,11 +421,12 @@ def train(gpu, args):
                 outputs = model(src, tgt, timestep, input_mask=~input_mask.bool())
             #print(outputs.dtype)
             if args.mask == 'blosum' or args.mask == 'random':
-                lvb_loss = loss_func1(src_onehot, q, outputs, tgt, tgt_onehot, input_mask, timestep, Q, Q_bar) * n_tokens
-                ce_loss = loss_func2(outputs, tgt, input_mask) * n_tokens
-                loss = (lvb_loss + _lambda * ce_loss)
-                nll_loss = ce_loss
+                lvb_loss = loss_func1(src_onehot, q, outputs, tgt, tgt_onehot, input_mask, timestep, Q, Q_bar)
+                ce_loss = loss_func2(outputs, tgt, input_mask)
+                loss = (lvb_loss + _lambda * ce_loss) * n_tokens
+                nll_loss = ce_loss * n_tokens
                 accu = accu_func(outputs, tgt, input_mask) * n_tokens
+                print('lvb', lvb_loss, '\n ce', ce_loss, '\n loss', loss, '\n nll', nll_loss)
             elif args.mask == 'autoreg' or args.mask=='so':
                 ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask)  # sum(loss per token)
                 loss = ce_loss
@@ -440,7 +441,7 @@ def train(gpu, args):
             if not skip_scheduler:
                scheduler.step()
 
-        return loss, ce_loss, nll_loss, accu, n_tokens, n_seqs, n_processed
+        return loss, nll_loss, accu, n_tokens, n_seqs, n_processed
 
     if rank == 0:
         if not ptjob:
