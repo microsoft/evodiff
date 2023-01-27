@@ -426,7 +426,7 @@ def train(gpu, args):
                 loss = (lvb_loss + _lambda * ce_loss) * n_tokens
                 nll_loss = ce_loss * n_tokens
                 accu = accu_func(outputs, tgt, input_mask) * n_tokens
-                print('lvb', lvb_loss, '\n ce', ce_loss, '\n loss', loss, '\n nll', nll_loss)
+                #print('lvb', lvb_loss, '\n ce', ce_loss, '\n loss', loss, '\n nll', nll_loss)
             elif args.mask == 'autoreg' or args.mask=='so':
                 ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask)  # sum(loss per token)
                 loss = ce_loss
