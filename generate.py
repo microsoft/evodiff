@@ -136,10 +136,10 @@ def main():
         sd = torch.load(args.state_dict, map_location=torch.device(device))
         msd = sd['model_state_dict']
         #print(list(msd.keys())[0:10])
-        if args.mask == 'so':
-            msd = {k.split('module.')[1]: v for k, v in msd.items()}
-        else:
-            msd = {k.split('module.')[0]: v for k,v in msd.items()}
+        #if args.mask == 'so':
+        msd = {k.split('module.')[1]: v for k, v in msd.items()}
+        #else:
+        #    msd = {k.split('module.')[0]: v for k,v in msd.items()}
         #print(list(msd.keys())[0:10], list(model.state_dict().keys())[0:10])
         model.load_state_dict(msd)
 

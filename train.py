@@ -243,7 +243,7 @@ def train(gpu, args):
        print('Loading weights from ' + args.state_dict + '...')
        sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
        msd = sd['model_state_dict']
-       msd = {k.split('module.')[0]: v for k,v in msd.items()}
+       msd = {k.split('module.')[1]: v for k,v in msd.items()}
        model.load_state_dict(msd)
        optimizer.load_state_dict(sd['optimizer_state_dict'])
        initial_epoch = sd['epoch'] + 1
