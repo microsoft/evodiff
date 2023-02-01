@@ -54,6 +54,8 @@ def main():
     parser.add_argument('--decay', action='store_true')
     parser.add_argument('--dummy', required=False)
     parser.add_argument('--mask', default='blosum')
+    parser.add_argument('--checkpoint_freq', type=float, default=120)  # in minutes
+    parser.add_argument('--log_freq', type=float, default=1000)  # in steps
     parser.add_argument('--reweighting_term', type=float, default=0.001) # lambda from D3PM
 
 
@@ -70,8 +72,8 @@ def main():
 def train(gpu, args):
     _ = torch.manual_seed(0)
     np.random.seed(0)
-    # if args.aml:
-    #     args.nr = int(os.environ['OMPI_COMM_WORLD_RANK'])  # TODO: is this correct?
+    if args.aml:
+        args.nr = int(os.environ['OMPI_COMM_WORLD_RANK'])
     rank = args.nr * args.gpus + gpu
     dist.init_process_group(
         backend='nccl',
@@ -249,7 +251,7 @@ def train(gpu, args):
     model = DDP(model, device_ids=[gpu + args.offset], output_device=args.offset)
 
     if args.mask == 'autoreg':
-        loss_func = MaskedCrossEntropyLossMSA(ignore_index=padding_idx)
+        loss_func = MaskedCrossEntropyLossMSA(ignore_index=padding_idx, tokenizer=tokenizer)
     elif args.mask == 'blosum' or args.mask == 'random':
         # Austin = LVB + lambda * CE
         loss_func1 = D3PMLVBLossMSA(tmax=diffusion_timesteps, tokenizer=tokenizer)
@@ -341,42 +343,52 @@ def train(gpu, args):
                 accus = accus[-999:]
                 ns = ns[-999:]
                 num_seqs = num_seqs[-999:]
-                if nsteps % 1000 == 0:
-                    with open(args.out_fpath + 'metrics_train.csv', 'a') as f:
-                        f.write(','.join(
-                            [str(rloss_ardm), str(rloss_nll), str(raccu), str(int(current_tokens)), str(current_step)]))
-                        f.write('\n')  # Can add for train too
-                if datetime.now() - chunk_time > timedelta(minutes=120): # TODO change back to hours
-                    print('Training complete in ' + str(datetime.now() - chunk_time))
-                    with torch.no_grad():
-                        if rank == 0:
-                            ckpt_fpath = args.out_fpath + 'checkpoint%d.tar' % nsteps
-                            torch.save({
-                                'step': nsteps,
-                                'tokens': tokens_trained,
-                                'model_state_dict': model.state_dict(),
-                                'optimizer_state_dict': optimizer.state_dict(),
-                                'scheduler_state_dict': scheduler.state_dict(),
-                                #'scaler_state_dict': scaler.state_dict(),
-                                'epoch': e,
-                                # 'amp_state_dict': amp.state_dict()
-                            }, ckpt_fpath)
-                            _ = epoch(model, e, split='valid', current_step=nsteps, current_tokens=tokens_trained)
-                    chunk_time = datetime.now()
+                if nsteps % args.log_freq == 0:
+                    if rank == 0:
+                        with open(args.out_fpath + 'metrics_train.csv', 'a') as f:
+                            #f.write(','.join(
+                            #    [str(rloss_ardm), str(rloss_nll), str(raccu), str(int(current_tokens)), str(current_step)]))
+                            #f.write('\n')  # Can add for train too
+                            f.write(','.join(
+                                [str(rloss_ardm), str(rloss_nll), str(raccu), str(int(current_tokens)),
+                                 str(nsteps), str(e)]))
+                            f.write('\n')
+                if datetime.now() - chunk_time > timedelta(minutes=args.checkpoint_freq):
+                    if rank == 0:
+                        print('Training complete in ' + str(datetime.now() - chunk_time))
+                        with torch.no_grad():
+                            if rank == 0:
+                                ckpt_fpath = args.out_fpath + 'checkpoint%d.tar' % nsteps
+                                torch.save({
+                                    'step': nsteps,
+                                    'tokens': tokens_trained,
+                                    'model_state_dict': model.state_dict(),
+                                    'optimizer_state_dict': optimizer.state_dict(),
+                                    'scheduler_state_dict': scheduler.state_dict(),
+                                    #'scaler_state_dict': scaler.state_dict(),
+                                    'epoch': e,
+                                    # 'amp_state_dict': amp.state_dict()
+                                }, ckpt_fpath)
+                                _ = epoch(model, e, split='valid', current_step=nsteps, current_tokens=tokens_trained)
+                        chunk_time = datetime.now()
         if split == 'valid':
-            with open(args.out_fpath + 'metrics.csv', 'a') as f:
-                f.write(','.join(
-                    [str(rloss_ardm), str(rloss_nll), str(raccu), str(int(current_tokens)), str(current_step)]))
-                f.write('\n')  # Can add for train too
-
+            if rank == 0:
+                with open(args.out_fpath + 'metrics.csv', 'a') as f:
+                    # f.write(','.join(
+                    #     [str(rloss_ardm), str(rloss_nll), str(raccu), str(int(current_tokens)), str(current_step)]))
+                    # f.write('\n')  # Can add for train too
+                    f.write(','.join(
+                        [str(rloss_ardm), str(rloss_nll), str(raccu), str(int(current_tokens)),
+                         str(current_step), str(e)]))
+                    f.write('\n')
             print('Validation complete in ' + str(datetime.now() - start_time))
 
-        if split == 'test':
-            with open(args.out_fpath + 'metrics_test.csv', 'a') as f:
-                f.write(','.join(
-                    [str(rloss_ardm), str(rloss_nll), str(raccu), str(int(current_tokens)),
-                     str(current_step)]))
-                f.write('\n')
+        # if split == 'test':
+        #     with open(args.out_fpath + 'metrics_test.csv', 'a') as f:
+        #         f.write(','.join(
+        #             [str(rloss_ardm), str(rloss_nll), str(raccu), str(int(current_tokens)),
+        #              str(current_step)]))
+        #         f.write('\n')
 
             print('Testing complete in ' + str(datetime.now() - start_time))
 
@@ -419,11 +431,11 @@ def train(gpu, args):
         #with torch.cuda.amp.autocast(): # TODO enable debug
         if args.mask == 'blosum' or args.mask == 'random':
             outputs = model(src, timestep)
-            lvb_loss = loss_func1(src_one_hot, q, outputs, tgt, tgt_one_hot, nonpad_mask, timestep, Q, Q_prod) * n_tokens
-            ce_loss = loss_func2(outputs, tgt, nonpad_mask) * n_tokens
-            nll_loss = ce_loss
+            lvb_loss = loss_func1(src_one_hot, q, outputs, tgt, tgt_one_hot, nonpad_mask, timestep, Q, Q_prod)
+            ce_loss = loss_func2(outputs, tgt, nonpad_mask)
+            nll_loss = ce_loss * n_tokens
             accu = accu_func(outputs, tgt, nonpad_mask) * n_tokens
-            loss = lvb_loss + _lambda * ce_loss
+            loss = (lvb_loss + _lambda * ce_loss) * n_tokens
         elif args.mask == 'autoreg':
             #print(src.shape)
             #import pdb; pdb.set_trace()
