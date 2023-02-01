@@ -441,10 +441,6 @@ def train(gpu, args):
 
         return loss, ce_loss, nll_loss, accu, n_tokens, n_seqs, n_processed
 
-    if rank == 0:
-        if not ptjob:
-            mlflow.set_experiment(config['experiment'])
-            mlflow.log_params(config)
     n_parameters = sum(p.numel() for p in model.parameters())
     if rank == 0:
         print('%d model parameters' %n_parameters)
