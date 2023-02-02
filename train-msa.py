@@ -260,9 +260,10 @@ def train(gpu, args):
 
 
     accu_func = MaskedAccuracyMSA()
-
-    with open(args.config_fpath, 'r') as f_from, open(args.out_fpath + "config.json", "w") as f_to:
-        f_to.write(f_from.read())
+    if rank == 0:
+        with open(args.config_fpath, 'r') as f_from:
+            with open(args.out_fpath + "config.json", "w") as f_to:
+                f_to.write(f_from.read())
 
     def epoch(model, e, split, current_step=0, current_tokens=0):
         start_time = datetime.now()
