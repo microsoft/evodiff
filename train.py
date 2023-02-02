@@ -70,13 +70,13 @@ def main():
 
     args = parser.parse_args()
     args.world_size = args.gpus * args.nodes
-    print(args.out_fpath)
+    #print(args.out_fpath)
     if args.aml:
         pass
     else:
         os.environ['MASTER_ADDR'] = 'localhost'
         os.environ['MASTER_PORT'] = '8889'
-    print(args.world_size, args.gpus, args.nodes)
+    #print(args.world_size, args.gpus, args.nodes)
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
 def train(gpu, args):
@@ -84,7 +84,7 @@ def train(gpu, args):
     if args.aml:
         args.nr = int(os.environ['RANK'])
     rank = args.nr * args.gpus + gpu
-    print(args.nr, args.gpus, gpu, rank)
+    #print(args.nr, args.gpus, gpu, rank)
     dist.init_process_group(
         backend='nccl',
         init_method='env://',
@@ -441,10 +441,10 @@ def train(gpu, args):
             scaler.scale(loss).backward() # accumulate gradients here
 
             # Gradient accumulation
-            print("batch", i)
+            #print("batch", i)
             if (i + 1) % iters_to_accumulate == 0: # If not accumulating gradients iters_to_accumulate = 1
-                print("accumulating every", iters_to_accumulate)
-                print("updating gradients at batch", i)
+                #print("accumulating every", iters_to_accumulate)
+                #print("updating gradients at batch", i)
                 scaler.step(optimizer)
                 scale = scaler.get_scale()
                 scaler.update()
