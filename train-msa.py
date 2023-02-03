@@ -251,7 +251,7 @@ def train(gpu, args):
     model = DDP(model, device_ids=[gpu + args.offset], output_device=args.offset)
 
     if args.mask == 'autoreg':
-        loss_func = MaskedCrossEntropyLossMSA(ignore_index=padding_idx, tokenizer=tokenizer)
+        loss_func = MaskedCrossEntropyLossMSA(ignore_index=padding_idx)
     elif args.mask == 'blosum' or args.mask == 'random':
         # Austin = LVB + lambda * CE
         loss_func1 = D3PMLVBLossMSA(tmax=diffusion_timesteps, tokenizer=tokenizer)
