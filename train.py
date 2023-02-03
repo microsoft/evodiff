@@ -80,7 +80,7 @@ def main():
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
 def train(gpu, args):
-    _ = torch.manual_seed(0)
+    _ = torch.manual_seed(random_seed)
     if args.aml:
         args.nr = int(os.environ['RANK'])
     rank = args.nr * args.gpus + gpu
