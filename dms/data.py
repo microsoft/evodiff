@@ -181,8 +181,11 @@ class A3MMSADataset(Dataset):
         print("unfiltered length", len(all_files))
 
         ## Filter based on depth (keep > 64 seqs/MSA)
+        if not os.path.exists(data_dir + 'openfold_lengths.npz'):
+            raise Exception("Missing openfold_lengths.npz in openfold/")
         if not os.path.exists(data_dir + 'openfold_depths.npz'):
-            get_msa_depth_openfold(data_dir, sorted(all_files), 'openfold_depths.npz')
+            #get_msa_depth_openfold(data_dir, sorted(all_files), 'openfold_depths.npz')
+            raise Exception("Missing openfold_depths.npz in openfold/")
         if min_depth is not None: # reindex, filtering out MSAs < min_depth
             _depths = np.load(data_dir+'openfold_depths.npz')['arr_0']
             depths = pd.DataFrame(_depths, columns=['depth'])
@@ -196,7 +199,8 @@ class A3MMSADataset(Dataset):
 
         # Re-filter based on high gap-contining rows
         if not os.path.exists(data_dir + 'openfold_gap_depths.npz'):
-            get_sliced_gap_depth_openfold(data_dir, all_files, 'openfold_gap_depths.npz', max_seq_len=max_seq_len)
+            #get_sliced_gap_depth_openfold(data_dir, all_files, 'openfold_gap_depths.npz', max_seq_len=max_seq_len)
+            raise Exception("Missing openfold_gap_depths.npz in openfold/")
         _gap_depths = np.load(data_dir + 'openfold_gap_depths.npz')['arr_0']
         gap_depths = pd.DataFrame(_gap_depths, columns=['gapdepth'])
         gap_depths = gap_depths[gap_depths['gapdepth'] >= min_depth]

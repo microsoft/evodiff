@@ -31,7 +31,7 @@ import sys
 sys.setrecursionlimit(1000) # must be as large as diffusion timesteps for Q_bar calculation
 
 ### SET RANDOM SEEDS ###
-random_seed = 1
+random_seed = 6
 torch.random.manual_seed(random_seed)
 np.random.seed(random_seed)
 torch.cuda.empty_cache() # empty caches
@@ -70,13 +70,13 @@ def main():
 
     args = parser.parse_args()
     args.world_size = args.gpus * args.nodes
-    print(args.out_fpath)
+    #print(args.out_fpath)
     if args.aml:
         pass
     else:
         os.environ['MASTER_ADDR'] = 'localhost'
         os.environ['MASTER_PORT'] = '8889'
-    print(args.world_size, args.gpus, args.nodes)
+    #print(args.world_size, args.gpus, args.nodes)
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
 def train(gpu, args):
@@ -84,7 +84,7 @@ def train(gpu, args):
     if args.aml:
         args.nr = int(os.environ['RANK'])
     rank = args.nr * args.gpus + gpu
-    print(args.nr, args.gpus, gpu, rank)
+    #print(args.nr, args.gpus, gpu, rank)
     dist.init_process_group(
         backend='nccl',
         init_method='env://',
@@ -112,6 +112,10 @@ def train(gpu, args):
         activation = config['activation']
     else:
         activation = 'relu'
+    if 'accumulate' in config:
+        iters_to_accumulate = config['accumulate']
+    else:
+        iters_to_accumulate = 1 # dont accumulate
     bucket_size = config['bucket_size']
     max_tokens = config['max_tokens']
     max_batch_size = config['max_batch_size']
@@ -243,7 +247,7 @@ def train(gpu, args):
        print('Loading weights from ' + args.state_dict + '...')
        sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
        msd = sd['model_state_dict']
-       msd = {k.split('module.')[0]: v for k,v in msd.items()}
+       msd = {k.split('module.')[1]: v for k,v in msd.items()}
        model.load_state_dict(msd)
        optimizer.load_state_dict(sd['optimizer_state_dict'])
        initial_epoch = sd['epoch'] + 1
@@ -308,7 +312,7 @@ def train(gpu, args):
                 print("Restarting from checkpoint")
                 optimizer.load_state_dict(sd['optimizer_state_dict'])
                 scheduler.load_state_dict(sd['scheduler_state_dict'])
-            new_loss, new_nll_loss, new_accu, new_n, new_seqs, new_processed = step(model, batch, train)
+            new_loss, new_nll_loss, new_accu, new_n, new_seqs, new_processed = step(i, model, batch, train)
             #print("before reduce", new_loss, new_ce_loss)
             if train:
                 dist.reduce(new_loss, 0, op=dist.ReduceOp.SUM)
@@ -384,7 +388,7 @@ def train(gpu, args):
             print('Epoch complete in ' + str(datetime.now() - start_time))
         return i, tokens_trained
 
-    def step(model, batch, train):
+    def step(i, model, batch, train):
         if args.mask == 'blosum' or args.mask == 'random':
             src, src_onehot, timestep, tgt, tgt_onehot, Q, Q_bar, q = batch
             q = q.to(device)
@@ -432,14 +436,22 @@ def train(gpu, args):
                 loss = ce_loss
                 accu = accu_func(outputs, tgt, mask) * n_tokens
         if train:
-            # Exits the context manager before backward()
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scale = scaler.get_scale()
-            scaler.update()
-            skip_scheduler = (scale > scaler.get_scale())
-            if not skip_scheduler:
-               scheduler.step()
+            # Exit the context manager before backward()
+
+            scaler.scale(loss).backward() # accumulate gradients here
+
+            # Gradient accumulation
+            #print("batch", i)
+            if (i + 1) % iters_to_accumulate == 0: # If not accumulating gradients iters_to_accumulate = 1
+                #print("accumulating every", iters_to_accumulate)
+                #print("updating gradients at batch", i)
+                scaler.step(optimizer)
+                scale = scaler.get_scale()
+                scaler.update()
+
+                skip_scheduler = (scale > scaler.get_scale())
+                if not skip_scheduler:
+                   scheduler.step()
 
         return loss, nll_loss, accu, n_tokens, n_seqs, n_processed
 
