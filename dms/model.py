@@ -10,12 +10,6 @@ from sequence_models.constants import MSA_PAD, MASK, MSA_ALPHABET
 from esm.modules import TransformerLayer, LearnedPositionalEmbedding, RobertaLMHead, ESM1bLayerNorm, AxialTransformerLayer
 
 
-# TODO fix encoding
-# time encoding - 1D
-# sequence pos encoding - 1D (for transformer POS is also 2d?)
-# MSA pos encoding - 2D
-
-
 class PositionalEncoding1D(nn.Module):
     def __init__(self, d_model=8, length=500):
         super().__init__()
@@ -25,6 +19,8 @@ class PositionalEncoding1D(nn.Module):
     def forward(self, x):
         """
         Taken from https://github.com/wzlxjtu/PositionalEncoding2D/blob/master/positionalembedding2d.py
+
+        Used for encoding timestep in diffusion models
 
         :param d_model: dimension of the model
         :param length: length of positions
@@ -38,37 +34,40 @@ class PositionalEncoding1D(nn.Module):
         div_term = torch.exp((torch.arange(0, self.d_model, 2, dtype=torch.float) * -(np.log(10000.0) / self.d_model)))
         pe[:, 0::2] = torch.sin(position.float() * div_term)
         pe[:, 1::2] = torch.cos(position.float() * div_term)
-        #print(pe.device, x.device)
         device = x.device
         pe = pe.to(device)
         return pe[x] # .to(x.device)
 
-class TimeEncoding(nn.Module):
-
-    def __init__(self, d_model, max_len, add_inplace=True):
-        super().__init__()
-        self.add_inplace = add_inplace
-
-        position = torch.arange(max_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-np.log(10000.0) / d_model))
-        te = torch.zeros(max_len, 1, d_model)
-        te[:, 0, 0::2] = torch.sin(position * div_term)
-        te[:, 0, 1::2] = torch.cos(position * div_term)
-
-        self.register_buffer('te', te)
-
-    def forward(self, x):
-        """
-            x: timestep sequence fed to the positional encoder model [batchsize]
-            output: [batch size, embed dim]
-        """
-        if self.add_inplace:
-            x = x + self.te[x]
-        else:
-            x = self.te[x]
-        return x.to(x.device)
+# class TimeEncoding(nn.Module): # TODO delete, old posencoding works fine & simplifies
+#
+#     def __init__(self, d_model, max_len, add_inplace=True):
+#         super().__init__()
+#         self.add_inplace = add_inplace
+#
+#         position = torch.arange(max_len).unsqueeze(1)
+#         div_term = torch.exp(torch.arange(0, d_model, 2) * (-np.log(10000.0) / d_model))
+#         te = torch.zeros(max_len, 1, d_model)
+#         te[:, 0, 0::2] = torch.sin(position * div_term)
+#         te[:, 0, 1::2] = torch.cos(position * div_term)
+#
+#         self.register_buffer('te', te)
+#
+#     def forward(self, x):
+#         """
+#             x: timestep sequence fed to the positional encoder model [batchsize]
+#             output: [batch size, embed dim]
+#         """
+#         if self.add_inplace:
+#             x = x + self.te[x]
+#         else:
+#             x = self.te[x]
+#         return x.to(x.device)
 
 class PositionalEncoding(nn.Module):
+
+    """
+    2D Positional encoding for transformer
+    """
 
     def __init__(self, d_model, max_len=2048):
         super().__init__()
@@ -118,8 +117,7 @@ class ByteNetTime(nn.Module):
         """
         super().__init__()
         self.timesteps = timesteps
-        self.time_encoding = PositionalEncoding1D(d_embedding, timesteps) # TODO switch back, only for checkpointing
-        #self.time_encoding = TimeEncoding(d_embedding, timesteps, add_inplace=False) # TODO switch back, only for checkpointing
+        self.time_encoding = PositionalEncoding1D(d_embedding, timesteps) # Timestep encoding
         if n_tokens is not None:
             if n_frozen_embs is None:
                 self.embedder = nn.Embedding(n_tokens, d_embedding, padding_idx=padding_idx)
@@ -157,18 +155,13 @@ class ByteNetTime(nn.Module):
         return self._convolve(e, input_mask=input_mask)
 
     def _embed(self, x, y, timesteps=None):
-        #e = self.embedder(x) # TODO switch back - only for checkpointing
-        # if timesteps is not None:
-        #     y = self.time_encoding(y)
-        #     y = y.expand(e.shape[0], e.shape[1], e.shape[2])
-        #     e += y
-        e1 = self.embedder(x)
+        e = self.embedder(x)
         if timesteps is not None:
             e2 = self.time_encoding(y)
             # expand dim of e2 to match e1
-            e2 = e2.expand(e1.shape[1], e2.shape[0], e2.shape[1])
-            e2 = e2.reshape(e1.shape[0], e1.shape[1], e1.shape[2])
-            e = torch.add(e2, e1)
+            e2 = e2.expand(e.shape[1], e2.shape[0], e2.shape[1])
+            e2 = e2.reshape(e.shape[0], e.shape[1], e.shape[2])
+            e = torch.add(e2, e)
         e = self.up_embedder(e)
         return e
 
@@ -227,8 +220,7 @@ class MSATransformerTime(nn.Module):
         super(MSATransformerTime, self).__init__()
 
         self.timesteps = timesteps
-        self.time_encoding = PositionalEncoding1D(d_model, timesteps)
-        #self.time_encoding = TimeEncoding(d_model, timesteps, add_inplace=False)
+        self.time_encoding = PositionalEncoding1D(d_model, timesteps) # Timestep encoding
         self.embed_tokens = nn.Embedding(
             n_tokens, d_model, padding_idx=mask_idx
         )
@@ -258,19 +250,24 @@ class MSATransformerTime(nn.Module):
         assert tokens.ndim == 3
         batch_size, num_alignments, seqlen = tokens.size()
         padding_mask = tokens.eq(self.padding_idx)  # B, R, C
-
+        #print("tokens", tokens.shape) # B, D, L (batch, depth length)
         x = self.embed_tokens(tokens)
         x = x + self.embed_positions(tokens.view(batch_size * num_alignments, seqlen)).view(x.size())
         x = self.emb_layer_norm_before(x)
         x = x * (1 - padding_mask.unsqueeze(-1).type_as(x))
-
+        #print("x", x.shape) # B, D, L, E
         y = self.time_encoding(timesteps)
-        #y = y.unsqueeze(2)  # match dimensions of token embedding
         y = y.unsqueeze(1).unsqueeze(1)
-        #print(x.shape, y.shape)
-        #import pdb; pdb.set_trace()
         y = y.expand(y.shape[0], x.shape[1], x.shape[2], x.shape[3])
         x += y
+        #print("xtime", x.shape) #B, D, L, E + time_encoding
+
+        # ADD 1 to query sequence in MSA (encode query sequence) TODO: kevin is this okay? lol
+        q = torch.zeros(x.shape)
+        q = q.to(x.device)
+        q[:,0,:,0] += 1 # add encoding to 1st sequence (query seq) in MSA
+        #print("sum", q.sum(), "should equal", x.shape[0]*x.shape[2])
+        x += q
         #
 
         # B x R x C x D -> R x C x B x D
@@ -300,7 +297,7 @@ class TransformerTime(nn.Module):
         self.pos_encoding = PositionalEncoding(d_embedding, max_positions)
         self.timesteps = timesteps
         if self.timesteps is not None:
-             self.time_encoding = TimeEncoding(d_embedding, timesteps, add_inplace=False)
+            self.time_encoding = PositionalEncoding1D(d_embedding, timesteps)  # Timestep encoding
         self.up_embedder = PositionFeedForward(d_embedding, d_model)
         if bidirectional: # for oa autoregressive model, d3pm models
             encoder_layers = TransformerEncoderLayer(d_model, n_head, dim_feedforward=d_feedforward, dropout=dropout,
@@ -327,12 +324,9 @@ class TransformerTime(nn.Module):
         tgt = self.pos_encoding(tgt.reshape(tgt.shape[1], tgt.shape[0], tgt.shape[2]))
 
         if self.timesteps is not None:
-            t_tgt = self.time_encoding(torch.ones((t.shape), dtype=torch.long, device=t.device))
-            t_tgt = t_tgt.expand(tgt.shape[0], tgt.shape[1], tgt.shape[2])
-            t = self.time_encoding(t)
+            t = self.time_encoding(t).unsqueeze(1)
             t = t.expand(src.shape[0], src.shape[1], src.shape[2])
             src += t
-            tgt += t_tgt
 
         src = self.up_embedder(src)
         tgt = self.up_embedder(tgt)
