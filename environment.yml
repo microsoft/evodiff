@@ -19,3 +19,4 @@ dependencies:
       - blosum
       - matplotlib
       - fair-esm
+      - tqdm
