@@ -5,7 +5,7 @@
   "d_hidden": 6144,
   "n_layers": 16,
   "n_heads": 16,
-  "max_batch_size": 8,
+  "max_batch_size": 12,
   "epochs": 100,
   "lr": 1e-4,
   "bucket_size": 1000,
