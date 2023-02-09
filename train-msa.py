@@ -7,6 +7,7 @@ import pathlib
 import numpy as np
 # import mlflow
 import torch
+from torch.cuda.amp import GradScaler
 import torch.multiprocessing as mp
 from torch.nn.utils import clip_grad_norm_
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -218,7 +219,7 @@ def train(gpu, args):
         scheduler = LambdaLR(optimizer, transformer_lr(warmup_steps))
     else:
         scheduler = LambdaLR(optimizer, warmup(warmup_steps))
-    #scaler = torch.cuda.amp.GradScaler()
+    scaler = GradScaler()
 
     outputs = os.listdir(args.out_fpath)
 
@@ -238,7 +239,7 @@ def train(gpu, args):
         model.load_state_dict(msd)
         optimizer.load_state_dict(sd['optimizer_state_dict'])
         scheduler.load_state_dict(sd['scheduler_state_dict'])
-        #scaler.load_state_dict(sd['scaler_state_dict']),
+        scaler.load_state_dict(sd['scaler_state_dict']),
         initial_epoch = sd['epoch'] + 1
         total_steps = sd['step']
         total_tokens = sd['tokens']
@@ -294,7 +295,7 @@ def train(gpu, args):
             if split == 'train' and i == 1 and e == initial_epoch and args.state_dict is not None:
                 optimizer.load_state_dict(sd['optimizer_state_dict'])
                 scheduler.load_state_dict(sd['scheduler_state_dict'])
-                #scaler.load_state_dict(sd['scaler_state_dict'])
+                scaler.load_state_dict(sd['scaler_state_dict'])
             ardm_loss, nll_loss, new_accu, new_n, new_seqs, new_processed = step(model, batch, split)
 
             if split == 'train':
@@ -365,7 +366,7 @@ def train(gpu, args):
                                     'model_state_dict': model.state_dict(),
                                     'optimizer_state_dict': optimizer.state_dict(),
                                     'scheduler_state_dict': scheduler.state_dict(),
-                                    #'scaler_state_dict': scaler.state_dict(),
+                                    'scaler_state_dict': scaler.state_dict(),
                                     'epoch': e,
                                     # 'amp_state_dict': amp.state_dict()
                                 }, ckpt_fpath)
@@ -446,19 +447,19 @@ def train(gpu, args):
             accu = accu_func(outputs, tgt, mask) * n_tokens
 
         if split == 'train':
-            #scaler.scale(loss).backward()
-            #_ = clip_grad_norm_(model.parameters(), clip)
-            #scaler.step(optimizer)
-            #scale = scaler.get_scale()
-            #scaler.update()
-            #skip_scheduler = (scale > scaler.get_scale())
-            #if not skip_scheduler:
-            #    scheduler.step()
-            # remove mixed precision for debugging TODO
-            loss.backward()
+            scaler.scale(loss).backward()
             _ = clip_grad_norm_(model.parameters(), clip)
-            optimizer.step()
-            scheduler.step()
+            scaler.step(optimizer)
+            scale = scaler.get_scale()
+            scaler.update()
+            skip_scheduler = (scale > scaler.get_scale())
+            if not skip_scheduler:
+               scheduler.step()
+            # # remove mixed precision for debugging TODO delete
+            # loss.backward()
+            # _ = clip_grad_norm_(model.parameters(), clip)
+            # optimizer.step()
+            # scheduler.step()
 
         n_seqs = torch.tensor(len(src), device=device)
         return loss, nll_loss, accu, n_tokens, n_seqs, n_processed
