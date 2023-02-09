@@ -9,7 +9,7 @@
   "epochs": 100,
   "lr": 1e-4,
   "bucket_size": 1000,
-  "max_tokens": 31900000,
+  "max_tokens": 31000000,
   "warmup": 15000,
   "max_square_tokens": 1000000000000000,
   "n_sequences": 64,
