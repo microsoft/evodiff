@@ -31,9 +31,7 @@ import sys
 sys.setrecursionlimit(1000) # must be as large as diffusion timesteps for Q_bar calculation
 
 ### SET RANDOM SEEDS ###
-random_seed = 6
-torch.random.manual_seed(random_seed)
-np.random.seed(random_seed)
+#random_seed =
 torch.cuda.empty_cache() # empty caches
 
 home = str(pathlib.Path.home())
@@ -65,6 +63,7 @@ def main():
     parser.add_argument('--checkpoint_freq', type=float, default=1)  # in minutes
     parser.add_argument('--log_freq', type=float, default=10)  # in steps
     parser.add_argument('--reweighting_term', type=float, default=0.01)  # lambda reweighting term from Austin D3PM
+    parser.add_argument('--random_seed', type=float, default=0)  # lambda reweighting term from Austin D3PM
     parser.add_argument('--model_type', type=str, default='ByteNet',
                         help='ByteNet or Transformer')
 
@@ -80,7 +79,8 @@ def main():
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
 def train(gpu, args):
-    _ = torch.manual_seed(random_seed)
+    rs = torch.random.manual_seed(args.random_seed)
+    rs = np.random.seed(args.random_seed)
     if args.aml:
         args.nr = int(os.environ['RANK'])
     rank = args.nr * args.gpus + gpu
