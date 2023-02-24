@@ -4,6 +4,7 @@ import argparse
 from sequence_models.constants import MSA_ALPHABET, ALL_AAS, PROTEIN_ALPHABET, PAD
 import torch
 import os
+import glob
 import json
 from dms.utils import Tokenizer
 import pathlib
@@ -11,6 +12,7 @@ from sequence_models.datasets import UniRefDataset
 from torch.utils.data import DataLoader
 from torch.utils.data import Subset
 from tqdm import tqdm
+from plot import aa_reconstruction_parity_plot
 
 ### SET RANDOM SEEDS ####
 random_seed = 1
@@ -37,6 +39,7 @@ def main():
     parser.add_argument('-g', '--gpus', default=1, type=int,
                         help='number of gpus per node')
     parser.add_argument('--no-step', action='store_true') # For D3PM if true will predict x_0 from x_t, instead of x_tminus1
+    parser.add_argument('--delete-prev',action='store_true')  # Will delete previous generated sequences
     args = parser.parse_args()
 
     _ = torch.manual_seed(0)
@@ -67,6 +70,7 @@ def main():
     else:
         activation = 'relu'
     data_top_dir = home + '/Desktop/DMs/data/'
+    project_dir = home + '/Desktop/DMs/'
 
     torch.cuda.set_device(args.gpus)
     device = torch.device('cuda:' + str(args.gpus))
@@ -101,10 +105,6 @@ def main():
     print(masking_idx, padding_idx)
     print("causal", causal)
 
-    # model = ByteNetLMTime(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
-    #                       causal=causal, padding_idx=masking_idx, rank=weight_rank, dropout=args.dropout,
-    #                       tie_weights=args.tie_weights, final_ln=args.final_norm, slim=slim, activation=activation,
-    #                       timesteps=diffusion_timesteps) # works w/ time and non-time models (when diffusion_timesteps is None)
     if args.model_type == 'ByteNet':
         model = ByteNetLMTime(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
                           causal=causal, padding_idx=masking_idx, rank=weight_rank, dropout=args.dropout,
@@ -135,17 +135,32 @@ def main():
         print('Loading weights from ' + args.state_dict + '...')
         sd = torch.load(args.state_dict, map_location=torch.device(device))
         msd = sd['model_state_dict']
-        #print(list(msd.keys())[0:10])
         #if args.mask == 'so':
         msd = {k.split('module.')[1]: v for k, v in msd.items()}
         #else:
         #    msd = {k.split('module.')[0]: v for k,v in msd.items()}
+        #print(list(msd.keys())[0:10])
+        # for key in msd.keys():
+        #     if 'weight' in key:
+        #         print(key)
+        #         #print(model.state_dict()[key])
+        #         #print(model.state_dict()[key].sum())
+        #         #if (model.state_dict()[key].sum()).isnan():
+        #         #    print("key contains nan", key)
+        # import pdb; pdb.set_trace()
         #print(list(msd.keys())[0:10], list(model.state_dict().keys())[0:10])
         model.load_state_dict(msd)
 
     sequences = args.num_seqs
     seq_lengths = [32, 64, 128, 256, 384, 512] #, 1024, 2048]
     seqs = ""
+
+    if args.delete_prev:
+        filelist = glob.glob(args.out_fpath+'generated*')
+        for file in filelist:
+            os.remove(file)
+            print("Deleting", file)
+
     if args.mask != 'train-sample':
         for i, seq_len in enumerate(seq_lengths):
             with open(args.out_fpath + 'generated_samples_string_'+str(seq_len)+'.fasta', 'a') as f:
@@ -154,7 +169,7 @@ def main():
 
                 if args.mask == 'autoreg' or args.mask=='so':
                     sample, string = generate_text(model, seq_len, tokenizer=tokenizer, penalty=args.penalty, causal=causal,
-                                                   batch_size=args.num_seqs)
+                                                   batch_size=args.num_seqs, device=device)
                 elif args.mask == 'blosum' or args.mask == 'random':
                     sample, string = generate_text_d3pm(model, seq_len, Q_bar=Q_prod, Q=Q_t, tokenizer=tokenizer,
                                                         timesteps=diffusion_timesteps, no_step=args.no_step,
@@ -190,13 +205,17 @@ def main():
             f.write(fasta_string)
             f.close()
 
-def generate_text(model, seq_len, tokenizer=Tokenizer(), penalty=None, causal=False, batch_size=20):
+    # Plot generated samples
+    aa_reconstruction_parity_plot(project_dir, args.out_fpath, 'generated_samples_string.csv')
+
+def generate_text(model, seq_len, tokenizer=Tokenizer(), penalty=None, causal=False, batch_size=20, device='cuda'):
     # Generate a random start string and convert to tokens
     all_aas = tokenizer.all_aas
     mask = tokenizer.mask_id
     # Start from mask
     sample = torch.zeros((batch_size, seq_len))+mask
     sample = sample.to(torch.long)
+    sample = sample.to(device)
     #print("input seq", tokenizer.untokenize(sample))
     # Unmask 1 loc at a time randomly
     loc = np.arange(seq_len)
@@ -205,6 +224,7 @@ def generate_text(model, seq_len, tokenizer=Tokenizer(), penalty=None, causal=Fa
     with torch.no_grad():
         for i in loc:
             timestep = torch.tensor([0] * batch_size) # placeholder but not called in model
+            timestep = timestep.to(device)
             prediction = model(sample, timestep) #, input_mask=input_mask.unsqueeze(-1)) #sample prediction given input
             p = prediction[:, i, :len(all_aas)-6] # sample at location i (random), dont let it predict non-standard AA
             p = torch.nn.functional.softmax(p, dim=1) # softmax over categorical probs
@@ -253,9 +273,10 @@ def generate_text_d3pm(model, seq_len, Q_bar=None, Q=None, tokenizer=Tokenizer()
                 prediction = model(sample, timesteps)
             elif model_type == 'Transformer':
                 prediction = model(sample, sample, timesteps) # TODO fix target?
-            p = prediction[:, :, :tokenizer.K]  # p_theta_tilde (x_0_tilde | x_t)
+            p = prediction[:, :, :tokenizer.K]  # p_theta_tilde (x_0_tilde | x_t) # Don't predict non-standard AAs
             p = torch.nn.functional.softmax(p, dim=-1)  # softmax over categorical probs
             p = p.to(torch.float64)
+            #print(p)
             if no_step: # This one-step model should give you a bad distribution if conditioned properly
                 x_tminus1 = sample.clone()
                 for i in range(len(p)):
@@ -272,12 +293,14 @@ def generate_text_d3pm(model, seq_len, Q_bar=None, Q=None, tokenizer=Tokenizer()
                     q_t = torch.mul(A.unsqueeze(1), B_pred)  # [ P x K x K ]
                     p_theta_marg = torch.bmm(torch.transpose(q_t, 1,2),  p[i].unsqueeze(2)).squeeze()  # this marginalizes over dim=2
                     p_theta_marg = p_theta_marg / p_theta_marg.sum(axis=1, keepdim=True)
+                    #print(p_theta_marg)
                     x_tminus1[i] = torch.multinomial(p_theta_marg, num_samples=1).squeeze()
-
+                    # On final timestep pick next best from non-standard AA
+                    if t == 1:
+                         x_tminus1[i] = torch.multinomial(p_theta_marg[:, :tokenizer.K-6], num_samples=1).squeeze()
                     # diff = torch.ne(s, x_tminus1[i])
                     # if t % 100 == 0:
                     #     print("time", t, diff.sum().item(), "mutations", tokenizer.untokenize(x_tminus1[i]), "sample", tokenizer.untokenize(s))
-
                 sample = x_tminus1
 
     untokenized = [tokenizer.untokenize(s) for s in sample]
