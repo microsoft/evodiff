@@ -137,7 +137,7 @@ def main():
         f.write(fasta_string)
         f.close()
 
-    # Save tokenized to npz file
+    # Save tokenized seqs to npz file
     np.save(args.out_fpath+'generated_msas', np.array(sample.cpu()))
 
     # Downstream tasks
@@ -145,18 +145,9 @@ def main():
     gen_msas = np.load(args.out_fpath+'generated_msas.npy')
     train_msas = np.load(project_dir+'ref/'+args.mask+'_tokenized_openfold_train_msas.npy')
     aa_reconstruction_parity_plot(project_dir, args.out_fpath, 'generated_msas.a3m', msa=True)
-    msa_substitution_rate(gen_msas, train_msas, tokenizer.all_aas, args.out_fpath)
-    msa_pairwise_interactions(gen_msas, train_msas, tokenizer.all_aas, args.out_fpath)
+    msa_substitution_rate(gen_msas, train_msas, tokenizer.all_aas[:-1], args.out_fpath)
+    msa_pairwise_interactions(gen_msas, train_msas, tokenizer.all_aas[:-1], args.out_fpath)
 
-def write_msa_a3m(msa_string, file): # TODO debug = make sure this works, i think you are missing a nested list soemwhere (update w/ above code)
-    with open(file, 'a') as f:
-        for msa in msa_string:
-            f.write('>query \n')
-            f.write(msa[0])
-            for seq in msa[1:]:
-                f.write('\n')
-                f.write('>tr \n')
-                f.write(seq)
 
 def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, device='gpu'):
     mask_id = tokenizer.mask_id

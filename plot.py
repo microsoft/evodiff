@@ -120,13 +120,32 @@ def get_pairs(array, alphabet):
         curr_msa = array[b]
         for col in np.arange(curr_msa.shape[1]):
             q_val = curr_msa[0, col]
-            all_q_val.append(q_val)
-            col_vals = list(curr_msa[1:, col])
-            col_vals = filter(lambda val: val < len(alphabet), col_vals)
-            curr_pairs = [(q_val, v) for v in col_vals]
-            all_pairs.append(curr_pairs)
+            if q_val < len(alphabet):
+                q_val = curr_msa[0, col]
+                all_q_val.append(q_val)
+                col_vals = list(curr_msa[1:, col])
+                #print(col_vals)
+                col_vals = filter(lambda val: val < len(alphabet), col_vals)
+                curr_pairs = [(q_val, v) for v in col_vals]
+                #print('after', [v for v in col_vals])
+                #print(curr_pairs)
+                all_pairs.append(curr_pairs)
     all_pairs = list(itertools.chain(*all_pairs))
     return all_pairs
+
+def get_matrix(all_pairs, all_aa_pairs, alphabet):
+    count_map = {}
+    for i in all_pairs:
+        count_map[i] = count_map.get(i, 0) + (1 / 63)
+    for aa_pair in all_aa_pairs:
+        if aa_pair not in count_map.keys():
+            pass
+            count_map[aa_pair] = 0
+    _dict = {k: count_map[k] for k in sorted(count_map.keys())}
+    _matrix = list(_dict.values())
+    print(len(count_map), np.asarray(_matrix).shape, len(alphabet))
+    _matrix = np.asarray(_matrix).reshape(len(alphabet), len(alphabet))
+    return _matrix
 
 def msa_substitution_rate(generated_msa, train_msa, alphabet, out_path):
     print(len(alphabet))
@@ -134,16 +153,7 @@ def msa_substitution_rate(generated_msa, train_msa, alphabet, out_path):
     all_aa_pairs = list(itertools.product(all_aa, all_aa))
 
     all_pairs_train = get_pairs(train_msa, alphabet)
-
-    count_map_train = {}
-    for i in all_pairs_train:
-        count_map_train[i] = count_map_train.get(i, 0) + (1 / 63)
-    for aa_pair in all_aa_pairs:
-        if aa_pair not in count_map_train.keys():
-            count_map_train[aa_pair] = 0
-    train_dict = {k: count_map_train[k] for k in sorted(count_map_train.keys())}
-    train_matrix = list(train_dict.values())
-    train_matrix = np.asarray(train_matrix).reshape(len(alphabet), len(alphabet))
+    train_matrix = get_matrix(all_pairs_train, all_aa_pairs, alphabet)
 
     alpha_labels = list(alphabet)
     train_table = pd.DataFrame(data=train_matrix.T, index=alpha_labels, columns=alpha_labels)
@@ -155,18 +165,7 @@ def msa_substitution_rate(generated_msa, train_msa, alphabet, out_path):
     train_diag_vals = np.diag(train_table)
 
     all_pairs_gen = get_pairs(generated_msa, alphabet)
-
-    count_map_gen = {}
-    for i in all_pairs_gen:
-        count_map_gen[i] = count_map_gen.get(i, 0) + (1 / 63)
-
-    for aa_pair in all_aa_pairs:
-        if aa_pair not in count_map_gen.keys():
-            count_map_gen[aa_pair] = 0
-
-    gen_dict = {k: count_map_gen[k] for k in sorted(count_map_gen.keys())}
-    gen_matrix = list(gen_dict.values())
-    gen_matrix = np.asarray(gen_matrix).reshape(len(alphabet), len(alphabet))
+    gen_matrix = get_matrix(all_pairs_gen, all_aa_pairs, alphabet)
 
     gen_table = pd.DataFrame(data=gen_matrix.T, index=alpha_labels, columns=alpha_labels)
     non_zero_cols_gen = gen_table.columns[(gen_table != 0).any()]
@@ -190,13 +189,26 @@ def msa_substitution_rate(generated_msa, train_msa, alphabet, out_path):
 
     # Save plot
     fig = plt.figure(figsize=(3, 2.5))
-    plt.scatter(train_vals, gen_vals, color='blue', s=8, linewidth=0, label="Different AA", alpha=0.25)
-    plt.scatter(train_diag_vals, gen_diag_vals, color='red', s=8, linewidth=0, label="Same AA", alpha=0.5)
+    plt.scatter(train_vals, gen_vals, color='blue', s=10, linewidth=0, label="Different AA", alpha=0.25)
+    #plt.scatter(train_diag_vals, gen_diag_vals, color='red', s=8, linewidth=0, label="Same AA", alpha=0.5)
     plt.plot([0, 0.5], [0, 0.5], linewidth=1, color='black', linestyle="--")
     plt.xlabel("True AA Substitution Rate")
     plt.ylabel("Gen AA Substitution Rate")
+    plt.legend(loc='upper right')
     plt.tight_layout()
-    save_dir_test = os.path.join(out_path, 'substitution.png')
+    save_dir_test = os.path.join(out_path, 'substitution_nondiag.png')
+    fig.savefig(save_dir_test)
+
+    # Save plot
+    fig = plt.figure(figsize=(3, 2.5))
+    #plt.scatter(train_vals, gen_vals, color='blue', s=8, linewidth=0, label="Different AA", alpha=0.25)
+    plt.scatter(train_diag_vals, gen_diag_vals, color='red', s=10, linewidth=0, label="Same AA", alpha=1)
+    plt.plot([0, 0.5], [0, 0.5], linewidth=1, color='black', linestyle="--")
+    plt.xlabel("True AA Substitution Rate")
+    plt.ylabel("Gen AA Substitution Rate")
+    plt.legend(loc='upper right')
+    plt.tight_layout()
+    save_dir_test = os.path.join(out_path, 'substitution_diag.png')
     fig.savefig(save_dir_test)
 
 def get_pairwise(msa, alphabet):
@@ -204,8 +216,10 @@ def get_pairwise(msa, alphabet):
     queries = msa[:, 0, :]
     for row in queries:
         row = row.astype(int)
-        curr_query = list(row[row <= len(alphabet)])
-        curr_query = [alphabet[c] for c in curr_query]
+        curr_query = list(row[row < len(alphabet)])
+        #print([c for c in curr_query])
+        #print([c for c in curr_query if c < len(alphabet)])
+        curr_query = [alphabet[c] for c in curr_query if c < len(alphabet)]
         curr_pairs = itertools.permutations(curr_query, 2)
         all_pairs.append(list(curr_pairs))
     all_pairs = list(itertools.chain(*all_pairs))
@@ -260,7 +274,7 @@ def msa_pairwise_interactions(generated_msa, train_msa, all_aa, out_path):  # Lo
     f.close()
 
     fig = plt.figure(figsize=(3, 2.5))
-    plt.scatter(train_vals, gen_vals, color='blue', linewidth=0, s=8, alpha=0.5)  # marker = alpha
+    plt.scatter(train_vals, gen_vals, color='blue', linewidth=0, s=10, alpha=0.5)  # marker = alpha
     plt.plot([0, 0.02], [0, 0.02], linewidth=1, color='black', linestyle="--")
     plt.xlabel("True Parwise Interactions")
     plt.ylabel("Gen Parwise Interactions")
