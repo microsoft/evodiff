@@ -87,7 +87,6 @@ def main():
     padding_idx = tokenizer.pad_id  # PROTEIN_ALPHABET.index(PAD)
     masking_idx = tokenizer.mask_id
     if args.mask == 'autoreg':
-        tokenizer = Tokenizer()
         model = MSATransformer(d_embed, d_hidden, n_layers, n_heads, use_ckpt=True, n_tokens=len(MSA_ALPHABET),
                                padding_idx=MSA_ALPHABET.index(MSA_PAD), mask_idx=MSA_ALPHABET.index(MASK)).cuda()
     else:
@@ -139,14 +138,6 @@ def main():
 
     # Save tokenized seqs to npz file
     np.save(args.out_fpath+'generated_msas', np.array(sample.cpu()))
-
-    # Downstream tasks
-    # Can run all these functions outside of gen script
-    gen_msas = np.load(args.out_fpath+'generated_msas.npy')
-    train_msas = np.load(project_dir+'ref/'+args.mask+'_tokenized_openfold_train_msas.npy')
-    aa_reconstruction_parity_plot(project_dir, args.out_fpath, 'generated_msas.a3m', msa=True)
-    msa_substitution_rate(gen_msas, train_msas, tokenizer.all_aas[:-1], args.out_fpath)
-    msa_pairwise_interactions(gen_msas, train_msas, tokenizer.all_aas[:-1], args.out_fpath)
 
 
 def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, device='gpu'):
