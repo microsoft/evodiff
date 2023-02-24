@@ -148,10 +148,9 @@ def get_matrix(all_pairs, all_aa_pairs, alphabet):
     return _matrix
 
 def msa_substitution_rate(generated_msa, train_msa, alphabet, out_path):
-    print(len(alphabet))
+    print(alphabet, "len: ", len(alphabet))
     all_aa = np.arange(len(alphabet))
     all_aa_pairs = list(itertools.product(all_aa, all_aa))
-
     all_pairs_train = get_pairs(train_msa, alphabet)
     train_matrix = get_matrix(all_pairs_train, all_aa_pairs, alphabet)
 
@@ -189,7 +188,7 @@ def msa_substitution_rate(generated_msa, train_msa, alphabet, out_path):
 
     # Save plot
     fig = plt.figure(figsize=(3, 2.5))
-    plt.scatter(train_vals, gen_vals, color='blue', s=10, linewidth=0, label="Different AA", alpha=0.25)
+    plt.scatter(train_vals, gen_vals, color='blue', s=15, linewidth=0, label="Different AA", alpha=0.25)
     #plt.scatter(train_diag_vals, gen_diag_vals, color='red', s=8, linewidth=0, label="Same AA", alpha=0.5)
     plt.plot([0, 0.5], [0, 0.5], linewidth=1, color='black', linestyle="--")
     plt.xlabel("True AA Substitution Rate")
@@ -202,7 +201,7 @@ def msa_substitution_rate(generated_msa, train_msa, alphabet, out_path):
     # Save plot
     fig = plt.figure(figsize=(3, 2.5))
     #plt.scatter(train_vals, gen_vals, color='blue', s=8, linewidth=0, label="Different AA", alpha=0.25)
-    plt.scatter(train_diag_vals, gen_diag_vals, color='red', s=10, linewidth=0, label="Same AA", alpha=1)
+    plt.scatter(train_diag_vals, gen_diag_vals, color='red', s=15, linewidth=0, label="Same AA", alpha=1)
     plt.plot([0, 0.5], [0, 0.5], linewidth=1, color='black', linestyle="--")
     plt.xlabel("True AA Substitution Rate")
     plt.ylabel("Gen AA Substitution Rate")
@@ -274,7 +273,7 @@ def msa_pairwise_interactions(generated_msa, train_msa, all_aa, out_path):  # Lo
     f.close()
 
     fig = plt.figure(figsize=(3, 2.5))
-    plt.scatter(train_vals, gen_vals, color='blue', linewidth=0, s=10, alpha=0.5)  # marker = alpha
+    plt.scatter(train_vals, gen_vals, color='blue', linewidth=0, s=15, alpha=0.5)  # marker = alpha
     plt.plot([0, 0.02], [0, 0.02], linewidth=1, color='black', linestyle="--")
     plt.xlabel("True Parwise Interactions")
     plt.ylabel("Gen Parwise Interactions")
