@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime, timedelta
 import pathlib
-
+import esm
 import numpy as np
 # import mlflow
 import torch
@@ -58,6 +58,7 @@ def main():
     parser.add_argument('--checkpoint_freq', type=float, default=120)  # in minutes
     parser.add_argument('--log_freq', type=float, default=1000)  # in steps
     parser.add_argument('--reweighting_term', type=float, default=0.001) # lambda from D3PM
+    parser.add_argument('--selection-type', type=str, default='MaxHamming') # MaxHamming or random
 
 
     args = parser.parse_args()
@@ -86,7 +87,8 @@ def train(gpu, args):
     with open(args.config_fpath, 'r') as f:
         config = json.load(f)
 
-    selection_type = config['selection_type']
+    #selection_type = config['selection_type']
+    selection_type = args.selection_type
     d_embed = config['d_embed']
     d_hidden = config['d_hidden']
     n_layers = config['n_layers']
@@ -434,6 +436,8 @@ def train(gpu, args):
             outputs = model(src, timestep)
             lvb_loss = loss_func1(src_one_hot, q, outputs, tgt, tgt_one_hot, nonpad_mask, timestep, Q, Q_prod)
             ce_loss = loss_func2(outputs, tgt, nonpad_mask)
+            lvb_loss = lvb_loss.to(torch.float32)
+            ce_loss = ce_loss.to(torch.float32)
             nll_loss = ce_loss * n_tokens
             accu = accu_func(outputs, tgt, nonpad_mask) * n_tokens
             loss = (lvb_loss + _lambda * ce_loss) * n_tokens

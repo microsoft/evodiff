@@ -62,10 +62,9 @@ def main():
     parser.add_argument('--warmup', action='store_true')  # Set to True if running on subset of data
     parser.add_argument('--checkpoint_freq', type=float, default=1)  # in minutes
     parser.add_argument('--log_freq', type=float, default=10)  # in steps
-    parser.add_argument('--reweighting_term', type=float, default=0.01)  # lambda reweighting term from Austin D3PM
-    parser.add_argument('--random_seed', type=float, default=0)  # lambda reweighting term from Austin D3PM
-    parser.add_argument('--model_type', type=str, default='ByteNet',
-                        help='ByteNet or Transformer')
+    parser.add_argument('--reweighting_term', type=float, default=0)  # lambda reweighting term from Austin D3PM
+    parser.add_argument('--random_seed', type=int, default=0)  # lambda reweighting term from Austin D3PM
+    parser.add_argument('--pretrained', action='store_true') # ONLY USE THIS FLAG FOR FIRST RUN OF PRETRAIN
 
     args = parser.parse_args()
     args.world_size = args.gpus * args.nodes
@@ -84,7 +83,7 @@ def train(gpu, args):
     if args.aml:
         args.nr = int(os.environ['RANK'])
     rank = args.nr * args.gpus + gpu
-    #print(args.nr, args.gpus, gpu, rank)
+    print("nr", args.nr, "gpus", args.gpus, "gpu", gpu, "rank", rank)
     dist.init_process_group(
         backend='nccl',
         init_method='env://',
@@ -98,12 +97,14 @@ def train(gpu, args):
     d_embed = config['d_embed']
     d_model = config['d_model']
     n_layers = config['n_layers']
-    if args.model_type == 'Transformer':
-        n_head = config['n_head']
-        d_feedforward = config['d_feedforward']
-    if args.model_type == 'ByteNet':
-        kernel_size = config['kernel_size']
-        r = config['r']
+    # if args.model_type == 'Transformer':
+    #     n_head = config['n_head']
+    #     d_feedforward = config['d_feedforward']
+    # if args.model_type == 'ByteNet':
+    #     kernel_size = config['kernel_size']
+    #     r = config['r']
+    kernel_size = config['kernel_size']
+    r = config['r']
     if 'slim' in config:
         slim = config['slim']
     else:
@@ -175,13 +176,13 @@ def train(gpu, args):
     ds_train = UniRefDataset(data_dir, 'train', structure=False)
     train_idx = ds_train.indices
     if args.mini_run:
-        tindices = np.arange(21546293,31546293,1)#(1000000,21546293, 1)
+        tindices = np.arange(0,1000) # np.arange(21546293,31546293,1)#(1000000,21546293, 1)
         train_indices = np.sort(np.random.choice(tindices, mini_size, replace=False))
         train_sampler = Subset(ds_train,train_indices)
         len_train = train_indices
         dl_train = DataLoader(dataset=train_sampler,
                               shuffle=True,
-                              batch_size=20,
+                              batch_size=1,
                               num_workers=4,
                               collate_fn=collater)
     else:
@@ -203,7 +204,7 @@ def train(gpu, args):
             len_valid = valid_sampler
             dl_valid = DataLoader(dataset=valid_sampler,
                                   shuffle=True,
-                                  batch_size=20,
+                                  batch_size=1,
                                   num_workers=4,
                                   collate_fn=collater)
         else:
@@ -221,17 +222,17 @@ def train(gpu, args):
     masking_idx = tokenizer.mask_id
     print('Using {} as padding index'.format(padding_idx))
     print('Using {} as masking index'.format(masking_idx))
-    if args.model_type == 'ByteNet':
-        model = ByteNetLMTime(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
-                          causal=causal, padding_idx=masking_idx, rank=weight_rank, dropout=args.dropout,
-                          tie_weights=args.tie_weights, final_ln=args.final_norm, slim=slim, activation=activation,
-                          timesteps=diffusion_timesteps)
-    elif args.model_type == 'Transformer':
-        model = TransformerTime(n_tokens, d_embed, d_model, n_layers, n_head, d_feedforward, padding_idx=masking_idx,
-                                bidirectional=bidirectional, dropout=args.dropout,
-                                norm_first=args.norm_first, activation=activation, timesteps=diffusion_timesteps)
-    else:
-        print("choose ByteNet or Transformer for --model_type")
+    #if args.model_type == 'ByteNet':
+    model = ByteNetLMTime(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
+                      causal=causal, padding_idx=masking_idx, rank=weight_rank, dropout=args.dropout,
+                      tie_weights=args.tie_weights, final_ln=args.final_norm, slim=slim, activation=activation,
+                      timesteps=diffusion_timesteps)
+    # elif args.model_type == 'Transformer':
+    #     model = TransformerTime(n_tokens, d_embed, d_model, n_layers, n_head, d_feedforward, padding_idx=masking_idx,
+    #                             bidirectional=bidirectional, dropout=args.dropout,
+    #                             norm_first=args.norm_first, activation=activation, timesteps=diffusion_timesteps)
+    # else:
+    #     print("choose ByteNet or Transformer for --model_type")
     optimizer = Adam(model.parameters(), lr=lr, weight_decay=args.weight_decay)
     outputs = os.listdir(args.out_fpath)
     if len(outputs) > 0:
@@ -243,20 +244,53 @@ def train(gpu, args):
                    args.state_dict = args.out_fpath + output
                    last_epoch = epoch
     model = model.to(device)
+    if args.pretrained:
+        args.state_dict = 'data/pretrained/checkpoint538468.tar'
     if args.state_dict is not None:
-       print('Loading weights from ' + args.state_dict + '...')
-       sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
-       msd = sd['model_state_dict']
-       msd = {k.split('module.')[1]: v for k,v in msd.items()}
-       model.load_state_dict(msd)
-       optimizer.load_state_dict(sd['optimizer_state_dict'])
-       initial_epoch = sd['epoch'] + 1
-       total_steps = sd['step']
-       total_tokens = sd['tokens']
+        print('Loading weights from ' + args.state_dict + '...')
+        if args.pretrained:
+            # REMAP weights from PROTEIN_ALPHABET -> MSA ALPHABET TODO: not sure if this is correct
+            # STOP->GAP (27->28)
+            # GAP->STOP (28->27)
+            # ADD MSA_PAD as zeros
+            sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
+            msd = sd['model_state_dict']
+            msd = {k.split('module.')[1]: v for k, v in msd.items()}
+            embedder_weight_new = torch.zeros(31, 8)
+            embedder_weight_new[:26, :] = msd['embedder.embedder.weight'][:26, :]
+            embedder_weight_new[26:27, :] = msd['embedder.embedder.weight'][27:28, :]
+            embedder_weight_new[27:28, :] = msd['embedder.embedder.weight'][26:27, :]
+            embedder_weight_new[28:30, :] = msd['embedder.embedder.weight'][28:30, :]
+            decoder_weight_new = torch.zeros(31, 1280, 1)
+            decoder_weight_new[:26, :, :] = msd['decoder.conv.weight'][:26, :, :]
+            decoder_weight_new[26:27, :, :] = msd['decoder.conv.weight'][27:28, :, :]
+            decoder_weight_new[27:28, :, :] = msd['decoder.conv.weight'][26:27, :, :]
+            decoder_weight_new[28:30, :, :] = msd['decoder.conv.weight'][28:30, :, :]
+            decoder_bias_new = torch.zeros(31)
+            decoder_bias_new[:26] = msd['decoder.conv.bias'][:26]
+            decoder_bias_new[26:27] = msd['decoder.conv.bias'][27:28]
+            decoder_bias_new[27:28] = msd['decoder.conv.bias'][26:27]
+            decoder_bias_new[28:30] = msd['decoder.conv.bias'][28:30]
+            msd['embedder.embedder.weight'] = embedder_weight_new
+            msd['decoder.conv.weight'] = decoder_weight_new
+            msd['decoder.conv.bias'] = decoder_bias_new
+            model.load_state_dict(msd)
+            initial_epoch = 0
+            total_steps = 0
+            total_tokens = 0
+        else:
+            sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
+            msd = sd['model_state_dict']
+            msd = {k.split('module.')[1]: v for k,v in msd.items()}
+            model.load_state_dict(msd)
+            optimizer.load_state_dict(sd['optimizer_state_dict'])
+            initial_epoch = sd['epoch'] + 1
+            total_steps = sd['step']
+            total_tokens = sd['tokens']
     else:
-       initial_epoch = 0
-       total_steps = 0
-       total_tokens = 0
+        initial_epoch = 0
+        total_steps = 0
+        total_tokens = 0
     scaler = GradScaler()
     model = DDP(model)
     # ----------------------------------------------------------
@@ -308,12 +342,12 @@ def train(gpu, args):
                 n_total = len(ds_valid)
         for i, batch in enumerate(loader):
             # restarting from a checkpoint
-            if train and i == 1 and e == initial_epoch and args.state_dict is not None:
+            if train and i == 1 and e == initial_epoch and args.state_dict is not None and not args.pretrained:
                 print("Restarting from checkpoint")
                 optimizer.load_state_dict(sd['optimizer_state_dict'])
                 scheduler.load_state_dict(sd['scheduler_state_dict'])
-            new_loss, new_nll_loss, new_accu, new_n, new_seqs, new_processed = step(i, model, batch, train)
-            #print("before reduce", new_loss, new_ce_loss)
+            new_loss, new_nll_loss, new_accu, new_n, new_seqs, new_processed = step(model, batch, train)
+            #print("before reduce", new_loss)
             if train:
                 dist.reduce(new_loss, 0, op=dist.ReduceOp.SUM)
                 #dist.reduce(new_ce_loss, 0, op=dist.ReduceOp.SUM)
@@ -331,6 +365,12 @@ def train(gpu, args):
             n_seen += new_seqs.item()
             total_n = sum(ns)
             r_loss = sum(losses) / total_n
+            #print("after reduce", new_loss)
+            # if r_loss <= 0 or r_loss >= 1000000:
+            #     print(new_loss.item())
+            #     print(losses)
+            #     print(total_n)
+            #     import pdb; pdb.set_trace()
             #r_ce_loss = sum(ce_losses) / total_n
             r_nll_loss = sum(nll_losses) / total_n
             raccu = sum(accus) / total_n
@@ -388,7 +428,7 @@ def train(gpu, args):
             print('Epoch complete in ' + str(datetime.now() - start_time))
         return i, tokens_trained
 
-    def step(i, model, batch, train):
+    def step(model, batch, train):
         if args.mask == 'blosum' or args.mask == 'random':
             src, src_onehot, timestep, tgt, tgt_onehot, Q, Q_bar, q = batch
             q = q.to(device)
@@ -400,6 +440,7 @@ def train(gpu, args):
         else:
             src, timestep, tgt, mask = batch
             mask = mask.to(device)
+        #print(src, src_onehot, timestep, tgt, tgt_onehot, Q, Q_bar, q)
         # print("Batchsize", len(timestep))
         timestep = timestep.to(device)
         src = src.to(device)
@@ -418,16 +459,19 @@ def train(gpu, args):
             optimizer.zero_grad() # reset gradients of model parameters
 
         # Enables autocasting for the forward pass (model + loss)
-        with torch.cuda.amp.autocast():
-            if args.model_type=='ByteNet':
-                outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
-            elif args.model_type=='Transformer':
-                outputs = model(src, tgt, timestep, input_mask=~input_mask.bool())
+        with torch.cuda.amp.autocast(dtype=torch.float32):
+            #if args.model_type=='ByteNet':
+            outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
+            # elif args.model_type=='Transformer':
+            #     outputs = model(src, tgt, timestep, input_mask=~input_mask.bool())
             #print(outputs.dtype)
             if args.mask == 'blosum' or args.mask == 'random':
                 lvb_loss = loss_func1(src_onehot, q, outputs, tgt, tgt_onehot, input_mask, timestep, Q, Q_bar)
                 ce_loss = loss_func2(outputs, tgt, input_mask)
-                loss = (lvb_loss + _lambda * ce_loss) * n_tokens
+                lvb_loss = lvb_loss.to(torch.float32)
+                ce_loss = ce_loss.to(torch.float32)
+                loss = (lvb_loss + (_lambda * ce_loss)) * n_tokens
+                #print(ce_loss.dtype, lvb_loss.dtype, loss.dtype)
                 nll_loss = ce_loss * n_tokens
                 accu = accu_func(outputs, tgt, input_mask) * n_tokens
                 #print('lvb', lvb_loss, '\n ce', ce_loss, '\n loss', loss, '\n nll', nll_loss)
@@ -437,22 +481,33 @@ def train(gpu, args):
                 accu = accu_func(outputs, tgt, mask) * n_tokens
         if train:
             # Exit the context manager before backward()
-
-            scaler.scale(loss).backward() # accumulate gradients here
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scale = scaler.get_scale()
+            scaler.update()
+            skip_scheduler = (scale > scaler.get_scale())
+            if not skip_scheduler:
+                scheduler.step()
 
             # Gradient accumulation
             #print("batch", i)
-            if (i + 1) % iters_to_accumulate == 0: # If not accumulating gradients iters_to_accumulate = 1
-                #print("accumulating every", iters_to_accumulate)
-                #print("updating gradients at batch", i)
-                scaler.step(optimizer)
-                scale = scaler.get_scale()
-                scaler.update()
-
-                skip_scheduler = (scale > scaler.get_scale())
-                if not skip_scheduler:
-                   scheduler.step()
-
+            # if (i + 1) % iters_to_accumulate == 0: # If not accumulating gradients iters_to_accumulate = 1
+            #     #print("accumulating every", iters_to_accumulate)
+            #     #print("updating gradients at batch", i)
+            #     scaler.step(optimizer)
+            #     scale = scaler.get_scale()
+            #     scaler.update()
+            #
+            #     skip_scheduler = (scale > scaler.get_scale())
+            #     if not skip_scheduler:
+            #        scheduler.step()
+        if loss <= 0 or loss >= 1000000:
+            print(loss, lvb_loss, ce_loss, nll_loss, n_tokens, _lambda)
+            print(timestep)
+            print([tokenizer.untokenize(t) for t in tgt])
+            print([tokenizer.untokenize(s) for s in src])
+            import pdb; pdb.set_trace()
+        #print("lvb", lvb_loss, "ce", ce_loss, "loss", loss, "tokens", n_tokens, "timestep", timestep)
         return loss, nll_loss, accu, n_tokens, n_seqs, n_processed
 
     n_parameters = sum(p.numel() for p in model.parameters())

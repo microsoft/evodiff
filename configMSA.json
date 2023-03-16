@@ -1,6 +1,5 @@
 {
   "dataset": "openfold",
-  "selection_type": "MaxHamming",
   "d_embed": 768,
   "d_hidden": 3072,
   "n_layers": 12,

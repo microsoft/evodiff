@@ -7,7 +7,12 @@ from sequence_models.esm import MSATransformer
 from sequence_models.constants import MSA_ALPHABET, MSA_PAD, MASK
 from dms.utils import Tokenizer
 from dms.model import MSATransformerTime
+from plot import aa_reconstruction_parity_plot, msa_substitution_rate, msa_pairwise_interactions
 from tqdm import tqdm
+import pathlib
+import glob
+
+home = str(pathlib.Path.home())
 
 def main():
     parser = argparse.ArgumentParser()
@@ -27,6 +32,7 @@ def main():
     parser.add_argument('--n-sequences', type=int, default=64)
     parser.add_argument('--seq-length', type=int, default=256)
     parser.add_argument('--gen_task', type=str, default='masked')
+    parser.add_argument('--delete-prev', action='store_true')  # Will delete previous generated sequences
     args = parser.parse_args()
 
     _ = torch.manual_seed(0)
@@ -55,6 +61,14 @@ def main():
         data_dir += config['dataset'] + '/'
         ptjob = False
 
+    project_dir = home + '/Desktop/DMs/'
+
+    if args.delete_prev:
+        filelist = glob.glob(args.out_fpath+'generated*')
+        for file in filelist:
+            os.remove(file)
+            print("Deleting", file)
+
     if args.mask == 'autoreg':
         tokenizer = Tokenizer()
         diffusion_timesteps = None # Not input to model
@@ -73,7 +87,6 @@ def main():
     padding_idx = tokenizer.pad_id  # PROTEIN_ALPHABET.index(PAD)
     masking_idx = tokenizer.mask_id
     if args.mask == 'autoreg':
-        tokenizer = Tokenizer()
         model = MSATransformer(d_embed, d_hidden, n_layers, n_heads, use_ckpt=True, n_tokens=len(MSA_ALPHABET),
                                padding_idx=MSA_ALPHABET.index(MSA_PAD), mask_idx=MSA_ALPHABET.index(MASK)).cuda()
     else:
@@ -88,6 +101,7 @@ def main():
        last_epoch = 0
        for output in outputs:
            if 'checkpoint' in output:
+               print(output)
                epoch = int(output.split('checkpoint')[-1][:-4])
                if epoch > last_epoch:
                    args.state_dict = args.out_fpath + output
@@ -100,39 +114,31 @@ def main():
     msd = {k.split('module.')[1]: v for k, v in msd.items()}
     model.load_state_dict(msd)
 
-    seqs = ""
-    with open(args.out_fpath + 'generated_samples_string.fasta', 'a') as f:
-        count = 0
-        fasta_string = ""
-        if args.mask == 'autoreg':
-            sample, string = generate_msa(model, tokenizer, args.batch_size, args.n_sequences, args.seq_length,
-                                          device=device)
-        if args.mask == 'blosum' or args.mask=='random':
-            sample, string = generate_msa_d3pm(model, args.batch_size, args.n_sequences, args.seq_length,
-                                                 Q_bar=Q_prod, Q=Q_t, tokenizer=Tokenizer(), timesteps=diffusion_timesteps,
-                                                 no_step=False, device=device)
-        for _s in string:
-            fasta_string += ">SEQUENCE_" + str(count) + "\n" + str(_s[0]) + "\n"
-            count += 1
-            seqs += str(_s[0]) + "\n"
+    if args.mask == 'autoreg':
+        sample, string = generate_msa(model, tokenizer, args.batch_size, args.n_sequences, args.seq_length,
+                                      device=device)
+    if args.mask == 'blosum' or args.mask=='random':
+        sample, string = generate_msa_d3pm(model, args.batch_size, args.n_sequences, args.seq_length,
+                                             Q_bar=Q_prod, Q=Q_t, tokenizer=Tokenizer(), max_timesteps=diffusion_timesteps,
+                                             no_step=False, device=device)
 
+    fasta_string = ""
+    # Save strings to a3m
+    with open(args.out_fpath + 'generated_msas.a3m', 'a') as f:
+        for count, msa in enumerate(string):
+            for seq in range(args.n_sequences):
+                seq_num = seq * args.seq_length
+                next_seq_num = (seq+1) * args.seq_length
+                if seq_num == 0 :
+                    f.write(">SEQUENCE_" + str(count) + "\n" + str(msa[0][seq_num:next_seq_num]) + "\n")
+                else:
+                    f.write(">tr \n" + str(msa[0][seq_num:next_seq_num]) + "\n" )
         f.write(fasta_string)
         f.close()
 
-    with open(args.out_fpath + 'generated_samples_string.csv', 'a') as f:
-        f.write(','.join(
-            [seqs]))
-        f.write('\n')
+    # Save tokenized seqs to npz file
+    np.save(args.out_fpath+'generated_msas', np.array(sample.cpu()))
 
-def save_msa_a3m(msa_string, file): # TODO debug = make sure this works, i think you are missing a nested list soemwhere
-    with open(file, 'a') as f:
-        for msa in msa_string:
-            f.write('>query \n')
-            msa[0]
-            for seq in msa:
-                f.write('\n')
-                f.write('>tr \n')
-                f.write(seq)
 
 def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, device='gpu'):
     mask_id = tokenizer.mask_id
@@ -160,23 +166,26 @@ def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, device='
             output[:, random_x, random_y] = p_sample
             #print("time", random_x, random_y, "sample", tokenizer.untokenize(output[0].flatten()))
     output_ret1 = output
-    output_ret2 = [[tokenizer.untokenize(s) for s in msa] for msa in output_ret1]
+    output_ret2 = [[tokenizer.untokenize(msa.flatten())] for msa in output_ret1]
+    print(output_ret2, len(output_ret2))
+    print(output_ret2[0], len(output_ret2[0]))
+    print(output_ret2[0][0], len(output_ret2[0][0]))
     print("final seq", output_ret2[0][0][:seq_length])
     return output_ret1, output_ret2 # return output and untokenized output
 
 def generate_msa_d3pm(model, batch_size, n_sequences, seq_length, Q_bar=None, Q=None, tokenizer=Tokenizer(),
-                      timesteps=500, no_step=False, device='gpu'):
-
+                      max_timesteps=500, no_step=False, device='gpu'):
     sample = torch.randint(0, tokenizer.K, (batch_size, n_sequences, seq_length)) # don't include gap token?
     sample = sample.to(torch.long)
     sample = sample.to(device)
     print("input query seq", tokenizer.untokenize(sample[0].flatten()[:seq_length]))
     print(sample.shape)
     if no_step:
-        timesteps = np.linspace(timesteps-1, timesteps-1, 1, dtype=int)
+        timesteps = np.linspace(max_timesteps-1, max_timesteps-1, 1, dtype=int)
     else:
-        timesteps = np.linspace(timesteps-1,1,int((timesteps-1)/1), dtype=int) # iterate over reverse timesteps
+        timesteps = np.linspace(max_timesteps-1,1,int((max_timesteps-1)/1), dtype=int) # iterate over reverse timesteps
     with torch.no_grad():
+        print(timesteps[-1])
         for t in tqdm(timesteps):
             timesteps = torch.tensor([t] * batch_size)
             timesteps = timesteps.to(device)
@@ -203,8 +212,11 @@ def generate_msa_d3pm(model, batch_size, n_sequences, seq_length, Q_bar=None, Q=
                     p_theta_marg = torch.bmm(torch.transpose(q_t, 1,2),  p_current.unsqueeze(2)).squeeze()  # this marginalizes over dim=2
                     p_theta_marg = p_theta_marg / p_theta_marg.sum(axis=1, keepdim=True)
                     x_tminus1_temp = torch.multinomial(p_theta_marg[:, :], num_samples=1).squeeze()
+                    # On final timestep pick next best from GAP prediction for query sequence
+                    # if t == 1:
+                    #     x_tminus1_temp[:seq_length] = torch.multinomial(p_theta_marg[:seq_length, :tokenizer.K-1], num_samples=1).squeeze()
                     x_tminus1[i] = x_tminus1_temp.reshape(n_sequences, seq_length)
-                    #diff = torch.ne(s, x_tminus1[i])
+                    # Uncomment to track generation
                     #if t % 100 == 0:
                     #    print("time", t, diff.sum().item(), "mutations") #, tokenizer.untokenize(x_tminus1))
                     #    print("query", tokenizer.untokenize(x_tminus1_temp[:seq_length]))

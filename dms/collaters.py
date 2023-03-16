@@ -141,6 +141,7 @@ class D3PMCollater(object):
         pad_one_hot = torch.zeros((self.K))
 
         tokenized = [torch.tensor(self.tokenizer.tokenize(s)) for s in sequences]
+
         max_len = max(len(t) for t in tokenized)
 
         one_hot = pad_one_hot.repeat((len(tokenized), max_len, 1))
