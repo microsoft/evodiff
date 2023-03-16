@@ -80,7 +80,7 @@ def main():
 
 def train(gpu, args):
     rs = torch.random.manual_seed(args.random_seed)
-    rs = np.random.seed(args.random_seed)
+    rs = np.random.seed(int(args.random_seed))
     if args.aml:
         args.nr = int(os.environ['RANK'])
     rank = args.nr * args.gpus + gpu
