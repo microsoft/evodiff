@@ -118,7 +118,7 @@ class D3PMLVBLoss(KLDivLoss):
         self.tmax = tmax
         self.tokenizer = tokenizer
         self.K = self.tokenizer.K
-        self.reconstruction_loss = D3PMCELoss(tokenizer=self.tokenizer)
+        #self.reconstruction_loss = D3PMCELoss(tokenizer=self.tokenizer)
         super().__init__(reduction=reduction, log_target=log_target)
 
     def forward(self, src_onehot, q, predictions, tgt, tgt_onehot, input_mask, timestep, Q, Q_bar):
@@ -129,8 +129,8 @@ class D3PMLVBLoss(KLDivLoss):
             D = int(nonpad_loc[i].item())  # want prior/q in shape of seq len (q has shape of longest seq in batch)
             if timestep[i] == 1:
                 # CE (L_t=0)
-                #reconstruction_loss = D3PMCELoss(tokenizer=self.tokenizer)
-                r_loss = self.reconstruction_loss(predictions[i].unsqueeze(0), tgt[i].unsqueeze(0), input_mask[i].unsqueeze(0))
+                reconstruction_loss = D3PMCELoss(tokenizer=self.tokenizer)
+                r_loss = reconstruction_loss(predictions[i].unsqueeze(0), tgt[i].unsqueeze(0), input_mask[i].unsqueeze(0))
                 losses.append(r_loss)
             elif timestep[i] == self.tmax: # Not needed to compute gradients
                 # D KL (L_T)
