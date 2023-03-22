@@ -56,12 +56,15 @@ def main():
     parser.add_argument('--dummy', required=False)
     parser.add_argument('--mask', default='blosum')
     parser.add_argument('--checkpoint_freq', type=float, default=120)  # in minutes
+    parser.add_argument('--weight-save-freq', type=float, default=None)  # in minutes
     parser.add_argument('--log_freq', type=float, default=1000)  # in steps
     parser.add_argument('--reweighting_term', type=float, default=0.001) # lambda from D3PM
     parser.add_argument('--selection-type', type=str, default='MaxHamming') # MaxHamming or random
 
 
     args = parser.parse_args()
+    if not args.weight_save_freq:
+        args.weight_save_freq = args.checkpoint_freq
     args.world_size = args.gpus * args.nodes
     if args.aml:
         pass
@@ -72,8 +75,8 @@ def main():
 
 
 def train(gpu, args):
-    _ = torch.manual_seed(0)
-    np.random.seed(0)
+    _ = torch.manual_seed(1)
+    np.random.seed(1)
     if args.aml:
         args.nr = int(os.environ['OMPI_COMM_WORLD_RANK'])
     rank = args.nr * args.gpus + gpu
@@ -285,6 +288,7 @@ def train(gpu, args):
         ns = []
         num_seqs = []
         chunk_time = datetime.now()
+        weight_chunk_time = datetime.now()
         n_seen = 0
         tokens_trained = current_tokens
         if split == 'train':
@@ -374,6 +378,24 @@ def train(gpu, args):
                                 }, ckpt_fpath)
                                 _ = epoch(model, e, split='valid', current_step=nsteps, current_tokens=tokens_trained)
                         chunk_time = datetime.now()
+                        weight_chunk_time = datetime.now()
+                elif datetime.now() - weight_chunk_time > timedelta(minutes=args.weight_save_freq):
+                    if rank == 0:
+                        print('Saving weights ' + str(datetime.now() - chunk_time))
+                        with torch.no_grad():
+                            if rank == 0:
+                                ckpt_fpath = args.out_fpath + 'checkpoint%d.tar' % nsteps
+                                torch.save({
+                                    'step': nsteps,
+                                    'tokens': tokens_trained,
+                                    'model_state_dict': model.state_dict(),
+                                    'optimizer_state_dict': optimizer.state_dict(),
+                                    'scheduler_state_dict': scheduler.state_dict(),
+                                    'scaler_state_dict': scaler.state_dict(),
+                                    'epoch': e,
+                                    # 'amp_state_dict': amp.state_dict()
+                                }, ckpt_fpath)
+                        weight_chunk_time = datetime.now()
         if split == 'valid':
             if rank == 0:
                 with open(args.out_fpath + 'metrics.csv', 'a') as f:
@@ -393,7 +415,7 @@ def train(gpu, args):
         #              str(current_step)]))
         #         f.write('\n')
 
-            print('Testing complete in ' + str(datetime.now() - start_time))
+        #    print('Testing complete in ' + str(datetime.now() - start_time))
 
         # elif rank == 0:
         #     if not ptjob:
