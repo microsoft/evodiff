@@ -113,8 +113,8 @@ class TRRMSADataset(Dataset):
         else:
             output = sliced_msa
         output = [''.join(seq) for seq in self.alpha[output]]
-        #print("shape of msa", len(output), len(output[0]))
-        #print(output) # check that there are no all-msa rows
+        print("shape of msa", len(output), len(output[0]))
+        print(output) # check that there are no all-msa rows
         #import pdb; pdb.set_trace()
         return output
 
