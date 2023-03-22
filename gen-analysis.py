@@ -11,6 +11,7 @@ def main():
     parser.add_argument('out_fpath', type=str, nargs='?',
                         default='/Users/nityathakkar/Desktop/research/msr/model_output/')
     parser.add_argument('--mask', type=str, default='autoreg')
+    parser.add_argument('--subsampling', type=str, default='MaxHamming')
     args = parser.parse_args()
 
     project_dir = home + '/Desktop/DMs/'
@@ -25,10 +26,10 @@ def main():
         tokenizer = Tokenizer(path_to_blosum=data_top_dir + "blosum62-special-MSA.mat")
     else:
         print("mask must be: 'autoreg', 'blosum', or 'random'")
-
+    print(tokenizer.alphabet)
     # Downstream tasks
     gen_msas = np.load(args.out_fpath+'generated_msas.npy')
-    train_msas = np.load(project_dir+'ref/'+args.mask+'_tokenized_openfold_train_msas.npy')
+    train_msas = np.load(project_dir+'ref/'+args.mask+args.subsampling+'_tokenized_openfold_train_msas.npy')
     aa_reconstruction_parity_plot(project_dir, args.out_fpath, 'generated_msas.a3m', msa=True)
     msa_substitution_rate(gen_msas, train_msas, tokenizer.all_aas[:-7], args.out_fpath)
     msa_pairwise_interactions(gen_msas, train_msas, tokenizer.all_aas[:-7], args.out_fpath)

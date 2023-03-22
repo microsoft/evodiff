@@ -18,7 +18,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('config_fpath')
     parser.add_argument('out_fpath', type=str, nargs='?',
-                        default='/Users/nityathakkar/Desktop/research/msr/model_output/')
+                        default=os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/')
     parser.add_argument('-g', '--gpus', default=1, type=int,
                         help='number of gpus per node')
     parser.add_argument('-off', '--offset', default=0, type=int,
@@ -31,7 +31,7 @@ def main():
     parser.add_argument('--batch-size', type=int, default=20)
     parser.add_argument('--n-sequences', type=int, default=64)
     parser.add_argument('--seq-length', type=int, default=256)
-    parser.add_argument('--gen_task', type=str, default='masked')
+    #parser.add_argument('--gen_task', type=str, default='masked')
     parser.add_argument('--delete-prev', action='store_true')  # Will delete previous generated sequences
     args = parser.parse_args()
 
@@ -140,7 +140,7 @@ def main():
     np.save(args.out_fpath+'generated_msas', np.array(sample.cpu()))
 
 
-def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, device='gpu'):
+def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, penalty_value=2, device='gpu'):
     mask_id = tokenizer.mask_id
     src = torch.full((batch_size, n_sequences, seq_length), fill_value=mask_id)
     src = src.to(device)
@@ -161,6 +161,12 @@ def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, device='
             if random_x == 0 : # for first row don't let p_softmax predict gaps
                 p = preds[:, random_x, random_y, :tokenizer.K-1]
             p_softmax = torch.nn.functional.softmax(p, dim=1)
+            # Penalize gaps
+            penalty = torch.ones(p.shape).to(p.device)
+            penalty[:, -1] += penalty_value
+            #print(p_softmax)
+            p_softmax /= penalty
+            #print(p_softmax)
             p_sample = torch.multinomial(input=p_softmax, num_samples=1)
             p_sample = p_sample.squeeze()
             output[:, random_x, random_y] = p_sample

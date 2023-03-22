@@ -79,14 +79,16 @@ def main():
     bidirectional = True
     n_tokens = len(MSA_ALPHABET)
 
-    if args.mask == 'autoreg' or args.mask == 'so' or args.mask == 'reference' or args.mask == 'train-sample':
+    if args.mask == 'autoreg' or args.mask == 'so' or args.mask == 'reference' or args.mask == 'train-sample' \
+            or args.mask == 'bert':
         tokenizer = Tokenizer()
         diffusion_timesteps = None  # Not input to model
-        if args.mask == 'so':
+        if args.mask == 'so' or args.mask == 'bert':
             n_tokens = len(PROTEIN_ALPHABET)
             tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD)
-            causal = True
-            bidirectional = False
+            if args.mask == 'so':
+                causal = True
+                bidirectional = False
     elif args.mask == 'blosum' or args.mask == 'random':
         tokenizer = Tokenizer(path_to_blosum=data_top_dir + "blosum62-special-MSA.mat", sequences=True)
         diffusion_timesteps = config['diffusion_timesteps']
@@ -167,7 +169,7 @@ def main():
                 count = 0
                 fasta_string = ""
 
-                if args.mask == 'autoreg' or args.mask=='so':
+                if args.mask == 'autoreg' or args.mask=='so' or args.mask == 'bert':
                     sample, string = generate_text(model, seq_len, tokenizer=tokenizer, penalty=args.penalty, causal=causal,
                                                    batch_size=args.num_seqs, device=device)
                 elif args.mask == 'blosum' or args.mask == 'random':
@@ -222,7 +224,7 @@ def generate_text(model, seq_len, tokenizer=Tokenizer(), penalty=None, causal=Fa
     if causal == False:
         np.random.shuffle(loc)
     with torch.no_grad():
-        for i in loc:
+        for i in tqdm(loc):
             timestep = torch.tensor([0] * batch_size) # placeholder but not called in model
             timestep = timestep.to(device)
             prediction = model(sample, timestep) #, input_mask=input_mask.unsqueeze(-1)) #sample prediction given input
