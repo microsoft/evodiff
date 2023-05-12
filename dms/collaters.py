@@ -43,6 +43,9 @@ def _pad_msa(tokenized, num_seq, max_len, value, dim=3):
     return output
 
 def _unpad(x, value):
+    """
+    Utility function that unpads... TODO
+    """
     x_pad = x.clone()
     mask_pad = x_pad != value
     x = x[mask_pad].to(torch.int64)
