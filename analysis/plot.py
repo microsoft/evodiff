@@ -363,3 +363,15 @@ def msa_pairwise_interactions(generated_msa, train_msa, all_aa, out_path):  # Lo
     plt.tight_layout()
     fig.savefig(os.path.join(out_path, 'pairwise.svg'))
     fig.savefig(os.path.join(out_path, 'pairwise.png'))
+
+def plot_tmscores(tmscore_path, out_path):
+    tmscores = pd.read_csv(tmscore_path, names=['scores'])
+    fig, ax = plt.subplots(figsize=(3, 2.5))
+    sns.histplot(tmscores['scores'], color='blue')
+    plt.xlabel('TM Scores')
+    plt.xlim(0, 1)
+    plt.tight_layout()
+    fig.savefig(os.path.join(out_path, 'tmscores.svg'))
+    fig.savefig(os.path.join(out_path, 'tmscores.png'))
+
+

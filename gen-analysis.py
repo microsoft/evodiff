@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--subsampling', type=str, default='MaxHamming')
     parser.add_argument('--start-valid', action='store_true')
     parser.add_argument('--amlt', action='store_true')
+    parser.add_argument('--idr', action='store_true')
     args = parser.parse_args()
 
     project_dir = home + '/Desktop/DMs/'
@@ -43,9 +44,10 @@ def main():
     #tokenizer = preprocess_train_msa(data_dir=os.path.join(data_top_dir,'openfold/'), arg_mask=args.mask,
     #                                 selection_type=args.subsampling, num_samples=100)
     if args.start_valid and args.amlt:
-        train_msas, gen_msas = preprocess_amlt_outputs(args.out_fpath, arg_mask=args.mask, data_top_dir=data_top_dir)
+        train_msas, gen_msas = preprocess_amlt_outputs(args.out_fpath, arg_mask=args.mask, data_top_dir=data_top_dir,
+                                                       idr=args.idr)
     elif args.start_valid:
-        train_msas = preprocess_train_msa_file(args.out_fpath, arg_mask=args.mask, data_top_dir=data_top_dir)
+        train_msas = preprocess_train_msa_file(args.out_fpath, arg_mask=args.mask, data_top_dir=data_top_dir,idr=args.idr)
         gen_msas = np.load(args.out_fpath + 'generated_msas.npy')
     else:
         train_msas = np.load(
@@ -57,15 +59,20 @@ def main():
     msa_substitution_rate(gen_msas, train_msas, tokenizer.all_aas[:-7], args.out_fpath)
     msa_pairwise_interactions(gen_msas, train_msas, tokenizer.all_aas[:-7], args.out_fpath)
 
-def preprocess_amlt_outputs(out_fpath, arg_mask, data_top_dir):
+
+def preprocess_amlt_outputs(out_fpath, arg_mask, data_top_dir, idr=False):
     if arg_mask == 'autoreg':
         tokenizer = Tokenizer()
     elif arg_mask == 'blosum' or arg_mask == 'random':
         tokenizer = Tokenizer(path_to_blosum=data_top_dir + "blosum62-special-MSA.mat")
+    if idr:
+        tag='idr-'
+    else:
+        tag='gen-'
 
     gen_files = os.listdir(out_fpath)
-    valid_msa_arr = np.zeros((len(gen_files), 64, 256)) + tokenizer.pad_id
-    gen_msa_arr = np.zeros((len(gen_files), 64, 256)) + tokenizer.pad_id
+    valid_msa_arr = np.zeros((len(gen_files), 64, 512)) + tokenizer.pad_id
+    gen_msa_arr = np.zeros((len(gen_files), 64, 512)) + tokenizer.pad_id
 
     msa = 0
     num_seqs = 0
@@ -75,8 +82,8 @@ def preprocess_amlt_outputs(out_fpath, arg_mask, data_top_dir):
     all_gen = out_fpath + 'generated_msas.a3m'
 
     for i in range(len(gen_files)):
-        valid_file = out_fpath + 'gen-' + str(i + 1) + '/' + 'valid_msas.a3m'
-        gen_file = out_fpath + 'gen-' + str(i + 1) + '/' + 'generated_msas.a3m'
+        valid_file = out_fpath + tag + str(i + 1) + '/' + 'valid_msas.a3m'
+        gen_file = out_fpath + tag + str(i + 1) + '/' + 'generated_msas.a3m'
         os.system("cat " + valid_file + " >> " + all_valid)
         os.system("cat " + gen_file + " >> " + all_gen)
 
@@ -117,9 +124,11 @@ def preprocess_train_msa_file(out_fpath, f_name='valid_msas.a3m', arg_mask='auto
 
 
     total_msas = 0
+    print(out_fpath+f_name)
     with open(out_fpath + f_name, 'r') as file:
         filecontent = csv.reader(file)
         for row in filecontent:
+            print(row)
             if 'SEQUENCE' in row[0]:
                 total_msas += 1
 

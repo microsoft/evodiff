@@ -9,10 +9,14 @@ import json
 from dms.utils import Tokenizer
 import pathlib
 from sequence_models.datasets import UniRefDataset
+from sequence_models.utils import parse_fasta
 from torch.utils.data import DataLoader
 from torch.utils.data import Subset
 from tqdm import tqdm
-from plot import aa_reconstruction_parity_plot
+from analysis.plot import aa_reconstruction_parity_plot
+import pandas as pd
+from sequence_models.samplers import SortishSampler, ApproxBatchSampler
+import random
 
 ### SET RANDOM SEEDS ####
 random_seed = 1
@@ -31,7 +35,7 @@ def main():
     parser.add_argument('--final_norm', action='store_true')
     parser.add_argument('--norm_first', action='store_true') # turns norm_first on in transformer model
     parser.add_argument('--checkpoint', type=int, default=None)
-    parser.add_argument('--num-seqs', type=int, default=100)
+    parser.add_argument('--num-seqs', type=int, default=20)
     parser.add_argument('--mask', type=str, default='autoreg')
     parser.add_argument('--penalty', type=float, default=None) # repetition penalty, commonly 1.2 is used
     parser.add_argument('--model_type', type=str, default='ByteNet',
@@ -40,6 +44,7 @@ def main():
                         help='number of gpus per node')
     parser.add_argument('--no-step', action='store_true') # For D3PM if true will predict x_0 from x_t, instead of x_tminus1
     parser.add_argument('--delete-prev',action='store_true')  # Will delete previous generated sequences
+    parser.add_argument('--idr',action='store_true')  # Will delete previous generated sequences
     args = parser.parse_args()
 
     _ = torch.manual_seed(0)
@@ -74,13 +79,12 @@ def main():
 
     torch.cuda.set_device(args.gpus)
     device = torch.device('cuda:' + str(args.gpus))
-
+    idr_flag = ''
     causal = False
     bidirectional = True
     n_tokens = len(MSA_ALPHABET)
 
-    if args.mask == 'autoreg' or args.mask == 'so' or args.mask == 'reference' or args.mask == 'train-sample' \
-            or args.mask == 'bert':
+    if args.mask == 'autoreg' or args.mask == 'so' or args.mask == 'reference' or args.mask == 'valid-sample' or args.mask == 'bert':
         tokenizer = Tokenizer()
         diffusion_timesteps = None  # Not input to model
         if args.mask == 'so' or args.mask == 'bert':
@@ -89,6 +93,9 @@ def main():
             if args.mask == 'so':
                 causal = True
                 bidirectional = False
+        if args.idr:
+            idr_flag = 'idr_'
+            print("IDR GENERATION ONLY WORKS WITH args.mask = 'autoreg' OR 'so'")
     elif args.mask == 'blosum' or args.mask == 'random':
         tokenizer = Tokenizer(path_to_blosum=data_top_dir + "blosum62-special-MSA.mat", sequences=True)
         diffusion_timesteps = config['diffusion_timesteps']
@@ -99,7 +106,7 @@ def main():
         Q_prod = Q_prod.to(device)
         Q_t = Q_t.to(device)
     else:
-        print("Choose 'autoreg', 'so', 'train-sample', 'reference', 'blosum' or 'random' as args.mask")
+        print("Choose 'autoreg', 'so', 'valid-sample', 'reference', 'blosum' or 'random' as args.mask OR chose idr")
     print("Using", args.mask, "scheme")
     masking_idx = tokenizer.mask_id
     padding_idx = tokenizer.pad_id
@@ -132,40 +139,28 @@ def main():
                        args.state_dict = args.out_fpath + output
                        last_epoch = epoch
 
-    if args.mask != 'reference' and args.mask != 'train-sample':
+    if args.mask != 'reference' and args.mask != 'valid-sample':
         print('Using checkpoint', last_epoch)
         print('Loading weights from ' + args.state_dict + '...')
         sd = torch.load(args.state_dict, map_location=torch.device(device))
         msd = sd['model_state_dict']
-        #if args.mask == 'so':
         msd = {k.split('module.')[1]: v for k, v in msd.items()}
-        #else:
-        #    msd = {k.split('module.')[0]: v for k,v in msd.items()}
-        #print(list(msd.keys())[0:10])
-        # for key in msd.keys():
-        #     if 'weight' in key:
-        #         print(key)
-        #         #print(model.state_dict()[key])
-        #         #print(model.state_dict()[key].sum())
-        #         #if (model.state_dict()[key].sum()).isnan():
-        #         #    print("key contains nan", key)
-        # import pdb; pdb.set_trace()
-        #print(list(msd.keys())[0:10], list(model.state_dict().keys())[0:10])
         model.load_state_dict(msd)
 
-    sequences = args.num_seqs
-    seq_lengths = [32, 64, 128, 256, 384, 512] #, 1024, 2048]
+    seq_lengths = [32, 64, 128, 256, 384, 512] #, 1024, 2048] # Generate diff length sequences
     seqs = ""
+    seqs_only = ""
+    overall_count = 0
 
     if args.delete_prev:
-        filelist = glob.glob(args.out_fpath+'generated*')
+        filelist = glob.glob(args.out_fpath+idr_flag+'generated*')
         for file in filelist:
             os.remove(file)
             print("Deleting", file)
 
-    if args.mask != 'train-sample':
+    if args.mask != 'valid-sample' and not args.idr:
         for i, seq_len in enumerate(seq_lengths):
-            with open(args.out_fpath + 'generated_samples_string_'+str(seq_len)+'.fasta', 'a') as f:
+            with open(args.out_fpath + 'generated_samples_string_' + str(seq_len) + '.fasta', 'a') as f:
                 count = 0
                 fasta_string = ""
 
@@ -180,35 +175,114 @@ def main():
                 elif args.mask == 'reference':
                     sample = []
                     string = []
+                    train_prob_dist = aa_reconstruction_parity_plot(project_dir, args.out_fpath, 'placeholder.csv', gen_file=False)
                     for j in range(args.num_seqs):
-                        _sample, _string = generate_random_seq(seq_len, tokenizer=tokenizer)
+                        print(j)
+                        _sample, _string = generate_random_seq(seq_len, train_prob_dist, tokenizer=tokenizer)
                         sample.append(_sample)
                         string.append(_string)
+
                 for _s in string:
                     fasta_string += ">SEQUENCE_" + str(count) + "\n" + str(_s) + "\n"
                     count += 1
-                    seqs += str(_s) + "\n"
+                    seqs += ">SEQUENCE_" + str(overall_count) + "\n" + str(_s) + "\n"
+                    overall_count += 1
+                    seqs_only += str(_s) + "\n"
 
                 f.write(fasta_string)
                 f.close()
-        with open(args.out_fpath + 'generated_samples_string.csv', 'a') as f:
-            f.write(','.join(
-                [seqs]))
+
+        with open(args.out_fpath + 'generated_samples_string.fasta', 'a') as f:
+            f.write(seqs)
             f.write('\n')
 
-    elif args.mask == 'train-sample':
-        with open(args.out_fpath + 'generated_samples_string_32.fasta', 'a') as f:
-            fasta_string = ""
-            count=0
-            string = generate_train_subset(data_top_dir=data_top_dir, samples=args.num_seqs)
-            for _s in string:
-                fasta_string += ">SEQUENCE_" + str(count) + "\n" + str(_s) + "\n"
-                count += 1
-            f.write(fasta_string)
-            f.close()
+        with open(args.out_fpath + 'generated_samples_string.csv', 'a') as f:
+            f.write(''.join([seqs_only]))
+            f.write('\n')
 
-    # Plot generated samples
-    aa_reconstruction_parity_plot(project_dir, args.out_fpath, 'generated_samples_string.csv')
+
+    elif args.mask == 'valid-sample' and not args.idr:
+        seq_lengths = [32, 64, 128, 256, 384, 512]
+        overall_count = 0
+        seqs = ""
+        string = generate_valid_subset(data_top_dir=data_top_dir, samples=args.num_seqs)
+        for i, seq_len in enumerate(seq_lengths):
+            with open(args.out_fpath + 'generated_samples_string_'+str(seq_len)+'.fasta', 'a') as f:
+                fasta_string = ""
+                count=0
+                print(len(string[i]))
+                for _s in string[i]:
+                    fasta_string += ">SEQUENCE_" + str(count) + "\n" + str(_s) + "\n"
+                    count += 1
+                    seqs += ">SEQUENCE_" + str(overall_count) + "\n" + str(_s) + "\n"
+                    overall_count += 1
+                f.write(fasta_string)
+                f.close()
+        with open(args.out_fpath + 'generated_samples_string.fasta', 'a') as f:
+            f.write(seqs)
+            f.write('\n')
+
+    elif args.idr:
+        sample, string, queries, sequences = generate_idr(model, data_top_dir, tokenizer=tokenizer, penalty=args.penalty,
+                                      causal=causal, batch_size=args.num_seqs, device=device)
+        print(queries)
+        seqs_old=""
+        seqs_old_only=""
+        for i, _s in enumerate(string):
+            seqs += ">GEN_" + queries[i] + "\n" + str(_s) + "\n"
+            seqs_old +=  ">" + queries[i] + "\n" + str(sequences[i]) + "\n"
+            seqs_only += str(_s) + "\n"
+            seqs_old_only += str(sequences[i]) + "\n"
+        with open(args.out_fpath + 'generated_idr.fasta', 'a') as f:
+            f.write(seqs)
+            f.write('\n')
+        with open(args.out_fpath + 'data_idr.fasta', 'a') as f:
+            f.write(seqs_old)
+            f.write('\n')
+        with open(args.out_fpath + 'data_idr.csv', 'a') as f:
+            f.write(seqs_old_only)
+        with open(args.out_fpath + idr_flag +'generated_samples_string.csv', 'a') as f:
+            f.write(''.join([seqs_only]))
+            f.write('\n')
+
+
+    # Plot distribution of generated samples
+    if args.mask != 'valid-sample':
+        aa_reconstruction_parity_plot(project_dir, args.out_fpath, idr_flag +'generated_samples_string.csv', idr=args.idr)
+
+def get_IDR_sequences(data_top_dir, tokenizer):
+    sequences = []
+    masked_sequences = []
+    start_idxs = []
+    end_idxs = []
+    queries = []
+    # GET IDRS
+    data_dir = data_top_dir + 'human_idr_alignments/'
+    all_files = os.listdir(data_dir + 'human_protein_alignments')
+    index_file = pd.read_csv(data_dir + 'human_idr_boundaries.tsv', delimiter='\t')
+    print(len(index_file), "TOTAL IDRS")
+    for index, row in index_file[:50].iterrows(): # TODO only iterating over 100 right now
+        msa_file = [file for i, file in enumerate(all_files) if row['OMA_ID'] in file][0]
+        msa_data, msa_names = parse_fasta(data_dir + 'human_protein_alignments/' + msa_file, return_names=True)
+        query_idx = [i for i, name in enumerate(msa_names) if name == row['OMA_ID']][0]  # get query index
+        queries.append(row['OMA_ID'])
+        # JUST FOR SEQUENCES
+        #print("IDR:\n", row['IDR_SEQ'])
+        #print("MSA IDR NO GAPS:\n", msa_data[query_idx].replace("-", ""))
+        seq_only = msa_data[query_idx].replace("-", "")
+        sequences.append(seq_only)
+        start_idx = row['START'] - 1
+        end_idx = row['END']
+        idr_range = end_idx - start_idx
+        #print(start_idx, end_idx, idr_range)
+        masked_sequence = seq_only[0:start_idx] + '#' * idr_range + seq_only[end_idx:]
+        #print("MASKED SEQUENCE:\n", masked_sequence)
+        masked_sequences.append(masked_sequence)
+        start_idxs.append(start_idx)
+        end_idxs.append(end_idx)
+    tokenized = [torch.tensor(tokenizer.tokenizeMSA(s)) for s in masked_sequences]
+    #print(tokenized[0])
+    return tokenized, start_idxs, end_idxs, queries, sequences
 
 def generate_text(model, seq_len, tokenizer=Tokenizer(), penalty=None, causal=False, batch_size=20, device='cuda'):
     # Generate a random start string and convert to tokens
@@ -247,6 +321,58 @@ def generate_text(model, seq_len, tokenizer=Tokenizer(), penalty=None, causal=Fa
     print("final seq", [tokenizer.untokenize(s) for s in sample])
     untokenized = [tokenizer.untokenize(s) for s in sample]
     return sample, untokenized
+
+def generate_idr(model, data_top_dir, tokenizer=Tokenizer(), penalty=None, causal=False, batch_size=20, device='cuda'):
+    cutoff = 256 # TODO ADD FILTER
+
+    all_aas = tokenizer.all_aas
+    tokenized_sequences, start_idxs, end_idxs, queries, sequences = get_IDR_sequences(data_top_dir, tokenizer)
+    samples = []
+    samples_idr = []
+    sequences_idr = []
+    # Manually batch IDR sequences jk cant batch bc all IDRs have diff masking regions
+    #batches = math.ceil(len(tokenized_sequences)/batch_size)
+    for s, sample in enumerate(tokenized_sequences):
+        loc = np.arange(start_idxs[s], end_idxs[s])
+        if len(loc) < cutoff:
+            print("QUERY", queries[s])
+            #print("ORIGINAL SEQUENCE", sequences[s])
+            print("ORIGINAL IDR", sequences[s][start_idxs[s]:end_idxs[s]])
+            sequences_idr.append(sequences[s][start_idxs[s]:end_idxs[s]])
+            sample = sample.to(torch.long)
+            sample = sample.to(device)
+            seq_len = len(sample)
+            #print(start_idxs[s], end_idxs[s])
+            if causal == False:
+                np.random.shuffle(loc)
+            with torch.no_grad():
+                for i in tqdm(loc):
+                    timestep = torch.tensor([0]) # placeholder but not called in model
+                    timestep = timestep.to(device)
+                    prediction = model(sample.unsqueeze(0), timestep) #, input_mask=input_mask.unsqueeze(-1)) #sample prediction given input
+                    p = prediction[:, i, :len(all_aas)-6] # sample at location i (random), dont let it predict non-standard AA
+                    p = torch.nn.functional.softmax(p, dim=1) # softmax over categorical probs
+                    p_sample = torch.multinomial(p, num_samples=1)
+                    # Repetition penalty
+                    if penalty is not None: # ignore if value is None
+                        for j in range(batch_size): # iterate over each obj in batch
+                            case1 = (i == 0 and sample[j, i+1] == p_sample[j]) # beginning of seq
+                            case2 = (i == seq_len-1 and sample[j, i-1] == p_sample[j]) # end of seq
+                            case3 = ((i < seq_len-1 and i > 0) and ((sample[j, i-1] == p_sample[j]) or (sample[j, i+1] == p_sample[j]))) # middle of seq
+                            if case1 or case2 or case3:
+                                p[j, int(p_sample[j])] /= penalty # reduce prob of that token by penalty value
+                                p_sample[j] = torch.multinomial(p[j], num_samples=1) # resample
+                    sample[i] = p_sample.squeeze()
+                    #print(tokenizer.untokenize(sample))
+            #print("GENERATED SEQUENCES", tokenizer.untokenize(sample))
+            print("GENERATED IDR", tokenizer.untokenize(sample[start_idxs[s]:end_idxs[s]]))
+            samples.append(sample)
+            samples_idr.append(sample[start_idxs[s]:end_idxs[s]])
+        else:
+            pass
+    untokenized = [tokenizer.untokenize(s) for s in samples]
+    untokenized_idr = [tokenizer.untokenize(s) for s in samples_idr]
+    return samples, untokenized_idr, queries, sequences_idr
 
 def generate_text_d3pm(model, seq_len, Q_bar=None, Q=None, tokenizer=Tokenizer(), timesteps=500, no_step=False,
                        batch_size=20, device='cuda', model_type='ByteNet'):
@@ -309,37 +435,55 @@ def generate_text_d3pm(model, seq_len, Q_bar=None, Q=None, tokenizer=Tokenizer()
     print("final seq", untokenized)
     return sample, untokenized
 
-def generate_random_seq(seq_len, tokenizer=Tokenizer()):
+def generate_random_seq(seq_len, train_prob_dist, tokenizer=Tokenizer()):
     """
-    Generates a set of random sequences drawn from a uniform distribution
+    Generates a set of random sequences drawn from a train distribution
     """
-    # Generate a random start string from uniform dist and convert to tokens
     all_aas = tokenizer.all_aas
-    sample = torch.randint(0, len(all_aas)-4, (seq_len,)) # ignore char (JOU-) in aa dict not accepted by PROSITE
+    sample = torch.multinomial(torch.tensor(train_prob_dist), num_samples=seq_len, replacement=True)
+    #sample = torch.randint(0, len(all_aas)-4, (seq_len,)) # ignore char (JOU-) in aa dict not accepted by PROSITE
     sample = sample.to(torch.long)
-    print("sequence", tokenizer.untokenize(sample))
+    #print("sequence", tokenizer.untokenize(sample))
     return sample, tokenizer.untokenize(sample)
 
-def generate_train_subset(data_top_dir='data/', samples=20):
-    mini_size=samples
+def generate_valid_subset(data_top_dir='data/', samples=20):
     metadata = np.load(data_top_dir + 'uniref50/lengths_and_offsets.npz')
-    ds_train = UniRefDataset(data_top_dir+'uniref50/', 'train', structure=False)
-    train_idx = ds_train.indices
-
-    train_indices = np.sort(np.random.choice(train_idx, mini_size, replace=False))
-    train_sampler = Subset(ds_train, train_indices)
-
-    dl_train = DataLoader(dataset=train_sampler,
-                          shuffle=True,
-                          batch_size=mini_size,
-                          num_workers=4)
-    sample = []
-    for i, batch in enumerate(dl_train):
+    ds_valid = UniRefDataset(data_top_dir+'uniref50/', 'valid', structure=False)
+    valid_idx = ds_valid.indices
+    len_valid = metadata['ells'][valid_idx]
+    #valid_indices = np.sort(np.random.choice(len_valid, 80000, replace=False))
+    valid_sortish_sampler = SortishSampler(len_valid, 10000, num_replicas=1, rank=0)
+    valid_sampler = ApproxBatchSampler(valid_sortish_sampler, 40000, 256, len_valid)
+    dl_valid = DataLoader(dataset=ds_valid,
+                          batch_sampler=valid_sampler,
+                          num_workers=8)
+    #sample
+    seq_lengths = [32, 64, 128, 256, 384, 512]
+    sample_32 = []
+    sample_64 = []
+    sample_128 = []
+    sample_256 = []
+    sample_384 = []
+    sample_512 = []
+    for i, batch in enumerate(dl_valid):
         for j,seq in enumerate(batch[0]):
-            sample.append(seq)
-            print(j, seq)
-
-    return sample
+            seq_len = len(seq)
+            if seq_len <= 32:
+                sample_32.append(seq)
+            elif seq_len > 32 and seq_len <= 64:
+                sample_64.append(seq)
+            elif seq_len > 64 and seq_len <= 128:
+                sample_128.append(seq)
+            elif seq_len > 128 and seq_len <= 256:
+                sample_256.append(seq)
+            elif seq_len > 256 and seq_len <= 384:
+                sample_384.append(seq)
+            elif seq_len > 384 and seq_len <= 512:
+                sample_512.append(seq)
+            else:
+                pass
+    return random.sample(sample_32, samples), random.sample(sample_64, samples), random.sample(sample_128, samples), \
+            random.sample(sample_256, samples), random.sample(sample_384, samples), random.sample(sample_512, samples)
 
 
 
