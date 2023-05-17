@@ -38,35 +38,12 @@ class PositionalEncoding1D(nn.Module):
         pe = pe.to(device)
         return pe[x] # .to(x.device)
 
-# class TimeEncoding(nn.Module): # TODO delete, old posencoding works fine & simplifies
-#
-#     def __init__(self, d_model, max_len, add_inplace=True):
-#         super().__init__()
-#         self.add_inplace = add_inplace
-#
-#         position = torch.arange(max_len).unsqueeze(1)
-#         div_term = torch.exp(torch.arange(0, d_model, 2) * (-np.log(10000.0) / d_model))
-#         te = torch.zeros(max_len, 1, d_model)
-#         te[:, 0, 0::2] = torch.sin(position * div_term)
-#         te[:, 0, 1::2] = torch.cos(position * div_term)
-#
-#         self.register_buffer('te', te)
-#
-#     def forward(self, x):
-#         """
-#             x: timestep sequence fed to the positional encoder model [batchsize]
-#             output: [batch size, embed dim]
-#         """
-#         if self.add_inplace:
-#             x = x + self.te[x]
-#         else:
-#             x = self.te[x]
-#         return x.to(x.device)
-
 class PositionalEncoding(nn.Module):
 
     """
     2D Positional encoding for transformer
+    :param d_model: dimension of the model
+    :param max_len: max number of positions
     """
 
     def __init__(self, d_model, max_len=2048):
@@ -260,13 +237,11 @@ class MSATransformerTime(nn.Module):
         y = y.unsqueeze(1).unsqueeze(1)
         y = y.expand(y.shape[0], x.shape[1], x.shape[2], x.shape[3])
         x += y
-        #print("xtime", x.shape) #B, D, L, E + time_encoding
 
-        # ADD 1 to query sequence in MSA (encode query sequence) TODO: kevin is this okay? lol
+        # ADD 1 to query sequence in MSA (encode query sequence)
         q = torch.zeros(x.shape)
         q = q.to(x.device)
         q[:,0,:,0] += 1 # add encoding to 1st sequence (query seq) in MSA
-        #print("sum", q.sum(), "should equal", x.shape[0]*x.shape[2])
         x += q
         #
 
@@ -287,13 +262,13 @@ class TransformerTime(nn.Module):
     """
     def __init__(self, n_tokens, d_embedding, d_model, n_layers, n_head, d_feedforward, padding_idx=None,
                  max_positions=1024, bidirectional=True, dropout=0.0, activation='relu',
-                 norm_first=False, timesteps=None): # TODO try turning norm_first on to see if helps
+                 norm_first=False, timesteps=None):
         """
         """
         super().__init__()
         self.d_model = d_model
         self.bidirectional = bidirectional
-        self.embedder = nn.Embedding(n_tokens, d_embedding, padding_idx=padding_idx) # TODO not ignoring padding in autoreg oa/so models right now --> fix
+        self.embedder = nn.Embedding(n_tokens, d_embedding, padding_idx=padding_idx)
         self.pos_encoding = PositionalEncoding(d_embedding, max_positions)
         self.timesteps = timesteps
         if self.timesteps is not None:
