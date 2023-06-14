@@ -18,8 +18,6 @@ class PositionalEncoding1D(nn.Module):
 
     def forward(self, x):
         """
-        Taken from https://github.com/wzlxjtu/PositionalEncoding2D/blob/master/positionalembedding2d.py
-
         Used for encoding timestep in diffusion models
 
         :param d_model: dimension of the model
