@@ -1,25 +1,19 @@
-from bio_embeddings.embed import SeqVecEmbedder
-import h5py
 import numpy as np
-from pandas import read_csv
 from bio_embeddings.project import tsne_reduce
-from bio_embeddings.visualize import render_3D_scatter_plotly
 import matplotlib.pyplot as plt
 from bio_embeddings.embed import ProtTransBertBFDEmbedder, ESM1bEmbedder
 import pandas as pd
 import csv
 import os
-from scipy import linalg
-
-# Need to run PGP first on generated seqs , this performs downstream analysis
-# https://github.com/hefeda/PGP
-
-
 import numpy
 from numpy import cov
 from numpy import trace
 from numpy import iscomplexobj
 from scipy.linalg import sqrtm
+
+# Need to run PGP first on generated seqs , this performs downstream analysis
+# https://github.com/hefeda/PGP
+
 
 def calculate_fid(act1, act2):
     """calculate frechet inception distance"""
