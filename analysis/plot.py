@@ -10,33 +10,8 @@ from sklearn.metrics import r2_score, mean_squared_error
 from scipy import stats
 import numpy as np
 import seaborn as sns
+import difflib
 
-
-# def plot_training_curves(data_path):
-#     data = data_path + 'metrics_train.csv'
-#     data_v = data_path + 'metrics.csv'
-#
-#     df = pd.read_csv(data, names=['loss', 'nll', 'acc', 'tokens', 'step', 'epoch'])
-#     df_v = pd.read_csv(data_v, names=['loss', 'nll', 'acc', 'tokens', 'step', 'epoch'])
-#
-#     x = df['step']
-#     x_v = df_v['step']
-#
-#     fig, ax = plt.subplots(3, 1, figsize=(3.5, 6), sharex=True)
-#     ax[0].plot(x, df.loss, c='b', alpha=1)
-#     ax[1].plot(x, df.nll, c='b', alpha=1, label='train')
-#     ax[2].plot(x, df.acc, c='b', alpha=1, label='train')
-#
-#     ax[0].plot(x_v, df_v.loss, c='b', alpha=0.5)
-#     ax[1].plot(x_v, df_v.nll, c='b', alpha=0.5, label='train')
-#     ax[2].plot(x_v, df_v.acc, c='b', alpha=0.5, label='train')
-#
-#     ax[0].set_ylabel('Loss')
-#     ax[1].set_ylabel('NLL')
-#     ax[2].set_ylabel('Accu')
-#     ax[2].set_xlabel('Time')
-#     plt.show()
-#     # TODO save figure or delete function if not using
 def removekey(d, list_of_keys):
     r = d.copy()
     for key in list_of_keys:
@@ -67,27 +42,36 @@ def normalize(list):
     new_list = [item / norm for item in list]
     return new_list
 
-def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=False, idr=False, gen_file=True, start_valid=False):
+def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=False, idr=False, gen_file=True,
+                                  start_valid=False, start_query=False, start_msa=False):
     # Load in approx train distribution
     idr_flag = ""
-    # Eliminate BXJOU for KL since they occur at 0 freq in train
-    keys_to_remove = ['B', 'Z', 'J', 'O', 'U']
+    # Eliminate BXJOU for KL since they occur at 0 freq in test dataset
+    keys_to_remove = ['B', 'Z', 'J', 'O', 'U'] #, '-']
     if msa:
         if start_valid:
-            valid_file = out_path + '/valid_msas.a3m'
-            print(valid_file)
+            if start_query:
+                valid_file = 'valid_msas_onlymsa.txt'
+            elif start_msa:
+                valid_file = 'valid_msas_onlyquery.txt'
+                keys_to_remove += ['-']
+            else:
+                valid_file = 'valid_msas.a3m'
+            valid_file = out_path + '/' + valid_file
+            #print(valid_file)
             aminos = csv_to_dict(valid_file)
             values = list(aminos.values())
         else:
             file = project_dir + 'ref/openfold_ref.csv'
     else:
-        file = project_dir + 'ref/uniref50_aa_ref.csv' # TODO add file to git
+        file = project_dir + 'ref/uniref50_aa_ref_test.csv' # TODO add file to git
+        #print(file)
     if idr:
         idr_flag = 'idr_'
         true_file = out_path + 'data_idr.csv'
         aminos = csv_to_dict(true_file)
         values = aminos.values()
-        print(aminos, values)
+        #print(aminos, values)
     elif not idr and not start_valid:
         df = pd.read_csv(file)
         aminos = df.to_dict('list')
@@ -97,7 +81,7 @@ def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=Fals
         # Load in generated seqs and count values
         generate_file = out_path + generate_file
         aminos_gen = csv_to_dict(generate_file)
-        print("aminos gen", aminos_gen)
+        #print("aminos gen", aminos_gen)
     else:
         gen_flag = '_train_only'
     # Normalize scores
@@ -105,6 +89,7 @@ def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=Fals
     if start_valid:
         a_kl = normalize(list(removekey(aminos, keys_to_remove).values()))
     else:
+        #print(aminos)
         a_kl = normalize([each[0] for each in removekey(aminos, keys_to_remove).values()])
     if gen_file:
         b_list = list(aminos_gen.values())
@@ -113,13 +98,17 @@ def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=Fals
         kl_loss = KLDivLoss(reduction="sum")
         if msa:
             b_kl = normalize(list(removekey(aminos_gen, keys_to_remove).values()))
+            #print(len(a_kl), len(b_kl))
+            #print(a_kl, b_kl)
             kl = kl_loss(torch.tensor(a_kl).log(), torch.tensor(b_kl)).item()
         else:
             if idr:
+                b_kl = torch.tensor(b[0:20])
                 kl = kl_loss(torch.tensor(a[0:20]).log(), torch.tensor(b[0:20])).item()
             else:
+                b_kl = torch.tensor(b[0:21])
                 kl = kl_loss(torch.tensor(a[0:21]).log(), torch.tensor(b[0:21])).item()
-        print("KL Loss", kl)
+        print("KL", kl)
         with open(out_path + idr_flag + 'generate_metrics.csv', 'w') as f:
             f.write("aa freq kl:" + str(kl))
         f.close()
@@ -147,18 +136,18 @@ def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=Fals
         plt.close()
 
     fig, ax = plt.subplots(figsize=(4.5, 2.5))
-    print(aminos.keys())
-    plt.bar(list(aminos.keys()), a, color='black', alpha=0.5)
+    #print(aminos.keys())
+    plt.bar(list(aminos.keys())[:-5], a_kl, color='black', alpha=0.5)
     if gen_file:
-        plt.bar(list(aminos_gen.keys()), b, color='b', alpha=0.5)
+        plt.bar(list(aminos_gen.keys())[:-6], b_kl, color='b', alpha=0.5)
         ax.text(0.05, 0.95, kl_label, transform=ax.transAxes, fontsize=14,
             verticalalignment='top')
     plt.xlabel("Amino Acids", fontweight='bold')
     plt.ylabel("Normalized Freq", fontweight='bold')
     plt.tight_layout()
-    save_dir_test = os.path.join(out_path, idr_flag+gen_flag)
-    fig.savefig(save_dir_test+'/parity_bar.svg')
-    fig.savefig(save_dir_test+'/parity_bar.png')
+    save_dir_test = os.path.join(out_path)
+    fig.savefig(save_dir_test+'/'+idr_flag+gen_flag+'parity_bar.svg')
+    fig.savefig(save_dir_test+'/'+idr_flag+gen_flag+'parity_bar.png')
     plt.close()
 
     if not gen_file:
@@ -364,14 +353,76 @@ def msa_pairwise_interactions(generated_msa, train_msa, all_aa, out_path):  # Lo
     fig.savefig(os.path.join(out_path, 'pairwise.svg'))
     fig.savefig(os.path.join(out_path, 'pairwise.png'))
 
-def plot_tmscores(tmscore_path, out_path):
+def plot_tmscores(tmscore_path, out_path, y_min=0, y_max=30):
     tmscores = pd.read_csv(tmscore_path, names=['scores'])
     fig, ax = plt.subplots(figsize=(3, 2.5))
     sns.histplot(tmscores['scores'], color='blue')
     plt.xlabel('TM Scores')
     plt.xlim(0, 1)
+    plt.ylim(y_min,y_max)
     plt.tight_layout()
     fig.savefig(os.path.join(out_path, 'tmscores.svg'))
     fig.savefig(os.path.join(out_path, 'tmscores.png'))
 
+def plot_percent_similarity(out_fpath):
+    df_gen = pd.read_csv(out_fpath + 'gen_msas_onlyquery.txt', delim_whitespace=True, header=None,
+                         names=['seq'])
+    df_valid = pd.read_csv(out_fpath + 'valid_msas_onlyquery.txt', delim_whitespace=True, header=None,
+                           names=['seq'])
+    # % similarity between original and new query
+    sim = []
+    for i in range(len(df_gen)):
+        s1 = list(itertools.chain.from_iterable(df_gen.iloc[i]['seq']))
+        s2 = list(itertools.chain.from_iterable(df_valid.iloc[i]['seq']))
+        sm = difflib.SequenceMatcher(None, s1, s2)
+        sim.append(sm.ratio())
+        # print(df_valid.iloc[i]['seq'].split())
+
+        fig, ax = plt.subplots(figsize=(3, 2.5))
+        sns.histplot(sim, color='grey', bins=10)
+        plt.xlabel('% Similarity')
+        plt.xlim(0, 1)
+        plt.tight_layout()
+        fig.savefig(os.path.join(out_fpath, 'query_similarity.png'))
+        fig.savefig(os.path.join(out_fpath, 'query_similarity.svg'))
+
+def extract_seq_a3m(generate_file):
+    list_of_seqs = []
+    with open(generate_file, 'r') as file:
+            filecontent = csv.reader(file)
+            for row in filecontent:
+                if len(row) >= 1:
+                    if row[0][0] != '>':
+                        list_of_seqs.append(str(row[0]))
+    return list_of_seqs[1:]
+
+def plot_percent_similarity_entiremsa(out_fpath):
+    df_gen = pd.read_csv(out_fpath + 'gen_msas_onlyquery.txt', delim_whitespace=True, header=None,
+                         names=['seq'])
+    df_valid = pd.read_csv(out_fpath + 'valid_msas_onlyquery.txt', delim_whitespace=True, header=None,
+                           names=['seq'])
+
+    # print(df_gen)
+    sim = []
+    sim_msa = []
+    for i in range(len(df_gen)):
+        s1 = list(itertools.chain.from_iterable(df_gen.iloc[i]['seq']))
+        s2 = list(itertools.chain.from_iterable(df_valid.iloc[i]['seq']))
+        sm = difflib.SequenceMatcher(None, s1, s2)
+        sim.append(sm.ratio() * 100)
+        msa_seqs = extract_seq_a3m(out_fpath + 'gen-' + str(i + 1) + '/generated_msas.a3m')
+        for seq in msa_seqs:
+            sm = difflib.SequenceMatcher(None, s1, list(itertools.chain.from_iterable(seq)))
+            sim_msa.append(sm.ratio() * 100)
+
+    fig, ax = plt.subplots(2, 1, figsize=(3, 2.5))
+    sns.histplot(sim_msa, color='grey', bins=20, ax=ax[0])
+    ax[0].set_xlabel('% Similarity to seq in MSA')
+    sns.histplot(sim, color='grey', bins=20, ax=ax[1])
+    ax[1].set_xlabel('% Similarity to original query')
+    ax[0].set_xlim(0, 100)
+    ax[1].set_xlim(0, 100)
+    plt.tight_layout()
+    fig.savefig(os.path.join(out_fpath, 'similairity_msa.svg'))
+    fig.savefig(os.path.join(out_fpath, 'similarity_msa.png'))
 
