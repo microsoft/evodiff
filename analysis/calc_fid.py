@@ -56,8 +56,8 @@ project_run='large' #'small'
 train_fasta = project_dir + 'test/seqs.txt'
 train_sequences = parse_txt(train_fasta)
 
-runs = ['blosum', 'random', 'oaardm', 'soardm', 'carp', 'ref']
-c = ["#D2EEAC", '#63C2B5', '#46A7CB', '#1B479D', 'lightcoral', 'firebrick']
+runs = ['blosum', 'random', 'oaardm', 'soardm', 'carp', 'ref', 'valid']
+c = ["#D2EEAC", '#63C2B5', '#46A7CB', '#1B479D', 'lightcoral', 'firebrick', 'grey', 'grey']
 
 sequences = train_sequences
 colors = ['#D0D0D0'] * len(sequences)
@@ -68,7 +68,7 @@ for i, run in enumerate(runs):
     [sequences.append(s) for s in gen_sequences]
     [colors.append(c[i]) for s in gen_sequences]
 
-runs = ['train'] + runs
+runs = ['test'] + runs
 runs
 
 # Can use any embedding here to do the same analysis
@@ -92,18 +92,19 @@ for i in range(1, len(runs)):
     plt.scatter(projected_embeddings[:1000,0], projected_embeddings[:1000,1], s=20, alpha=1, c=colors[:1000], edgecolors='grey')
     begin=1000*(i)
     end=1000*(i+1)
-    plt.scatter(projected_embeddings[begin:end,0], projected_embeddings[begin:end, 1], s=20, alpha=0.95, c=colors[begin:end], edgecolors='k')
+    plt.scatter(projected_embeddings[begin:end,0], projected_embeddings[begin:end, 1], s=20, alpha=0.95, c=colors[begin:end], edgecolors='grey')
     ax.axis('off')
-    plt.show()
-    print(runs[i])
+    #plt.show()
+    #print(runs[i])
     fig.savefig(os.path.join('plots/fid_'+runs[i]+'_'+project_run+'.svg'))
+    fig.savefig(os.path.join('plots/fid_'+runs[i]+'_'+project_run+'.png'))
 
 # Calculate FID
 reduced_embeddings_by_model = np.array(reduced_embeddings).reshape(len(runs),-1,1024) # 7 runs x 300 sample x 1024 params
 fids = []
 for i in range(len(reduced_embeddings_by_model)): # compare all to train
     curr_fid = calculate_fid(reduced_embeddings_by_model[0], reduced_embeddings_by_model[i])
-    ref_fid = calculate_fid(reduced_embeddings_by_model[-1], reduced_embeddings_by_model[i])
+    #ref_fid = calculate_fid(reduced_embeddings_by_model[-1], reduced_embeddings_by_model[i])
     fids.append(curr_fid)
     #print "%, " % (runs[i-1], curr_fid)
     print(f'{runs[i]} to train, {curr_fid : 0.2f}')

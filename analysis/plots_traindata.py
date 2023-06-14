@@ -25,7 +25,7 @@ data_dir = data_top_dir + dataset + '/'
 
 metadata = np.load(data_dir + 'lengths_and_offsets.npz')
 ds_train = UniRefDataset(data_dir, 'train', structure=False)
-ds_valid = UniRefDataset(data_dir, 'test', structure=False) # Using test for analysis
+ds_valid = UniRefDataset(data_dir, 'rtest', structure=False) # Using test for analysis
 valid_idx = ds_valid.indices
 train_idx = ds_train.indices
 len_train = metadata['ells'][train_idx]
