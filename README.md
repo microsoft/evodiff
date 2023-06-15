@@ -19,6 +19,14 @@ conda activate dms
 pip install -e .
 ```
 
+### Loading pretrained models
+
+### Unconditional sequence generation
+
+### Conditional sequence generation
+
+### Downstream analysis tasks
+
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
