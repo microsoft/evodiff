@@ -10,6 +10,7 @@ from numpy import cov
 from numpy import trace
 from numpy import iscomplexobj
 from scipy.linalg import sqrtm
+from dms.utils import parse_txt
 
 # Need to run PGP first on generated seqs , this performs downstream analysis
 # https://github.com/hefeda/PGP
@@ -32,16 +33,16 @@ def calculate_fid(act1, act2):
     return fid
 
 
-def parse_txt(fasta_file):
-    "Read output of PGP seqs from text file"
-    train_seqs = []
-    with open(fasta_file, 'r') as file:
-        filecontent = csv.reader(file)
-        for row in filecontent:
-            if len(row) >= 1:
-                if row[0][0] != '>':
-                    train_seqs.append(str(row[0]))
-    return train_seqs
+# def parse_txt(fasta_file):
+#     "Read output of PGP seqs from text file"
+#     train_seqs = []
+#     with open(fasta_file, 'r') as file:
+#         filecontent = csv.reader(file)
+#         for row in filecontent:
+#             if len(row) >= 1:
+#                 if row[0][0] != '>':
+#                     train_seqs.append(str(row[0]))
+#     return train_seqs
 
 
 # Calculate FID between test dataset sample and generated seqs

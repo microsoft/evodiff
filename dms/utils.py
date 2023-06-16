@@ -4,6 +4,7 @@ import numpy as np
 from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS, GAP
 from dms.constants import BLOSUM_ALPHABET
 from sklearn.preprocessing import normalize
+import csv
 
 def loadMatrix(path):
     """
@@ -145,7 +146,7 @@ class Tokenizer(object):
         if path_to_blosum is not None:
             self.matrix = loadMatrix(path_to_blosum)
             self.matrix_dict = dict(self.matrix)
-        self.sequences = sequences
+        self.sequences = sequences # only needed for D3PM MSA vs Seq
         self.K = len(self.all_aas)
         if self.sequences:
             self.K = len(self.all_aas[:-1]) # slice out GAPS for sequences
@@ -240,3 +241,14 @@ class Tokenizer(object):
         "one hot -> seq"
         tokenized = [np.where(r==1)[0] for r in x_onehot] # TODO may need to fix now that using torch nn have not double checked
         return tokenized
+
+def parse_txt(fasta_file):
+    "Read output of PGP seqs from text file"
+    train_seqs = []
+    with open(fasta_file, 'r') as file:
+        filecontent = csv.reader(file)
+        for row in filecontent:
+            if len(row) >= 1:
+                if row[0][0] != '>':
+                    train_seqs.append(str(row[0]))
+    return train_seqs
