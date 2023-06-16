@@ -15,11 +15,11 @@ def main():
     perplexities = []
     for i in tqdm(range(len(data))):
         sequence = [data[i]]
-        #print(sequence)
         p = calculate_perplexity(sequence, checkpoint)
         perplexities.append(p)
-        if i % 10000 == 0:
+        if i % 1000 == 0:
             print(i, "samples, perp:", np.mean(perplexities))
+    print("Final test perp:", np.mean(perplexities))
 
 def calculate_perplexity(sequence, checkpoint):
     model, collater, tokenizer, scheme = checkpoint
