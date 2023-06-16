@@ -18,6 +18,22 @@ conda env create -f environment.yml
 conda activate dms
 pip install -e .
 ```
+TODO: add what data we use
+
+### Loading pretrained models
+To load a model:
+```
+TODO
+```
+
+### Unconditional sequence generation
+TODO: how to use the generate.py and generate-msa.py scripts (and where/how to access checkpoints)
+
+### Conditional sequence generation
+TODO
+
+### Downstream analysis tasks
+TODO: for every analysis mentioned in table 1, point to each function in analysis files; self-consistency
 
 ## Contributing
 
