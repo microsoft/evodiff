@@ -64,6 +64,17 @@ def D3PM_BLOSUM_640M():
     scheme = 'd3pm'
     return model, collater, tokenizer, scheme
 
+def D3PM_BLOSUM_38M():
+    dt=500
+    tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=True)
+    Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=dt)
+    collater = D3PMCollater(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
+    model, tokenizer = load_d3pm_checkpoint("d3pm-blosum-38M", "config/config38M.json",
+                                                      diffusion_timesteps=dt,
+                                                      tokenizer=tokenizer)
+    scheme = 'd3pm'
+    return model, collater, tokenizer, scheme
+
 def D3PM_UNIFORM_640M():
     dt = 500
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=True)
@@ -74,6 +85,18 @@ def D3PM_UNIFORM_640M():
     scheme = 'd3pm'
     return model, collater, tokenizer, scheme
 
+
+def D3PM_UNIFORM_38M():
+    dt = 500
+    tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=True)
+    Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
+    collater = D3PMCollater(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
+    model, tokenizer = load_d3pm_checkpoint("d3pm-uniform-38M", "config/config38M.json", diffusion_timesteps=dt,
+                                            tokenizer=tokenizer)
+    scheme = 'd3pm'
+    return model, collater, tokenizer, scheme
+
+
 def OA_AR_640M():
     tokenizer = Tokenizer()
     collater = OAMaskCollater(tokenizer=tokenizer)
@@ -82,10 +105,30 @@ def OA_AR_640M():
     scheme = 'mask'
     return model, collater, tokenizer, scheme
 
+
+def OA_AR_38M():
+    tokenizer = Tokenizer()
+    collater = OAMaskCollater(tokenizer=tokenizer)
+    model, tokenizer = load_d3pm_checkpoint("oaar-38M", "config/config38M.json", diffusion_timesteps=None, \
+                         tokenizer=tokenizer)
+    scheme = 'mask'
+    return model, collater, tokenizer, scheme
+
+
 def LR_AR_640M():
     tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD)
     collater = MLMCollater(tokenizer=tokenizer) # TODO???
     model, tokenizer = load_d3pm_checkpoint("lrar-640M", "config/config640M.json", diffusion_timesteps=None, \
+                                tokenizer=tokenizer, \
+                                causal=True)
+    scheme='mask'
+    return model, collater, tokenizer, scheme
+
+
+def LR_AR_38M():
+    tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD)
+    collater = MLMCollater(tokenizer=tokenizer) # TODO???
+    model, tokenizer = load_d3pm_checkpoint("lrar-38M", "config/config38M.json", diffusion_timesteps=None, \
                                 tokenizer=tokenizer, \
                                 causal=True)
     scheme='mask'
