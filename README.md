@@ -23,8 +23,12 @@ TODO: add what data we use
 ### Loading pretrained models
 To load a model:
 ```
-TODO
+from dms.pretrained import D3PM_BLOSUM_640M, OA_AR_640M
+
+checkpoint = OA_AR_640M()
+model, collater, tokenizer, scheme = checkpoint
 ```
+An example of loading a model from a checkpoint is in the DMs/analysis/model_perp.py file
 
 ### Unconditional sequence generation
 TODO: how to use the generate.py and generate-msa.py scripts (and where/how to access checkpoints)
