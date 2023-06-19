@@ -1,14 +1,6 @@
-# Project
+# Generation of protein sequences and evolutionary alignments via discrete diffusion models
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
-
-As the maintainer of this project, please make a few updates:
-
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
+Effective protein sequence design could enable the engineering of novel proteins tailored to solve outstanding modern-day challenges, such as the rapid development of targeted therapeutics and vaccines or engineered enzymes for degradation of industrial waste. In this work, we train and evaluate a series of discrete diffusion models for both unconditional and conditional generation of single protein sequences as well as multiple sequence alignments (MSAs). We test both order-agnostic autoregressive diffusion and discrete denoising diffusion probabilistic models for protein sequence generation; formulate unique, bio-inspired corruption schemes for both classes of models; and evaluate the quality of generated samples for fidelity, diversity, and structural plausibility. In the single sequence setting, we observe that all evaluated models generate high-fidelity protein sequences with complexity and diversity similar to those of naturally-occurring proteins. In the MSA setting, we demonstrate that order-agnostic autoregressive models are effective for conditional generation tasks, designing realistic, diverse sequences and MSAs that enable reliable sequence-structure predictions. Together, our discrete sequence diffusion models open new avenues for unconditional sequence generation and conditional protein design guided by evolution.
 
 
 ### Installation
