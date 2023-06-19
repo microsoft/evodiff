@@ -521,8 +521,8 @@ def plot_ecdf(perp_groups, colors, labels, metric='perp', model='ESM-IF'):
 
 def plot_plddt_perp(ordered_plddt_group, ordered_perp_group, idx, colors, labels, perp_model='ESM-IF'):
     fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5), sharey=True, sharex=True)
-    plt.scatter(ordered_plddt_group[0], ordered_perp_group[0], c=colors[0], s=20, alpha=0.5, label=labels[0], edgecolors='grey')
-    plt.scatter(ordered_plddt_group[idx], ordered_perp_group[idx], c=colors[idx], s=20, alpha=0.5, label=labels[idx], edgecolors='grey')
+    plt.scatter(ordered_plddt_group[0], ordered_perp_group[0], c=colors[0], s=20, alpha=1, label=labels[0], edgecolors='grey')
+    plt.scatter(ordered_plddt_group[idx], ordered_perp_group[idx], c=colors[idx], s=20, alpha=1, label=labels[idx], edgecolors='grey')
     ax.axhline(y=np.mean(ordered_perp_group[0]), c='k', ls='--', lw=0.75)
     ax.axvline(x=np.mean(ordered_plddt_group[0]), c='k', ls='--', lw=0.75)
     plt.ylim(0, 24)

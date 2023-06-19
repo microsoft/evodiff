@@ -52,7 +52,7 @@ def get_perp(files):
 def get_confidence_score(files):
     #colors = {32:'red', 64:'orange', 128:'green', 256:'b', 384:'purple', 512:'grey', 1024:'k'}
     scores = []
-    lengths = []
+    #lengths = []
     pdb_index = []
     for f in files:
         #print(f)
@@ -78,7 +78,7 @@ def get_confidence_score(files):
                 #print(key, closest_key)
                 #lengths.append(colors[closest_key])
                 scores.append(df.score.mean())
-    return scores, lengths, pdb_index
+    return scores, pdb_index
 
 def get_mpnn_scores(files):
     scores = []
@@ -112,9 +112,9 @@ def iterate_dirs(run, seq_lengths, mpnn=False):
 
         # Get pdb
         pdb_files = get_pdb(pdb_path)
-        score, lengths, pdb_index = get_confidence_score(pdb_files)
+        score, pdb_index = get_confidence_score(pdb_files)
         scores_group.append(score)
-        lengths_group.append(lengths)
+        #lengths_group.append(lengths)
         pdb_index_group.append(pdb_index)
         # Get MPNN score
         if mpnn:
@@ -144,13 +144,13 @@ def mean_metric(groups, metric='perp'):
 length_model='large'
 # TEST MUST GO FIRST FOR PLOTS TO REFERENCE CORRECTLY
 runs = ['test-data/', 'd3pm/blosum-640M-0/', 'd3pm/random-640M-0/', 'd3pm/oaardm-640M/', 'd3pm/soar-640M/',
-        'hyper12/cnn-650M/', 'esm-1b/','random-ref/']
+        'hyper12/cnn-650M/', 'esm-1b/','esm2/', 'random-ref/']
 
 #length_model='small'
 # runs = ['test-data/','sequence/blosum-0-seq/', 'd3pm-final/random-0-seq/', 'sequence/oaardm/', 'arcnn/cnn-38M/',
 #         'pretrain21/cnn-38M/', 'random-ref/']
 
-labels=['Test', 'D3PM Blosum', 'D3PM Uniform', 'OA-AR', 'LR-AR', 'CARP', 'ESM-1b', 'Random']
+labels=['Test', 'D3PM Blosum', 'D3PM Uniform', 'OA-AR', 'LR-AR', 'CARP', 'ESM-1b', 'ESM2', 'Random']
 mpnn=False # If you also ran MPNN
 
 perp_groups = []
@@ -160,12 +160,17 @@ mpnn_scores_groups = []
 pdb_index_groups = []
 perp_index_groups = []
 seq_lengths = [64, 128, 256, 384]
+
 for run in runs:
     print("run", run)
-    if mpnn:
-        perp_group, scores_group, lengths_group, mpnn_scores_group, pdb_index_group, perp_index_group = iterate_dirs(run, seq_lengths, mpnn=mpnn)
+    if run == 'esm2/':
+        perp_group, scores_group, lengths_group, pdb_index_group, perp_index_group = iterate_dirs(run, [100],
+                                                                                                  mpnn=mpnn)
     else:
-        perp_group, scores_group, lengths_group, pdb_index_group, perp_index_group = iterate_dirs(run, seq_lengths, mpnn=mpnn)
+        if mpnn:
+            perp_group, scores_group, lengths_group, mpnn_scores_group, pdb_index_group, perp_index_group = iterate_dirs(run, seq_lengths, mpnn=mpnn)
+        else:
+            perp_group, scores_group, lengths_group, pdb_index_group, perp_index_group = iterate_dirs(run, seq_lengths, mpnn=mpnn)
     perp_groups.append(perp_group)
     scores_groups.append(scores_group)
     lengths_groups.append(lengths_group)
@@ -174,7 +179,7 @@ for run in runs:
     if mpnn:
         mpnn_scores_groups.append(mpnn_scores_group)
 
-colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'mediumpurple', 'firebrick'] #'mediumpurple', 'rebeccapurple', 'darkslateblue']
+colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'mediumpurple', 'rebeccapurple', 'firebrick'] #'mediumpurple', 'rebeccapurple', 'darkslateblue']
 
 #For ESM-IF
 print("ESM-IF")
@@ -202,7 +207,10 @@ ordered_plddt_group = []
 for i in range(len(labels)):
     ordered_perp = []
     ordered_plddt = []
-
+    if labels[i] == 'ESM2':
+        seq_lengths=[100]
+    else:
+        seq_lengths= [64, 128, 256, 384]
     for l_index in range(len(seq_lengths)):
         df_pdb = pd.DataFrame(np.array([list(map(float, pdb_index_groups[i][l_index])), \
                                         list(map(float, scores_groups[i][l_index]))]).T, columns=['pdb', 'plddt'])
