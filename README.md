@@ -23,17 +23,34 @@ TODO: add what data we use
 ### Loading pretrained models
 To load a model:
 ```
-TODO
+from dms.pretrained import D3PM_BLOSUM_640M, OA_AR_640M
+
+checkpoint = OA_AR_640M()
+model, collater, tokenizer, scheme = checkpoint
 ```
+An example of loading a model from a checkpoint is in the DMs/analysis/model_perp.py file
 
 ### Unconditional sequence generation
-TODO: how to use the generate.py and generate-msa.py scripts (and where/how to access checkpoints)
+TODO: how to use the generate.py and generate-msa.py scripts
 
 ### Conditional sequence generation
 TODO
 
-### Downstream analysis tasks
-TODO: for every analysis mentioned in table 1, point to each function in analysis files; self-consistency
+### Analysis of generations
+To access the generated sequences:
+```
+data = UniRefDataset('data/uniref50/', 'rtest', structure=False)
+```
+or 
+```
+data = 'path_to_generated'
+dms.utils.read_txt(data)
+```
+To analyze the quality of the generations, we look at the amino acid KL divergence (DMs/analysis/calc_aafreq_train_valid_test.py), the secondary structre KL divergence (DMs/analysis/calc_kl_ss.py), the Fréchet inception distance (DMs/analysis/calc_fid.py), and the hamming distance (DMs/analysis/calc_nearestseq_hamming.py).
+
+We also compute the self-consistency perplexity to evaluate the foldability of generated sequences (TODO: file).
+
+TODO: FIX CODE ABOVE + check file paths for analysis functions! @sarah
 
 ## Contributing
 
