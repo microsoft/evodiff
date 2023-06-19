@@ -21,7 +21,6 @@ def load_d3pm_checkpoint(model_name, config_path, diffusion_timesteps, tokenizer
     n_layers = config['n_layers']
     kernel_size = config['kernel_size']
     r = config['r']
-    lr = config['lr']
     masking_idx = tokenizer.mask_id
     if 'rank' in config:
         weight_rank = config['rank']
@@ -38,18 +37,15 @@ def load_d3pm_checkpoint(model_name, config_path, diffusion_timesteps, tokenizer
     dropout=0.0
     tie_weights=False
     final_norm=True
-    weight_decay=0.0
     model = ByteNetLMTime(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
                           causal=causal, padding_idx=masking_idx, rank=weight_rank, dropout=dropout,
                           tie_weights=tie_weights, final_ln=final_norm, slim=slim, activation=activation,
                           timesteps=diffusion_timesteps)
-    #optimizer = Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     state_dict = download_model(model_name)
     sd = torch.load(state_dict, map_location=torch.device('cpu'))
     msd = sd['model_state_dict']
     msd = {k.split('module.')[1]: v for k, v in msd.items()}
     model.load_state_dict(msd)
-    #optimizer.load_state_dict(sd['optimizer_state_dict'])
 
     return model, tokenizer
 
