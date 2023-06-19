@@ -426,3 +426,38 @@ def plot_percent_similarity_entiremsa(out_fpath):
     fig.savefig(os.path.join(out_fpath, 'similairity_msa.svg'))
     fig.savefig(os.path.join(out_fpath, 'similarity_msa.png'))
 
+def plot_perp_group_masked(df, save_name):
+    bins = np.arange(0, 1.1, 0.1)
+    df['binned'] = pd.cut(df['time'], bins)
+    group = df.groupby(pd.cut(df['time'], bins))
+    plot_centers = (bins[:-1] + bins[1:]) / 2
+    plot_values = group['perplexity'].mean()
+    plot_std = group['perplexity'].std()
+
+    fig, ax = plt.subplots(figsize=(3, 2.5))
+    plt.plot(plot_centers*100, plot_values, c='b')
+    plt.errorbar(plot_centers*100, plot_values, yerr=plot_std/2, fmt="o", c='b', capsize=3)
+    ax.set_xticks([0,20,40,60,80,100])
+    plt.xlabel('% Masked')
+    plt.ylabel('Perplexity')
+    plt.ylim(0,25)
+    plt.tight_layout()
+    fig.savefig(os.path.join('plots/perp_'+save_name+'.png'))
+
+def plot_perp_group_d3pm(df, save_name):
+    bins = np.arange(0, 550, 50)
+    df['binned'] = pd.cut(df['time'], bins)
+    group = df.groupby(pd.cut(df['time'], bins))
+    plot_centers = (bins[:-1] + bins[1:]) / 2
+    plot_values = group['perplexity'].mean()
+    plot_std = group['perplexity'].std()
+
+    fig, ax = plt.subplots(figsize=(3, 2.5))
+    plt.plot(plot_centers, plot_values, c='b')
+    plt.errorbar(plot_centers, plot_values, yerr=plot_std/2, fmt="o", c='b', capsize=3)
+    ax.set_xticks([0, 100, 200, 300, 400, 500])
+    plt.xlabel('Timestep')
+    plt.ylabel('Perplexity')
+    plt.ylim(0, 25)
+    plt.tight_layout()
+    fig.savefig(os.path.join('plots/perp_' + save_name + '.png'))
