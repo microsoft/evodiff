@@ -179,7 +179,7 @@ for run in runs:
     if mpnn:
         mpnn_scores_groups.append(mpnn_scores_group)
 
-colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'mediumpurple', 'rebeccapurple', 'firebrick'] #'mediumpurple', 'rebeccapurple', 'darkslateblue']
+colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'mediumpurple', 'rebeccapurple', 'darkslateblue', 'firebrick']
 
 #For ESM-IF
 print("ESM-IF")

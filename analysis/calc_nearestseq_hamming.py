@@ -1,12 +1,7 @@
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import csv
-import seaborn as sns
-from Bio import Align
 from scipy.spatial import distance
 from tqdm import tqdm
-import torch
 from dms.utils import Tokenizer
 import math
 
@@ -50,6 +45,22 @@ def parse_train(fasta_file):
                             seqs_384.append(tokenized)
     return seqs_64, seqs_128, seqs_256, seqs_384
 
+def parse_train_for_length(fasta_file, seq_length):
+    """Get all sequences of a certain length from train dataset (used for ESM2 (all 100 res), and FoldingDiff (all diff
+    lengths)"""
+
+    seqs = []
+    with open(fasta_file, 'r') as file:
+        filecontent = csv.reader(file)
+        for row in tqdm(filecontent):
+            if len(row) >= 1:
+                if row[0][0] != '>':
+                    if len(row[0]) == seq_length:
+                        padded_row = list(row[0])
+                        tokenized = [tokenizer.tokenize(s).item() for s in padded_row]
+                        seqs.append(tokenized)
+    return seqs
+
 def batch_hamming(train_set, g):
     "Compute hamming distance for a batch of data"
     all_dist = [distance.hamming(t, g) for t in train_set]
@@ -57,12 +68,20 @@ def batch_hamming(train_set, g):
 
 project_dir = '../DMs/'
 train_fasta = project_dir + 'data/uniref50/' + 'consensus.fasta'
-train_seqs = parse_train(train_fasta) # takes ~ 4 mim
-[len(train_seqs[i]) for i in range(4)] # Num seqs evaluated
-
-per_length = 250
-num_lengths = 4 # ~ 20 min per length
+runs = ['esm2/']
+per_length = 1000 #250
+num_lengths = 1 #4 # ~ 20 min per length
 batch_size = 10000
+
+# For everything else use:
+#train_seqs = parse_train(train_fasta) # takes ~ 4 mim
+
+# For ESM2, compare to all seqs of len 100
+train_seqs = [parse_train_for_length(train_fasta, 100)]
+print(len(train_seqs))
+print(len(train_seqs[0]))
+[len(train_seqs[i]) for i in range(num_lengths)] # Num seqs evaluated
+
 
 # Compute Hamming between all natural sequences
 # Uncomment when done getting new data
@@ -79,20 +98,14 @@ batch_size = 10000
 #             print("minimum dis", min_dist)
 
 # Calculate each dist to train
-project_dir = '../DMs/'
 #runs = ['sequence/blosum-0-seq/', 'sequence/oaardm/',
 #runs = ['d3pm-final/random-0-seq/', 'arcnn/cnn-38M/', 'pretrain21/cnn-38M/', 'esm-1b/']
-runs = ['wu/']
+
 all_mins = []
 
 for run in runs:
     gen_fasta = project_dir + 'blobfuse/'+run+'generated_samples_string.fasta'
     seqs = tokenize_fasta(gen_fasta)
-
-    per_length = 250
-    num_lengths = 4  # ~ 20 min per length
-
-    batch_size = 10000
 
     train_gen_dists = []
     min_train_gen_dists = 1
@@ -112,3 +125,23 @@ for run in runs:
 
 print(all_mins)
 #[print(runs[i], all_mins[i]) for i in range(len(runs))]
+
+
+# For Folding diff data, find minimum hamming to each len in train of same length
+# for run in runs:
+#     gen_fasta = project_dir + 'blobfuse/'+run+'generated_samples_string.fasta'
+#     seqs = tokenize_fasta(gen_fasta)
+#
+#     per_length = 250
+#     num_lengths = 4  # ~ 20 min per length
+#
+#     batch_size = 10000
+#
+#     train_gen_dists = []
+#     min_train_gen_dists = 1
+#     for seq in seqs:
+#         train_batch = parse_train_for_length(gen_fasta, len(seq))
+#         all_dist = [batch_hamming(seq, t) for t in train_batch]
+#         if min(all_dist) <= min_train_gen_dists:
+#             min_train_gen_dists = min(all_dist)
+#             print("minimum dist", min_train_gen_dists)

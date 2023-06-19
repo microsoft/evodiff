@@ -33,13 +33,16 @@ def calculate_fid(act1, act2):
     return fid
 
 # Calculate FID between test dataset sample and generated seqs
-project_dir = '../PGP/PGP_OUT_LARGE/'
-project_run='large' #'small'
+project_dir = '../PGP/PGP_OUT/'
+project_run='small' #'large' or 'small'
 test_fasta = project_dir + 'test/seqs.txt'
 test_sequences = parse_txt(test_fasta)
 
-runs = ['blosum', 'random', 'oaardm', 'soardm', 'carp', 'ref', 'valid', 'esm-1b', 'esm2']
-c = ["#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'lightcoral', 'firebrick', 'grey', 'mediumpurple', 'rebeccapurple']
+# runs = ['blosum', 'random', 'oaardm', 'soardm', 'carp', 'ref', 'valid', 'esm-1b', 'esm2']
+# c = ["#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'lightcoral', 'firebrick', 'grey', 'mediumpurple', 'rebeccapurple']
+
+runs = ['blosum', 'random', 'oaardm', 'soardm', 'carp', 'ref', 'valid'] #, 'wu']
+c = ["#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'firebrick', 'grey'] #, 'darkslateblue']
 
 sequences = test_sequences
 colors = ['#D0D0D0'] * len(sequences)
