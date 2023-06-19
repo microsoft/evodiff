@@ -119,36 +119,48 @@ def load_data(output_directory):
                   [indexes, sequences, disorder, metal, small, nucleic, conservation, dssp3, bpo, cco, mfo, subcell,
                    cath, transmembrane])
 
-# colors = sns.color_palette("YlGnBu")
-colors = ['#D0D0D0', "#D2EEAC", '#63C2B5', '#46A7CB', '#1B479D', 'lightcoral', 'firebrick', 'firebrick']
+colors = ['#D0D0D0', "#b0e16d",#"#D2EEAC",
+          '#63C2B5', '#46A7CB', '#1B479D', 'lightcoral', 'firebrick', 'firebrick']
 
 folder = '../PGP/'
-random = load_data(folder+'PGP_OUT_LARGE/ref/') # call ref baseline random
+random = load_data(folder+'PGP_OUT/ref/') # ref baseline is random
 random.insert(0, "type", "ref")
 
-train = load_data(folder+'PGP_OUT_LARGE/esm-1b/') # call train baseline valid
-train.insert(0, "type", "valid")
+valid = load_data(folder+'PGP_OUT/valid/')
+valid.insert(0, "type", "valid")
 
-test = load_data(folder+'PGP_OUT_LARGE/test/') # call train baseline valid
+test = load_data(folder+'PGP_OUT_LARGE/test/')
 test.insert(0, "type", "test")
 
-blosum = load_data(folder+'PGP_OUT_LARGE/blosum/')
+blosum = load_data(folder+'PGP_OUT/blosum/')
 blosum.insert(0, "type", "blosum d3pm")
 
-uniform = load_data(folder+'PGP_OUT_LARGE/random/')  # call random model uniform
+uniform = load_data(folder+'PGP_OUT/random/')  # random model is uniform
 uniform.insert(0, "type", "random d3pm")
 
-so = load_data(folder+'PGP_OUT_LARGE/soardm/')
+so = load_data(folder+'PGP_OUT/soardm/')
 so.insert(0, "type", "soardm")
 
-oa = load_data(folder+'PGP_OUT_LARGE/oaardm/')
+oa = load_data(folder+'PGP_OUT/oaardm/')
 oa.insert(0, "type", "oaardm")
 
-carp = load_data('../PGP/PGP_OUT_LARGE/carp/')
+carp = load_data('../PGP/PGP_OUT/carp/')
 carp.insert(0, "type", "carp")
 
+# esm1b = load_data('../PGP/PGP_OUT_LARGE/esm-1b/')
+# esm1b.insert(0, "type", "esm1b")
+
+# esm2 = load_data('../PGP/PGP_OUT_LARGE/esm2/')
+# esm2.insert(0, "type", "esm2")
+
 # concatenate the dataframes
-data = pd.concat([train, test, blosum, uniform, oa, so, carp, random]).reset_index(drop=True)
+data = pd.concat([valid, test, blosum, uniform, oa, so, carp, random]).reset_index(drop=True)
+
+#data
+# print columns that are currently available
+print(f"These columns can be queried: {', '.join(data.columns.values)}")
+# concatenate the dataframes
+data = pd.concat([valid, test, blosum, uniform, oa, so, carp, random]).reset_index(drop=True)
 print(f"These columns can be queried: {', '.join(data.columns.values)}")
 
 
@@ -172,11 +184,12 @@ for run in runs:
 
 
 # cmap = [matplotlib.colors.LinearSegmentedColormap.from_list("", ["whitesmoke", c]) for c in colors]
-cmap = ['Blues'] + ['Blues'] * 6 + ['Greys']
+#cmap = ['Blues'] + ['Blues'] * 6 + ['Greys']
 
 # 2D density plots
-labels = ['ESM-1b', 'Blosum D3PM', 'Uniform D3PM', 'OA-ARDM', 'LR-AR', 'CARP', 'Random', 'Test']
-fig, ax = plt.subplots(nrows=2, ncols=4, figsize=(10, 5), constrained_layout=True, sharex=True, sharey=True)
+runs = ['valid', 'blosum d3pm', 'random d3pm', 'oaardm', 'soardm', 'carp', 'ref', 'test']
+labels =['Valid', 'Blosum D3PM', 'Uniform D3PM', 'OA-ARDM', 'LR-AR', 'CARP', 'Random', 'Test']
+fig, ax = plt.subplots(nrows=2, ncols=4, figsize=(10, 5), constrained_layout=True, sharex=False, sharey=False)
 ax = ax.ravel()
 for i, run in enumerate(runs):
     helix = data[data['type'] == run]['helix_percent']
@@ -188,9 +201,11 @@ for i, run in enumerate(runs):
 
     sns.kdeplot(x=helix, y=strand,
                 fill=True, thresh=0.001, levels=10,
-                cmap=cmap[i], ax=ax[i], cbar=False, common_norm=True)
+                cmap='Greys', ax=ax[i], cbar=False, common_norm=True)
     ax[i].set_xlabel('% Helix per Seq')
     ax[i].set_ylabel('% Strand per Seq')
+    ax[i].set_xlim(-0.05, 1)
+    ax[i].set_ylim(-0.05, 1)
 plt.show()
 fig.savefig(os.path.join('plots/helix_strand_large.svg'))
 fig.savefig(os.path.join('plots/helix_strand_large.png'))
