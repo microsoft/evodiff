@@ -11,6 +11,7 @@ from scipy import stats
 import numpy as np
 import seaborn as sns
 import difflib
+from itertools import chain
 
 def removekey(d, list_of_keys):
     r = d.copy()
@@ -461,3 +462,73 @@ def plot_perp_group_d3pm(df, save_name):
     plt.ylim(0, 25)
     plt.tight_layout()
     fig.savefig(os.path.join('plots/perp_' + save_name + '.png'))
+
+
+def plot_ecdf_bylength(perp_groups, colors, labels, seq_lengths, metric='perp', model='esm-if'):
+    fig, ax = plt.subplots(1,4, figsize=(8.,2.5), sharey=True, sharex=True)
+    for j, perp_group in enumerate(perp_groups):
+        for i,p in enumerate(perp_group):
+            c=colors[j]
+            sns.ecdfplot(x=p,
+                         label=labels[j],
+                         color=c,
+                         alpha=1,
+                         ax=ax[i])
+            if metric=='perp':
+                ax[i].set_xlabel(model+' Perplexity')
+            elif metric=='plddt':
+                ax[i].set_xlabel(model+' pLDDT')
+            ax[i].set_title("seq length="+str(seq_lengths[i]))
+            ax[i].axvline(x=np.mean(perp_groups[0][i]), c='k', ls='--', lw=0.75)
+    ax[-1].legend(fontsize=8, loc='upper left')
+    if model == 'ESM-IF':
+        plt.xlim(0, 25)
+    elif model == 'MPNN':
+        plt.xlim(0, 6)
+    elif model == 'Omegafold':
+        plt.xlim(10, 100)
+    plt.tight_layout()
+    fig.savefig(os.path.join('plots/sc_'+metric+'_bylength_'+model+'.svg'))
+    fig.savefig(os.path.join('plots/sc_'+metric+'_bylength_'+model+'.png'))
+
+
+def plot_ecdf(perp_groups, colors, labels, metric='perp', model='ESM-IF'):
+    fig, ax = plt.subplots(1,1, figsize=(2.5,2.5), sharey=True, sharex=True)
+    for i, perp_group in enumerate(perp_groups):
+        c = colors[i]
+        all_perp = list(chain.from_iterable(perp_group))
+        sns.ecdfplot(x=all_perp,
+                         label=labels[i],
+                         color=c,
+                         alpha=1,
+                         ax=ax)
+        if metric == 'perp':
+            ax.set_xlabel(model + ' Perplexity')
+        elif metric == 'plddt':
+            ax.set_xlabel(model + ' pLDDT')
+        ax.set_title("all sequences")
+        ax.axvline(x=np.mean(list(chain.from_iterable(perp_groups[0]))), c='k', ls='--', lw=0.75)
+    #ax.legend(fontsize=8, loc='upper right', bbox_to_anchor=(1.7, 1.05),)
+    if model=='ESM-IF':
+        ax.set_xlim(0,25)
+    elif model == 'MPNN':
+        ax.set_xlim(0,6)
+    elif model == 'Omegafold':
+        ax.set_xlim(10, 100)
+    plt.tight_layout()
+    fig.savefig(os.path.join('plots/sc_'+metric+'_'+model+'.svg'))
+    fig.savefig(os.path.join('plots/sc_'+metric+'_'+model+'.png'))
+
+def plot_plddt_perp(ordered_plddt_group, ordered_perp_group, idx, colors, labels, perp_model='ESM-IF'):
+    fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5), sharey=True, sharex=True)
+    plt.scatter(ordered_plddt_group[0], ordered_perp_group[0], c=colors[0], s=20, alpha=0.5, label=labels[0], edgecolors='grey')
+    plt.scatter(ordered_plddt_group[idx], ordered_perp_group[idx], c=colors[idx], s=20, alpha=0.5, label=labels[idx], edgecolors='grey')
+    ax.axhline(y=np.mean(ordered_perp_group[0]), c='k', ls='--', lw=0.75)
+    ax.axvline(x=np.mean(ordered_plddt_group[0]), c='k', ls='--', lw=0.75)
+    plt.ylim(0, 24)
+    plt.xticks([25, 50, 75, 100])
+    ax.set_ylabel(perp_model + ' Perplexity')
+    ax.set_xlabel('pLDDT')
+    plt.tight_layout()
+    fig.savefig(os.path.join('plots/sc_plddt_perp_'+labels[idx]+'.svg'))
+    fig.savefig(os.path.join('plots/sc_plddt_perp_'+labels[idx]+'.png'))
