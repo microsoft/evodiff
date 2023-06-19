@@ -18,35 +18,58 @@ conda env create -f environment.yml
 conda activate dms
 pip install -e .
 ```
-TODO: add what data we use
+We obtain sequences from the [Uniref50 dataset](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4375400/), which contains approximately 45 million protein sequences. The Multiple Sequence Alignments (MSAs) are from the [OpenFold dataset](https://www.biorxiv.org/content/10.1101/2022.11.20.517210v2), containing MSAs for 132,000 unique Protein Data Bank (PDB) chains.
 
 ### Loading pretrained models
 To load a model:
 ```
-from dms.pretrained import D3PM_BLOSUM_640M, OA_AR_640M
+from dms.pretrained import OA_AR_640M
 
-checkpoint = OA_AR_640M()
-model, collater, tokenizer, scheme = checkpoint
+model, collater, tokenizer, scheme = OA_AR_640M()
 ```
-An example of loading a model from a checkpoint is in the DMs/analysis/model_perp.py file
+Available models are:
+* ``` D3PM_BLOSUM_640M() ```
+* ``` D3PM_BLOSUM_38M() ```
+* ``` D3PM_UNIFORM_640M() ```
+* ``` D3PM_UNIFORM_38M() ```
+* ``` OA_AR_640M() ```
+* ``` OA_AR_38M() ```
+* ``` LR_AR_640M() ```
+* ``` LR_AR_38M() ```
+* ``` CARP_38M() ```
+* ``` CARP_640M() ```
+* ``` ESM1b_640M() ```
 
 ### Unconditional sequence generation
-TODO: how to use the generate.py and generate-msa.py scripts
+For sequence generation run:
+``` python generate.py --model-type oa_ar_640m --final_norm --num-seqs 250 ```
 
-### Conditional sequence generation
-TODO
+For MSA generation run:
+``` python generate-msa.py TODO: ADD MODEL TYPE --subsampling random --batch-size 1 ```
+
+### Conditional sequence generation from MSA
+There are two ways to conditionally generate an MSA. 
+
+The first is to generate the alignment from the query. To do so run:
+
+``` python generate-msa.py TODO: ADD MODEL TYPE --subsampling random --batch-size 1 --start-query ```
+
+The second is to generate the query from the alignment. To do so run:
+
+``` python generate-msa.py TODO: ADD MODEL TYPE --subsampling random --batch-size 1 --start-msa ```
+
+Note that you can only start-query or start-msa, not both. To generate unconditionally, omit the flags (see example in above section).
 
 ### Analysis of generations
-To access the generated sequences:
+To access the test sequences:
 ```
-data = UniRefDataset('data/uniref50/', 'rtest', structure=False)
+test_data = UniRefDataset('data/uniref50/', 'rtest', structure=False)
 ```
-or 
+To access the generated sequences: 
 ```
-data = 'path_to_generated'
-dms.utils.read_txt(data)
+TODO
 ```
-To analyze the quality of the generations, we look at the amino acid KL divergence (DMs/analysis/calc_aafreq_train_valid_test.py), the secondary structre KL divergence (DMs/analysis/calc_kl_ss.py), the Fréchet inception distance (DMs/analysis/calc_fid.py), and the hamming distance (DMs/analysis/calc_nearestseq_hamming.py).
+To analyze the quality of the generations, we look at the amino acid KL divergence ([aa_reconstruction_parity_plot](https://github.com/microsoft/DMs/blob/main/analysis/plot.py), the secondary structre KL divergence ([DMs/analysis/calc_kl_ss.py](https://github.com/microsoft/DMs/blob/main/analysis/calc_kl_ss.py)), the Fréchet inception distance ([DMs/analysis/calc_fid.py](https://github.com/microsoft/DMs/blob/main/analysis/calc_fid.py)), and the hamming distance ([DMs/analysis/calc_nearestseq_hamming.py](https://github.com/microsoft/DMs/blob/main/analysis/calc_nearestseq_hamming.py)).
 
 We also compute the self-consistency perplexity to evaluate the foldability of generated sequences (TODO: file).
 
