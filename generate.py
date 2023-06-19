@@ -44,6 +44,7 @@ def main():
                         help='number of gpus per node')
     parser.add_argument('--no-step', action='store_true') # For D3PM if true will predict x_0 from x_t, instead of x_tminus1
     parser.add_argument('--delete-prev',action='store_true')  # Will delete previous generated sequences
+    parser.add_argument('--count', default=0, type=int) # Start new gen sequences from 0, unless
     parser.add_argument('--idr',action='store_true')  # Will delete previous generated sequences
     args = parser.parse_args()
 
@@ -84,7 +85,7 @@ def main():
     bidirectional = True
     n_tokens = len(MSA_ALPHABET)
 
-    if args.mask == 'autoreg' or args.mask == 'so' or args.mask == 'reference' or args.mask == 'valid-sample' or args.mask == 'bert':
+    if args.mask == 'autoreg' or args.mask == 'so' or args.mask == 'reference' or args.mask == 'test-sample' or args.mask == 'bert':
         tokenizer = Tokenizer()
         diffusion_timesteps = None  # Not input to model
         if args.mask == 'so' or args.mask == 'bert':
@@ -106,7 +107,7 @@ def main():
         Q_prod = Q_prod.to(device)
         Q_t = Q_t.to(device)
     else:
-        print("Choose 'autoreg', 'so', 'valid-sample', 'reference', 'blosum' or 'random' as args.mask OR chose idr")
+        print("Choose 'autoreg', 'so', 'test-sample', 'reference', 'blosum' or 'random' as args.mask OR chose idr")
     print("Using", args.mask, "scheme")
     masking_idx = tokenizer.mask_id
     padding_idx = tokenizer.pad_id
@@ -139,7 +140,7 @@ def main():
                        args.state_dict = args.out_fpath + output
                        last_epoch = epoch
 
-    if args.mask != 'reference' and args.mask != 'valid-sample':
+    if args.mask != 'reference' and args.mask != 'test-sample':
         print('Using checkpoint', last_epoch)
         print('Loading weights from ' + args.state_dict + '...')
         sd = torch.load(args.state_dict, map_location=torch.device(device))
@@ -147,7 +148,7 @@ def main():
         msd = {k.split('module.')[1]: v for k, v in msd.items()}
         model.load_state_dict(msd)
 
-    seq_lengths = [32, 64, 128, 256, 384, 512] #, 1024, 2048] # Generate diff length sequences
+    seq_lengths = [64, 128, 256, 384] #, 64, 128, 256, 384, 512] #, 1024, 2048] # Generate diff length sequences
     seqs = ""
     seqs_only = ""
     overall_count = 0
@@ -158,10 +159,10 @@ def main():
             os.remove(file)
             print("Deleting", file)
 
-    if args.mask != 'valid-sample' and not args.idr:
+    if args.mask != 'test-sample' and not args.idr:
         for i, seq_len in enumerate(seq_lengths):
             with open(args.out_fpath + 'generated_samples_string_' + str(seq_len) + '.fasta', 'a') as f:
-                count = 0
+                count = args.count
                 fasta_string = ""
 
                 if args.mask == 'autoreg' or args.mask=='so' or args.mask == 'bert':
@@ -201,15 +202,15 @@ def main():
             f.write('\n')
 
 
-    elif args.mask == 'valid-sample' and not args.idr:
-        seq_lengths = [32, 64, 128, 256, 384, 512]
+    elif args.mask == 'test-sample' and not args.idr:
+        #seq_lengths = [32] #, 64, 128, 256, 384, 512]
         overall_count = 0
         seqs = ""
         string = generate_valid_subset(data_top_dir=data_top_dir, samples=args.num_seqs)
         for i, seq_len in enumerate(seq_lengths):
             with open(args.out_fpath + 'generated_samples_string_'+str(seq_len)+'.fasta', 'a') as f:
                 fasta_string = ""
-                count=0
+                count=args.count
                 print(len(string[i]))
                 for _s in string[i]:
                     fasta_string += ">SEQUENCE_" + str(count) + "\n" + str(_s) + "\n"
@@ -247,7 +248,7 @@ def main():
 
 
     # Plot distribution of generated samples
-    if args.mask != 'valid-sample':
+    if args.mask != 'test-sample':
         aa_reconstruction_parity_plot(project_dir, args.out_fpath, idr_flag +'generated_samples_string.csv', idr=args.idr)
 
 def get_IDR_sequences(data_top_dir, tokenizer):
@@ -401,6 +402,7 @@ def generate_text_d3pm(model, seq_len, Q_bar=None, Q=None, tokenizer=Tokenizer()
                 prediction = model(sample, timesteps)
             elif model_type == 'Transformer':
                 prediction = model(sample, sample, timesteps) # TODO fix target?
+            print(prediction)
             p = prediction[:, :, :tokenizer.K]  # p_theta_tilde (x_0_tilde | x_t) # Don't predict non-standard AAs
             p = torch.nn.functional.softmax(p, dim=-1)  # softmax over categorical probs
             p = p.to(torch.float64)
@@ -447,8 +449,9 @@ def generate_random_seq(seq_len, train_prob_dist, tokenizer=Tokenizer()):
     return sample, tokenizer.untokenize(sample)
 
 def generate_valid_subset(data_top_dir='data/', samples=20):
+    "Randomly sample from test dataset for comparisons to generated"
     metadata = np.load(data_top_dir + 'uniref50/lengths_and_offsets.npz')
-    ds_valid = UniRefDataset(data_top_dir+'uniref50/', 'valid', structure=False)
+    ds_valid = UniRefDataset(data_top_dir+'uniref50/', 'rtest', structure=False)
     valid_idx = ds_valid.indices
     len_valid = metadata['ells'][valid_idx]
     #valid_indices = np.sort(np.random.choice(len_valid, 80000, replace=False))
@@ -458,32 +461,26 @@ def generate_valid_subset(data_top_dir='data/', samples=20):
                           batch_sampler=valid_sampler,
                           num_workers=8)
     #sample
-    seq_lengths = [32, 64, 128, 256, 384, 512]
-    sample_32 = []
+    #seq_lengths = [64, 128, 256, 384]
     sample_64 = []
     sample_128 = []
     sample_256 = []
     sample_384 = []
-    sample_512 = []
     for i, batch in enumerate(dl_valid):
         for j,seq in enumerate(batch[0]):
             seq_len = len(seq)
-            if seq_len <= 32:
-                sample_32.append(seq)
-            elif seq_len > 32 and seq_len <= 64:
+            if seq_len >= 40 and seq_len <= 80: # near 62
                 sample_64.append(seq)
-            elif seq_len > 64 and seq_len <= 128:
+            elif seq_len > 100 and seq_len <= 150: # near 128
                 sample_128.append(seq)
-            elif seq_len > 128 and seq_len <= 256:
+            elif seq_len > 230 and seq_len <= 270: # near 256
                 sample_256.append(seq)
-            elif seq_len > 256 and seq_len <= 384:
+            elif seq_len > 490 and seq_len <= 530: # near 384
                 sample_384.append(seq)
-            elif seq_len > 384 and seq_len <= 512:
-                sample_512.append(seq)
             else:
                 pass
-    return random.sample(sample_32, samples), random.sample(sample_64, samples), random.sample(sample_128, samples), \
-            random.sample(sample_256, samples), random.sample(sample_384, samples), random.sample(sample_512, samples)
+    return random.sample(sample_64, samples), random.sample(sample_128, samples), \
+            random.sample(sample_256, samples), random.sample(sample_384, samples)
 
 
 

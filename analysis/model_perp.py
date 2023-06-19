@@ -14,7 +14,7 @@ def main():
     np.random.seed(0) # set random seed
 
     # Def read seqs from fasta
-    data = UniRefDataset('data/uniref50/', 'rtest', structure=False, max_len=1022) # For ESM max_len=1024 (1022+start/stop), for DIFF 2048
+    data = UniRefDataset('data/uniref50/', 'rtest', structure=False, max_len=2048) # For ESM max_len=1022 (1024+start/stop), for DIFF 2048
 
     #checkpoint = ESM1b_640M()
     #save_name = 'esm_1b_640M'

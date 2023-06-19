@@ -42,17 +42,17 @@ def main():
     parser.add_argument('--tie_weights', action='store_true')
     parser.add_argument('--final_norm', action='store_true')
     parser.add_argument('--mask', type=str, default='autoreg')
-    parser.add_argument('--batch-size', type=int, default=20)
+    parser.add_argument('--batch-size', type=int, default=20) # batch-size (on amlt use 1)
     parser.add_argument('--n-sequences', type=int, default=64)
     parser.add_argument('--seq-length', type=int, default=512)
-    parser.add_argument('--penalty-value', type=float, default=0) # Default no penalty /=1
+    parser.add_argument('--penalty-value', type=float, default=0) # Default no penalty /=1 on gap generation
     parser.add_argument('--subsampling', type=str, default='MaxHamming')
-    parser.add_argument('--delete-prev', action='store_true')  # Will delete previous generated sequences
-    parser.add_argument('--start-query', action='store_true')
-    parser.add_argument('--start-msa', action='store_true')
-    parser.add_argument('--idr', action='store_true')
-    parser.add_argument('--amlt', action='store_true')
-    parser.add_argument('--run', type=int, default=0)
+    parser.add_argument('--delete-prev', action='store_true')  # Will delete previous generated sequences that start with generated* in main folder
+    parser.add_argument('--start-query', action='store_true') # if starting from query -> gen msa
+    parser.add_argument('--start-msa', action='store_true') # if starting from msa, gen-> query
+    parser.add_argument('--idr', action='store_true') # if doing idr generation
+    parser.add_argument('--amlt', action='store_true') # if running on amlt
+    parser.add_argument('--run', type=int, default=0) # for conditional generation of idrs to query data
     args = parser.parse_args()
 
     #_ = torch.manual_seed(0)

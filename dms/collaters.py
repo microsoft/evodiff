@@ -111,6 +111,58 @@ class OAMaskCollater(object):
         tokenized = _pad(tokenized, self.tokenizer.pad_id)
         return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), masks)
 
+class LRMaskCollater(object):
+    """
+    Mask Collater for masking batch data in a L->R Autoregressive fashion (used only for downstream)
+    inputs:
+        sequences : list of sequences
+        inputs_padded: if inputs are padded (due to truncation in Simple_Collater) set True (default False)
+
+    OA-ARM variables:
+        D : possible permutations from 0.. max length
+        t : randomly selected timestep
+
+    outputs:
+        src : source  masked sequences (model input)
+        timesteps: (D-t+1) term
+        tokenized: tokenized sequences (target seq)
+        masks: masks used to generate src
+    """
+    def __init__(self, tokenizer=Tokenizer()):
+        self.tokenizer = tokenizer
+
+    def __call__(self, sequences):
+        tokenized = [torch.tensor(self.tokenizer.tokenize(s)) for s in sequences]
+        max_len = max(len(t) for t in tokenized)
+        src=[]
+        timesteps = []
+        masks=[]
+        mask_id = torch.tensor(self.tokenizer.mask_id, dtype=torch.int64)
+        for i,x in enumerate(tokenized):
+            # Randomly generate timestep and indices to mask
+            D = len(x) # D should have the same dimensions as each sequence length
+            if D <= 1:  # for sequence length = 1 in dataset
+                t = 1
+            else:
+                t = np.random.randint(1, D) # randomly sample timestep
+            num_mask = (D-t+1)
+            # Append timestep
+            timesteps.append(num_mask)
+            # Generate mask
+            mask_arr = np.arange(t,D) # Generates array of len num_mask # TODO if this is the only diff line merge with collater above)
+            index_arr = np.arange(0, max_len) #index array [1...seq_len]
+            mask = np.isin(index_arr, mask_arr, invert=False).reshape(index_arr.shape) # mask bools indices specified by mask_arr
+            # Mask inputs
+            mask = torch.tensor(mask, dtype=torch.bool)
+            masks.append(mask)
+            x_t = ~mask[0:D] * x + mask[0:D] * mask_id
+            src.append(x_t)
+        # PAD out
+        src = _pad(src, self.tokenizer.pad_id)
+        masks = _pad(masks*1,0) #, self.seq_length, 0)
+        tokenized = _pad(tokenized, self.tokenizer.pad_id)
+        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), masks)
+
 
 class D3PMCollater(object):
     """
@@ -228,3 +280,42 @@ class D3PMCollaterMSA(object):
         tgt_one_hot = _pad_msa(tgt_one_hot, self.num_seqs, max_seq_len, self.tokenizer.pad_id, dim=4)
         return (src.to(torch.long), src_one_hot.to(torch.double), torch.tensor(timesteps), tokenized.to(torch.long),
                 tgt_one_hot.to(torch.double), self.Q, self.Q_bar, q_x.to(torch.double))
+
+
+class ESMOAMaskCollater(object):
+    "Wrapped for OA Collater to operate on ESM w/ ESM alphabet and batch converter/tokens"
+    def __init__(self, alphabet):
+        self.alphabet= alphabet
+        self.batch_converter = alphabet.get_batch_converter()
+    def __call__(self, sequences):
+        input_data = [("protein0", sequences[0][0])]
+        batch_labels, batch_strs, sample = self.batch_converter(input_data)
+        #print(batch_labels, batch_strs, sample)
+        #print("CLS, EOS INDEX", self.alphabet.cls_idx, self.alphabet.eos_idx)
+        max_len = max(len(t) for t in sample)
+        src=[]
+        timesteps = []
+        masks=[]
+        mask_id = torch.tensor(self.alphabet.mask_idx, dtype=torch.int64)
+        for i,x in enumerate(sample):
+            # Randomly generate timestep and indices to mask
+            D = len(x) # D should have the same dimensions as each sequence length, minus start stop token
+            t = np.random.randint(1, D-1) # randomly sample timestep, not start or end tokens
+            num_mask = (D-t+1) # from OA-ARMS
+            # Append timestep
+            timesteps.append(num_mask)
+            # Generate mask
+            mask_arr = np.random.choice(D, num_mask, replace=False) # Generates array of len num_mask
+            index_arr = np.arange(0, max_len) #index array [1...seq_len]
+            mask = np.isin(index_arr, mask_arr, invert=False).reshape(index_arr.shape) # mask bools indices specified by mask_arr
+            # Mask inputs
+            mask = torch.tensor(mask, dtype=torch.bool)
+            masks.append(mask)
+            x_t = ~mask * x + mask * mask_id
+            src.append(x_t)
+            #print(x_t)
+        # PAD out
+        src = _pad(src, self.alphabet.padding_idx)
+        masks = _pad(masks*1,0) #, self.seq_length, 0)
+        tokenized = _pad(sample, self.alphabet.padding_idx)
+        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), masks)

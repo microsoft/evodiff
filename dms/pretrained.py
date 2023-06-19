@@ -12,6 +12,10 @@ def download_model(model_name):
     state_dict = "zenodo/checkpoints/"+model_name+".tar"
     return state_dict
 
+def download_generated(model_name):
+    sequence_list = "curl -O"
+    return sequence_list
+
 def load_d3pm_checkpoint(model_name, config_path, diffusion_timesteps, tokenizer=Tokenizer(), causal=False,
                          n_tokens = len(MSA_ALPHABET)):
     with open(config_path, 'r') as f:
@@ -79,7 +83,7 @@ def D3PM_UNIFORM_640M():
     model, tokenizer = load_d3pm_checkpoint("d3pm-uniform-640M", "config/config640M.json", diffusion_timesteps=dt,
                                             tokenizer=tokenizer)
     scheme = 'd3pm'
-    return model, collater, tokenizer, scheme
+    return model, collater, tokenizer, scheme, Q_prod, Q_t
 
 
 def D3PM_UNIFORM_38M():
@@ -90,7 +94,7 @@ def D3PM_UNIFORM_38M():
     model, tokenizer = load_d3pm_checkpoint("d3pm-uniform-38M", "config/config38M.json", diffusion_timesteps=dt,
                                             tokenizer=tokenizer)
     scheme = 'd3pm'
-    return model, collater, tokenizer, scheme
+    return model, collater, tokenizer, scheme, Q_prod, Q_t
 
 
 def OA_AR_640M():

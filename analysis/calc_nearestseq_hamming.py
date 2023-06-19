@@ -65,21 +65,24 @@ num_lengths = 4 # ~ 20 min per length
 batch_size = 10000
 
 # Compute Hamming between all natural sequences
-train_dists = []
-min_dist = 1
-for i in range(num_lengths):
-    num_batches = math.ceil(len(train_seqs[i])/batch_size)
-    for batch in range(num_batches):
-        seq_arr=np.array([np.array(s) for s in train_seqs[i][batch*batch_size:(batch+1)*batch_size]])
-        print("batch", batch, "of", num_batches, "seq arr", seq_arr.shape)
-        all_dist = list(distance.pdist(np.array(seq_arr), metric='hamming'))
-        if min(all_dist) <= min_dist:
-            min_dist = min(all_dist)
-            print("minimum dis", min_dist)
+# Uncomment when done getting new data
+# train_dists = []
+# min_dist = 1
+# for i in range(num_lengths):
+#     num_batches = math.ceil(len(train_seqs[i])/batch_size)
+#     for batch in range(num_batches):
+#         seq_arr=np.array([np.array(s) for s in train_seqs[i][batch*batch_size:(batch+1)*batch_size]])
+#         print("batch", batch, "of", num_batches, "seq arr", seq_arr.shape)
+#         all_dist = list(distance.pdist(np.array(seq_arr), metric='hamming'))
+#         if min(all_dist) <= min_dist:
+#             min_dist = min(all_dist)
+#             print("minimum dis", min_dist)
 
 # Calculate each dist to train
 project_dir = '../DMs/'
-runs = ['sequence/blosum-0-seq/', 'sequence/oaardm/', 'd3pm-final/random-0-seq', 'arcnn/cnn-38M/', 'pretrain21/cnn-38M/', 'esm-1b/']
+#runs = ['sequence/blosum-0-seq/', 'sequence/oaardm/',
+#runs = ['d3pm-final/random-0-seq/', 'arcnn/cnn-38M/', 'pretrain21/cnn-38M/', 'esm-1b/']
+runs = ['wu/']
 all_mins = []
 
 for run in runs:
@@ -107,4 +110,5 @@ for run in runs:
                 [train_gen_dists.append(dist) for dist in list_dist if dist <= 0.5]
     all_mins.append(min_train_gen_dists)
 
-[print(runs[i], all_mins[i]) for i in range(len(runs))]
+print(all_mins)
+#[print(runs[i], all_mins[i]) for i in range(len(runs))]
