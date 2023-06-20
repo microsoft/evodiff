@@ -3,8 +3,9 @@ import json
 from dms.model import ByteNetLMTime, MSATransformerTime
 from sequence_models.esm import MSATransformer
 from sequence_models.constants import MSA_ALPHABET, PROTEIN_ALPHABET, ALL_AAS, PAD, MSA_PAD, MASK
+from sequence_models.collaters import LMCollater
 from dms.utils import Tokenizer, download_model
-from dms.collaters import D3PMCollater, OAMaskCollater, LRMaskCollater, ESMOAMaskCollater, D3PMCollaterMSA
+from dms.collaters import D3PMCollater, OAMaskCollater, ESMOAMaskCollater, D3PMCollaterMSA
 from sequence_models.collaters import MSAAbsorbingCollater
 import esm
 
@@ -113,7 +114,7 @@ def D3PM_UNIFORM_38M():
 
 
 def OA_AR_640M():
-    tokenizer = Tokenizer(sequences=True)
+    tokenizer = Tokenizer()
     collater = OAMaskCollater(tokenizer=tokenizer)
     model, tokenizer = load_sequence_checkpoint("oaar-640M", "config/config640M.json", diffusion_timesteps=None, \
                          tokenizer=tokenizer)
@@ -122,7 +123,7 @@ def OA_AR_640M():
 
 
 def OA_AR_38M():
-    tokenizer = Tokenizer(sequences=True)
+    tokenizer = Tokenizer()
     collater = OAMaskCollater(tokenizer=tokenizer)
     model, tokenizer = load_sequence_checkpoint("oaar-38M", "config/config38M.json", diffusion_timesteps=None, \
                          tokenizer=tokenizer)
@@ -132,26 +133,26 @@ def OA_AR_38M():
 
 def LR_AR_640M():
     n_tokens = len(PROTEIN_ALPHABET)
-    tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD, sequences=True)
-    collater = LRMaskCollater(tokenizer=tokenizer)
+    tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD)
+    collater = LMCollater(PROTEIN_ALPHABET)
     model, tokenizer = load_sequence_checkpoint("lrar-640M", "config/config640M.json", diffusion_timesteps=None, \
                                 tokenizer=tokenizer, causal=True, n_tokens=n_tokens)
-    scheme='mask'
+    scheme='causal-mask'
     return model, collater, tokenizer, scheme
 
 
 def LR_AR_38M():
     n_tokens = len(PROTEIN_ALPHABET)
-    tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD, sequences=True)
-    collater = LRMaskCollater(tokenizer=tokenizer)
+    tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD)
+    collater = LMCollater(PROTEIN_ALPHABET)
     model, tokenizer = load_sequence_checkpoint("lrar-38M", "config/config38M.json", diffusion_timesteps=None, \
                                 tokenizer=tokenizer, causal=True, n_tokens=n_tokens)
-    scheme='mask'
+    scheme='causal-mask'
     return model, collater, tokenizer, scheme
 
 def CARP_38M():
     n_tokens = len(PROTEIN_ALPHABET)
-    tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD, sequences=True)
+    tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD)
     collater = OAMaskCollater(tokenizer=tokenizer)
     model, tokenizer = load_sequence_checkpoint("carp-38M", "config/config38M.json", diffusion_timesteps=None, \
                                 tokenizer=tokenizer, causal=False, n_tokens=n_tokens)
@@ -160,7 +161,7 @@ def CARP_38M():
 
 def CARP_640M():
     n_tokens = len(PROTEIN_ALPHABET)
-    tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD, sequences=True)
+    tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD)
     collater = OAMaskCollater(tokenizer=tokenizer)
     model, tokenizer = load_sequence_checkpoint("carp-640M", "config/config640M.json", diffusion_timesteps=None, \
                                 tokenizer=tokenizer, causal=False, n_tokens=n_tokens)

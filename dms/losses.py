@@ -39,9 +39,10 @@ class OAMaskedCrossEntropyLoss(CrossEntropyLoss):
         ce_losses
         nll_losses
     """
-    def __init__(self, weight=None, reduction='none', reweight=True, tokenizer=Tokenizer()):
+    def __init__(self, weight=None, reduction='none', reweight=True, tokenizer=Tokenizer(), return_reduced=True):
         self.reweight=reweight
         self.tokenizer = tokenizer
+        self.return_reduced = return_reduced
         super().__init__(weight=weight, reduction=reduction)
     def forward(self, pred, tgt, mask, timesteps, input_mask):
         # Make sure we have that empty last dimension
@@ -57,17 +58,20 @@ class OAMaskedCrossEntropyLoss(CrossEntropyLoss):
         p = torch.masked_select(pred, mask).view(mask_tokens, -1) # [T x K] predictions for each mask char
         t = torch.masked_select(tgt, mask.squeeze()) # [ T ] true mask char
         loss = super().forward(p, t) # [ T ] loss per mask char
-        # Calculate reweighted CE loss and NLL loss
-        nll_losses = loss.sum()
-        if self.reweight: # Uses Hoogeboom OARDM reweighting term
-            rwt_term = 1. / timesteps
-            rwt_term = rwt_term.repeat_interleave(timesteps)
-            _n_tokens = nonpad_tokens.repeat_interleave(timesteps)
-            ce_loss = _n_tokens * rwt_term * loss
-            ce_losses = ce_loss.sum()  # reduce mean
+        if not self.return_reduced: # For perplexity calc of masked models
+             return loss, loss
         else:
-            ce_losses = nll_losses
-        return ce_losses, nll_losses.to(torch.float64) # normalize by # of tokens
+            # Calculate reweighted CE loss and NLL loss
+            nll_losses = loss.sum()
+            if self.reweight: # Uses Hoogeboom OARDM reweighting term
+                rwt_term = 1. / timesteps
+                rwt_term = rwt_term.repeat_interleave(timesteps)
+                _n_tokens = nonpad_tokens.repeat_interleave(timesteps)
+                ce_loss = _n_tokens * rwt_term * loss
+                ce_losses = ce_loss.sum()  # reduce mean
+            else:
+                ce_losses = nll_losses
+            return ce_losses, nll_losses.to(torch.float64) # normalize by # of tokens
 
 
 class D3PMCELoss(CrossEntropyLoss):

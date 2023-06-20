@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS, GAP
+from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS, GAP, START, STOP
 from dms.constants import BLOSUM_ALPHABET
 from sklearn.preprocessing import normalize
 import itertools
@@ -144,13 +144,15 @@ def parse_fasta(seq_file, idx):
 
 class Tokenizer(object):
     """Convert between strings and index"""
-    def __init__(self, protein_alphabet=MSA_ALPHABET, pad=MSA_PAD, mask=MASK, all_aas=MSA_AAS, gap=GAP,
-                 path_to_blosum=None, sequences=True):
+    def __init__(self, protein_alphabet=MSA_ALPHABET, pad=MSA_PAD, mask=MASK, all_aas=MSA_AAS, gap=GAP, start=START,
+                 stop=STOP, path_to_blosum=None, sequences=True):
         self.alphabet = list("".join(protein_alphabet))
         self.all_aas = list("".join(all_aas))
         self.pad = pad
         self.mask = mask
         self.gap = gap
+        self.start = start
+        self.stop = stop
         self.a_to_i = {u: i for i, u in enumerate(self.alphabet)}
         self.i_to_a = np.array(self.alphabet)
         if path_to_blosum is not None:
@@ -173,6 +175,10 @@ class Tokenizer(object):
     @property
     def gap_id(self):
         return self.tokenize(self.gap)[0]
+
+    @property
+    def start_id(self):
+        return self.tokenize(self.start)[0]
 
     def q_blosum(self):
         q = np.array([i for i in self.matrix_dict.values()])

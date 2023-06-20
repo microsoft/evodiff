@@ -165,11 +165,14 @@ def main():
                 count = args.count
                 fasta_string = ""
 
-                if args.mask == 'autoreg' or args.mask=='so' or args.mask == 'bert':
-                    sample, string = generate_text(model, seq_len, tokenizer=tokenizer, penalty=args.penalty, causal=causal,
+                if args.mask == 'autoreg' or args.mask == 'bert':
+                    sample, string = generate_oaardm(model, seq_len, tokenizer=tokenizer, penalty=args.penalty,
                                                    batch_size=args.num_seqs, device=device)
+                elif args.mask=='so':
+                    sample, string = generate_autoreg(model, seq_len, tokenizer=tokenizer, penalty=args.penalty,
+                                                     batch_size=args.num_seqs, device=device)
                 elif args.mask == 'blosum' or args.mask == 'random':
-                    sample, string = generate_text_d3pm(model, seq_len, Q_bar=Q_prod, Q=Q_t, tokenizer=tokenizer,
+                    sample, string = generate_d3pm(model, seq_len, Q_bar=Q_prod, Q=Q_t, tokenizer=tokenizer,
                                                         timesteps=diffusion_timesteps, no_step=args.no_step,
                                                         batch_size=args.num_seqs, device=device,
                                                         model_type=args.model_type)
@@ -285,7 +288,7 @@ def get_IDR_sequences(data_top_dir, tokenizer):
     #print(tokenized[0])
     return tokenized, start_idxs, end_idxs, queries, sequences
 
-def generate_text(model, seq_len, tokenizer=Tokenizer(), penalty=None, causal=False, batch_size=20, device='cuda'):
+def generate_oaardm(model, seq_len, tokenizer=Tokenizer(), penalty=None, batch_size=20, device='cuda'):
     # Generate a random start string and convert to tokens
     all_aas = tokenizer.all_aas
     mask = tokenizer.mask_id
@@ -293,11 +296,9 @@ def generate_text(model, seq_len, tokenizer=Tokenizer(), penalty=None, causal=Fa
     sample = torch.zeros((batch_size, seq_len))+mask
     sample = sample.to(torch.long)
     sample = sample.to(device)
-    #print("input seq", tokenizer.untokenize(sample))
     # Unmask 1 loc at a time randomly
     loc = np.arange(seq_len)
-    if causal == False:
-        np.random.shuffle(loc)
+    np.random.shuffle(loc)
     with torch.no_grad():
         for i in tqdm(loc):
             timestep = torch.tensor([0] * batch_size) # placeholder but not called in model
@@ -320,6 +321,33 @@ def generate_text(model, seq_len, tokenizer=Tokenizer(), penalty=None, causal=Fa
             #print([tokenizer.untokenize(s) for s in sample]) # check that sampling correctly
 
     print("final seq", [tokenizer.untokenize(s) for s in sample])
+    untokenized = [tokenizer.untokenize(s) for s in sample]
+    return sample, untokenized
+
+def generate_autoreg(model, seq_len, tokenizer=Tokenizer(), penalty=None, batch_size=20, device='cuda'):
+    # Generate a random start string and convert to tokens
+    all_aas = tokenizer.all_aas
+    start = tokenizer.start_id
+    # Start from START token
+    sample = torch.zeros((batch_size, 1))+ start
+    sample = sample.to(torch.long)
+    sample = sample.to(device)
+    # Iterate over each residue in desired length
+    loc = np.arange(seq_len)
+    with torch.no_grad():
+        for i in tqdm(loc):
+            timestep = torch.tensor([0] * batch_size) # placeholder but not called in model
+            timestep = timestep.to(device)
+            prediction = model(sample, timestep) #, input_mask=input_mask.unsqueeze(-1)) #sample prediction given input
+            p = prediction[:, -1, :len(all_aas)-6] # predict next token (don't let predict non-standard AAs)
+            p = torch.nn.functional.softmax(p, dim=1) # softmax over categorical probs
+            p_sample = torch.multinomial(p, num_samples=1)
+            #print(p_sample.shape, sample.shape)
+            sample = torch.cat((sample, p_sample), dim=1)
+            #print(sample.shape)
+            #print([tokenizer.untokenize(s) for s in sample]) # check that sampling correctly
+
+    print("final seq", [tokenizer.untokenize(s[1:]) for s in sample]) # dont care about appending start token
     untokenized = [tokenizer.untokenize(s) for s in sample]
     return sample, untokenized
 
@@ -375,7 +403,7 @@ def generate_idr(model, data_top_dir, tokenizer=Tokenizer(), penalty=None, causa
     untokenized_idr = [tokenizer.untokenize(s) for s in samples_idr]
     return samples, untokenized_idr, queries, sequences_idr
 
-def generate_text_d3pm(model, seq_len, Q_bar=None, Q=None, tokenizer=Tokenizer(), timesteps=500, no_step=False,
+def generate_d3pm(model, seq_len, Q_bar=None, Q=None, tokenizer=Tokenizer(), timesteps=500, no_step=False,
                        batch_size=20, device='cuda', model_type='ByteNet'):
     """
     no_step: if true will calculate p_tilde(x_0|x_t) from a uniform sample
