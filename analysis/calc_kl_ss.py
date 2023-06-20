@@ -1,13 +1,11 @@
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
 from functools import reduce
-import os
 from pandas import read_csv, DataFrame, merge
 from itertools import groupby
 import torch
 import numpy as np
 import torch.nn.functional as F
+from analysis.plot import ss_helix_strand, ss_box_whisker
 
 def load_data(output_directory):
     "Edited directly from Noelia PGP Notebooks"
@@ -119,53 +117,67 @@ def load_data(output_directory):
                   [indexes, sequences, disorder, metal, small, nucleic, conservation, dssp3, bpo, cco, mfo, subcell,
                    cath, transmembrane])
 
-colors = ['#D0D0D0', "#b0e16d",#"#D2EEAC",
-          '#63C2B5', '#46A7CB', '#1B479D', 'lightcoral', 'firebrick', 'firebrick']
 
 folder = '../PGP/'
-random = load_data(folder+'PGP_OUT/ref/') # ref baseline is random
-random.insert(0, "type", "ref")
+save_name = 'small' # large or small
 
-valid = load_data(folder+'PGP_OUT/valid/')
-valid.insert(0, "type", "valid")
+# Large
+if save_name == 'large':
+    Large
+    colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'mediumpurple', 'rebeccapurple',
+              'darkslateblue', 'firebrick']
+    random = load_data(folder+'PGP_OUT_LARGE/ref/') # ref baseline is random
+    random.insert(0, "type", "ref")
+    valid = load_data(folder+'PGP_OUT_LARGE/valid/')
+    valid.insert(0, "type", "valid")
+    test = load_data(folder+'PGP_OUT_LARGE/test/')
+    test.insert(0, "type", "test")
+    blosum = load_data(folder+'PGP_OUT_LARGE/blosum/')
+    blosum.insert(0, "type", "blosum d3pm")
+    uniform = load_data(folder+'PGP_OUT_LARGE/random/')  # random model is uniform
+    uniform.insert(0, "type", "random d3pm")
+    so = load_data(folder+'PGP_OUT_LARGE/soardm/')
+    so.insert(0, "type", "soardm")
+    oa = load_data(folder+'PGP_OUT_LARGE/oaardm/')
+    oa.insert(0, "type", "oaardm")
+    carp = load_data('../PGP/PGP_OUT_LARGE/carp/')
+    carp.insert(0, "type", "carp")
+    folding = load_data('../PGP/PGP_OUT_LARGE/foldingdiff/')
+    folding.insert(0, "type", "folding")
+    esm1b = load_data('../PGP/PGP_OUT_LARGE/esm-1b/')
+    esm1b.insert(0, "type", "esm1b")
+    esm2 = load_data('../PGP/PGP_OUT_LARGE/esm2/')
+    esm2.insert(0, "type", "esm2")
+    #concatenate the dataframes
+    data = pd.concat([valid, blosum, uniform, oa, so, carp, esm1b, esm2, folding, random, test]).reset_index(drop=True)
+    runs = ['valid', 'blosum d3pm', 'random d3pm', 'oaardm', 'soardm', 'carp', 'esm1b', 'esm2', 'folding', 'ref', 'test']
+    labels =['Valid', 'Blosum D3PM', 'Uniform D3PM', 'OA-ARDM', 'LR-AR', 'CARP', 'ESM-1b', 'ESM2', 'FoldingDiff', 'Random', 'Test']
 
-test = load_data(folder+'PGP_OUT_LARGE/test/')
-test.insert(0, "type", "test")
-
-blosum = load_data(folder+'PGP_OUT/blosum/')
-blosum.insert(0, "type", "blosum d3pm")
-
-uniform = load_data(folder+'PGP_OUT/random/')  # random model is uniform
-uniform.insert(0, "type", "random d3pm")
-
-so = load_data(folder+'PGP_OUT/soardm/')
-so.insert(0, "type", "soardm")
-
-oa = load_data(folder+'PGP_OUT/oaardm/')
-oa.insert(0, "type", "oaardm")
-
-carp = load_data('../PGP/PGP_OUT/carp/')
-carp.insert(0, "type", "carp")
-
-# esm1b = load_data('../PGP/PGP_OUT_LARGE/esm-1b/')
-# esm1b.insert(0, "type", "esm1b")
-
-# esm2 = load_data('../PGP/PGP_OUT_LARGE/esm2/')
-# esm2.insert(0, "type", "esm2")
-
-# concatenate the dataframes
-data = pd.concat([valid, test, blosum, uniform, oa, so, carp, random]).reset_index(drop=True)
-
-#data
-# print columns that are currently available
-print(f"These columns can be queried: {', '.join(data.columns.values)}")
-# concatenate the dataframes
-data = pd.concat([valid, test, blosum, uniform, oa, so, carp, random]).reset_index(drop=True)
-print(f"These columns can be queried: {', '.join(data.columns.values)}")
-
+# Small
+elif save_name=='small':
+    # Small
+    colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'firebrick']
+    random = load_data(folder+'PGP_OUT/ref/') # ref baseline is random
+    random.insert(0, "type", "ref")
+    valid = load_data(folder+'PGP_OUT/valid/')
+    valid.insert(0, "type", "valid")
+    test = load_data(folder+'PGP_OUT/test/')
+    test.insert(0, "type", "test")
+    blosum = load_data(folder+'PGP_OUT/blosum/')
+    blosum.insert(0, "type", "blosum d3pm")
+    uniform = load_data(folder+'PGP_OUT/random/')  # random model is uniform
+    uniform.insert(0, "type", "random d3pm")
+    so = load_data(folder+'PGP_OUT/soardm/')
+    so.insert(0, "type", "soardm")
+    oa = load_data(folder+'PGP_OUT/oaardm/')
+    oa.insert(0, "type", "oaardm")
+    carp = load_data('../PGP/PGP_OUT/carp/')
+    carp.insert(0, "type", "carp")
+    data = pd.concat([valid, blosum, uniform, oa, so, carp, random, test]).reset_index(drop=True)
+    runs = ['valid', 'blosum d3pm', 'random d3pm', 'oaardm', 'soardm', 'carp', 'ref', 'test']
+    labels =['Valid', 'Blosum D3PM', 'Uniform D3PM', 'OA-ARDM', 'LR-AR', 'CARP','Random', 'Test']
 
 # Get KL between SS
-runs = ['valid', 'blosum d3pm', 'random d3pm', 'oaardm', 'soardm', 'carp', 'ref', 'test']
 kl_loss = torch.nn.KLDivLoss(reduction="batchmean")
 
 for run in runs:
@@ -182,43 +194,10 @@ for run in runs:
     output = kl_loss(_input, target)
     print(run, "KL", float(output))
 
-
-# cmap = [matplotlib.colors.LinearSegmentedColormap.from_list("", ["whitesmoke", c]) for c in colors]
-#cmap = ['Blues'] + ['Blues'] * 6 + ['Greys']
+# Make plots
 
 # 2D density plots
-runs = ['valid', 'blosum d3pm', 'random d3pm', 'oaardm', 'soardm', 'carp', 'ref', 'test']
-labels =['Valid', 'Blosum D3PM', 'Uniform D3PM', 'OA-ARDM', 'LR-AR', 'CARP', 'Random', 'Test']
-fig, ax = plt.subplots(nrows=2, ncols=4, figsize=(10, 5), constrained_layout=True, sharex=False, sharey=False)
-ax = ax.ravel()
-for i, run in enumerate(runs):
-    helix = data[data['type'] == run]['helix_percent']
-    strand = data[data['type'] == run]['strand_percent']
-
-    plt.rcParams['axes.titley'] = 1.0  # y is in axes-relative coordinates.
-    plt.rcParams['axes.titlepad'] = -14
-    ax[i].set_title(labels[i])
-
-    sns.kdeplot(x=helix, y=strand,
-                fill=True, thresh=0.001, levels=10,
-                cmap='Greys', ax=ax[i], cbar=False, common_norm=True)
-    ax[i].set_xlabel('% Helix per Seq')
-    ax[i].set_ylabel('% Strand per Seq')
-    ax[i].set_xlim(-0.05, 1)
-    ax[i].set_ylim(-0.05, 1)
-plt.show()
-fig.savefig(os.path.join('plots/helix_strand_large.svg'))
-fig.savefig(os.path.join('plots/helix_strand_large.png'))
+ss_helix_strand(runs, data, labels, save_name)
 
 # Box/whisker plots
-fig, ax = plt.subplots(1, 3, figsize=(7, 3.5), sharex=True, sharey=True)
-sns.boxplot(data=data,x="helix_percent",y="type", ax=ax[0], palette = colors)
-sns.boxplot(data=data,x="strand_percent",y="type", ax=ax[1], palette = colors)
-sns.boxplot(data=data,x="other_percent",y="type", ax=ax[2], palette = colors)
-ax[0].set_xlabel('% Helix per Sequence')
-ax[1].set_xlabel('% Strand per Sequence')
-ax[2].set_xlabel('% Loop per Sequence')
-[ax[i].set_ylabel(None) for i in range(len(ax))]
-plt.show()
-fig.savefig(os.path.join('plots/structure_box.svg'))
-fig.savefig(os.path.join('plots/structure_box.png'))
+ss_box_whisker(data, colors, save_name)

@@ -21,7 +21,6 @@ def tokenize_fasta(fasta_file):
 
 def parse_train(fasta_file):
     "Get all sequences of the same length from train dataset"
-
     seq_lengths = [64, 128, 256, 384]
     seqs_64 = []
     seqs_128 = []
@@ -68,20 +67,12 @@ def batch_hamming(train_set, g):
 
 project_dir = '../DMs/'
 train_fasta = project_dir + 'data/uniref50/' + 'consensus.fasta'
-runs = ['esm2/']
-per_length = 1000 #250
-num_lengths = 1 #4 # ~ 20 min per length
+# Calculate each dist to train
+runs = ['esm-1b/']
+#runs = ['sequence/blosum-0-seq/', 'sequence/oaardm/',
+#runs = ['d3pm-final/random-0-seq/', 'arcnn/cnn-38M/', 'pretrain21/cnn-38M/', 'esm-1b/']
+
 batch_size = 10000
-
-# For everything else use:
-#train_seqs = parse_train(train_fasta) # takes ~ 4 mim
-
-# For ESM2, compare to all seqs of len 100
-train_seqs = [parse_train_for_length(train_fasta, 100)]
-print(len(train_seqs))
-print(len(train_seqs[0]))
-[len(train_seqs[i]) for i in range(num_lengths)] # Num seqs evaluated
-
 
 # Compute Hamming between all natural sequences
 # Uncomment when done getting new data
@@ -97,51 +88,69 @@ print(len(train_seqs[0]))
 #             min_dist = min(all_dist)
 #             print("minimum dis", min_dist)
 
-# Calculate each dist to train
-#runs = ['sequence/blosum-0-seq/', 'sequence/oaardm/',
-#runs = ['d3pm-final/random-0-seq/', 'arcnn/cnn-38M/', 'pretrain21/cnn-38M/', 'esm-1b/']
-
-all_mins = []
-
 for run in runs:
-    gen_fasta = project_dir + 'blobfuse/'+run+'generated_samples_string.fasta'
-    seqs = tokenize_fasta(gen_fasta)
+    if run =='esm2':
+        # For ESM2, they only generated seqs of length 100, so only compare to lengths 100
+        per_length = 1000
+        num_lengths = 1
+        train_seqs = [parse_train_for_length(train_fasta, 100)]
+        gen_fasta = project_dir + 'blobfuse/'+run+'generated_samples_string.fasta'
+        seqs = tokenize_fasta(gen_fasta)
 
-    train_gen_dists = []
-    min_train_gen_dists = 1
-    for i in range(num_lengths):
-        num_batches = math.ceil(len(train_seqs[i]) / batch_size) # Do in batches so faster
-        for batch in range(num_batches):
-            seq_arr = np.array([np.array(s) for s in train_seqs[i][batch * batch_size:(batch + 1) * batch_size]])
-            print("batch", batch, "of", num_batches, "seq arr", seq_arr.shape)
-            gen_batch = seqs[i * per_length:(i + 1) * per_length]
-            all_dist = [batch_hamming(seq_arr, g) for g in gen_batch]
-            for list_dist in all_dist:
-                if min(list_dist) <= min_train_gen_dists: # Report new min
-                    min_train_gen_dists = min(list_dist)
-                    print("minimum dis", min_train_gen_dists)
-                [train_gen_dists.append(dist) for dist in list_dist if dist <= 0.5]
-    all_mins.append(min_train_gen_dists)
+        train_gen_dists = []
+        min_train_gen_dists = 1
+        for i in range(num_lengths):
+            num_batches = math.ceil(len(train_seqs[i]) / batch_size) # Do in batches so faster
+            for batch in range(num_batches):
+                seq_arr = np.array([np.array(s) for s in train_seqs[i][batch * batch_size:(batch + 1) * batch_size]])
+                print("batch", batch, "of", num_batches, "seq arr", seq_arr.shape)
+                gen_batch = seqs[i * per_length:(i + 1) * per_length]
+                all_dist = [batch_hamming(seq_arr, g) for g in gen_batch]
+                for list_dist in all_dist:
+                    if min(list_dist) <= min_train_gen_dists: # Report new min
+                        min_train_gen_dists = min(list_dist)
+                        print("minimum dis", min_train_gen_dists)
+                    [train_gen_dists.append(dist) for dist in list_dist if dist <= 0.5]
+        all_mins.append(min_train_gen_dists)
 
-print(all_mins)
-#[print(runs[i], all_mins[i]) for i in range(len(runs))]
+    elif run == 'foldingdiff/' or run=='esm-1b/':
+        print("Gathering seqs len for each sequence")
+        # For Folding diff data, find minimum hamming to each len in train of same length
+        gen_fasta = project_dir + 'blobfuse/'+run+'generated_samples_string.fasta'
+        seqs = tokenize_fasta(gen_fasta)
 
+        train_gen_dists = []
+        min_train_gen_dists = 1
+        curr_seq_len = 0
+        for seq in tqdm(seqs):
+            if len(seq) != curr_seq_len:
+                train_batch = parse_train_for_length(train_fasta, len(seq))
+                curr_seq_len = len(seq)
+            all_dist = batch_hamming(train_batch, seq)
+            if min(all_dist) <= min_train_gen_dists:
+                min_train_gen_dists = min(all_dist)
+                print("minimum dist", min_train_gen_dists)
 
-# For Folding diff data, find minimum hamming to each len in train of same length
-# for run in runs:
-#     gen_fasta = project_dir + 'blobfuse/'+run+'generated_samples_string.fasta'
-#     seqs = tokenize_fasta(gen_fasta)
-#
-#     per_length = 250
-#     num_lengths = 4  # ~ 20 min per length
-#
-#     batch_size = 10000
-#
-#     train_gen_dists = []
-#     min_train_gen_dists = 1
-#     for seq in seqs:
-#         train_batch = parse_train_for_length(gen_fasta, len(seq))
-#         all_dist = [batch_hamming(seq, t) for t in train_batch]
-#         if min(all_dist) <= min_train_gen_dists:
-#             min_train_gen_dists = min(all_dist)
-#             print("minimum dist", min_train_gen_dists)
+    else: # For everything else we conditionally generated at 4 lengths so can just iterate over train data 1x
+        train_seqs = parse_train(train_fasta)  # takes ~ 4 mim
+        num_lengths = 4
+        per_length = 250
+        all_mins = []
+        gen_fasta = project_dir + 'blobfuse/' + run + 'generated_samples_string.fasta'
+        seqs = tokenize_fasta(gen_fasta)
+
+        train_gen_dists = []
+        min_train_gen_dists = 1
+        for i in range(num_lengths):
+            num_batches = math.ceil(len(train_seqs[i]) / batch_size) # Do in batches so faster
+            for batch in range(num_batches):
+                seq_arr = np.array([np.array(s) for s in train_seqs[i][batch * batch_size:(batch + 1) * batch_size]])
+                print("batch", batch, "of", num_batches, "seq arr", seq_arr.shape)
+                gen_batch = seqs[i * per_length:(i + 1) * per_length]
+                all_dist = [batch_hamming(seq_arr, g) for g in gen_batch]
+                for list_dist in all_dist:
+                    if min(list_dist) <= min_train_gen_dists: # Report new min
+                        min_train_gen_dists = min(list_dist)
+                        print("minimum dis", min_train_gen_dists)
+                    #[train_gen_dists.append(dist) for dist in list_dist if dist <= 0.5]
+        all_mins.append(min_train_gen_dists)
