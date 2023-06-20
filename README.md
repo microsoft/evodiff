@@ -1,15 +1,6 @@
-# Project
+# Generation of protein sequences and evolutionary alignments via discrete diffusion models
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
-
-As the maintainer of this project, please make a few updates:
-
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
-
+In this work, we train and evaluate a series of discrete diffusion models for both unconditional and conditional generation of single protein sequences as well as multiple sequence alignments (MSAs). We test both order-agnostic autoregressive diffusion and discrete denoising diffusion probabilistic models for protein sequence generation; formulate unique, bio-inspired corruption schemes for both classes of models; and evaluate the quality of generated samples for fidelity, diversity, and structural plausibility.
 
 ### Installation
 ```
@@ -39,6 +30,7 @@ Available models are:
 * ``` CARP_38M() ```
 * ``` CARP_640M() ```
 * ``` ESM1b_640M() ```
+* TODO: ADD MSA MODELS
 
 ### Unconditional sequence generation
 For sequence generation run:
@@ -67,13 +59,19 @@ test_data = UniRefDataset('data/uniref50/', 'rtest', structure=False)
 ```
 To access the generated sequences: 
 ```
-TODO
+TODO: function to download gen seqs from zenodo
 ```
-To analyze the quality of the generations, we look at the amino acid KL divergence ([aa_reconstruction_parity_plot](https://github.com/microsoft/DMs/blob/main/analysis/plot.py), the secondary structre KL divergence ([DMs/analysis/calc_kl_ss.py](https://github.com/microsoft/DMs/blob/main/analysis/calc_kl_ss.py)), the Fréchet inception distance ([DMs/analysis/calc_fid.py](https://github.com/microsoft/DMs/blob/main/analysis/calc_fid.py)), and the hamming distance ([DMs/analysis/calc_nearestseq_hamming.py](https://github.com/microsoft/DMs/blob/main/analysis/calc_nearestseq_hamming.py)).
+To analyze the quality of the generations, we look at the amino acid KL divergence ([aa_reconstruction_parity_plot](https://github.com/microsoft/DMs/blob/main/analysis/plot.py), the secondary structre KL divergence ([DMs/analysis/calc_kl_ss.py](https://github.com/microsoft/DMs/blob/main/analysis/calc_kl_ss.py)), the model perplexity ([DMs/analysis/model_perp.py](https://github.com/microsoft/DMs/blob/main/analysis/model_perp.py)), the Fréchet inception distance ([DMs/analysis/calc_fid.py](https://github.com/microsoft/DMs/blob/main/analysis/calc_fid.py)), and the hamming distance ([DMs/analysis/calc_nearestseq_hamming.py](https://github.com/microsoft/DMs/blob/main/analysis/calc_nearestseq_hamming.py)).
 
-We also compute the self-consistency perplexity to evaluate the foldability of generated sequences (TODO: file).
+We also compute the self-consistency perplexity to evaluate the foldability of generated sequences. To do so, we make use of various tools:
+* [TM score](https://zhanggroup.org/TM-score/)
+* [Omegafold](https://github.com/HeliXonProtein/OmegaFold)
+* [ProteinMPNN](https://github.com/dauparas/ProteinMPNN)
+* [Alphafold](https://github.com/deepmind/alphafold/tree/main)
+* [ESM-IF1](https://github.com/facebookresearch/esm/tree/main/esm/inverse_folding); see this [Jupyter notebook](https://colab.research.google.com/github/facebookresearch/esm/blob/main/examples/inverse_folding/notebook.ipynb) for setup details.
+* [PGP](https://github.com/hefeda/PGP)
 
-TODO: FIX CODE ABOVE + check file paths for analysis functions! @sarah
+Our analysis scripts for iterating over these tools are in the [DMs/analysis/downstream_scripts](https://github.com/microsoft/DMs/tree/main/analysis/downstream_bash_scripts) folder. Once we run the scripts in ths folder, we analyze the results in ([self_consistency_analysis.py](https://github.com/microsoft/DMs/blob/main/analysis/self_consistency_analysis.py)).
 
 ## Contributing
 
