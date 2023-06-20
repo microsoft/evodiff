@@ -532,3 +532,52 @@ def plot_plddt_perp(ordered_plddt_group, ordered_perp_group, idx, colors, labels
     plt.tight_layout()
     fig.savefig(os.path.join('plots/sc_plddt_perp_'+labels[idx]+'.svg'))
     fig.savefig(os.path.join('plots/sc_plddt_perp_'+labels[idx]+'.png'))
+
+def ss_helix_strand(runs, data, labels, save_name):
+    fig, ax = plt.subplots(nrows=3, ncols=4, figsize=(10, 7.5), constrained_layout=True, sharex=False, sharey=False)
+    ax = ax.ravel()
+    for i, run in enumerate(runs):
+        helix = data[data['type'] == run]['helix_percent']
+        strand = data[data['type'] == run]['strand_percent']
+
+        plt.rcParams['axes.titley'] = 1.0  # y is in axes-relative coordinates.
+        plt.rcParams['axes.titlepad'] = -14
+        ax[i].set_title(labels[i])
+
+        sns.kdeplot(x=helix, y=strand,
+                    fill=True, thresh=0.001, levels=10,
+                    cmap='Greys', ax=ax[i], cbar=False, common_norm=True)
+        ax[i].set_xlabel('% Helix per Seq')
+        ax[i].set_ylabel('% Strand per Seq')
+        ax[i].set_xlim(-0.05, 1)
+        ax[i].set_ylim(-0.05, 1)
+    plt.tight_layout()
+    fig.savefig(os.path.join('plots/helix_strand_' + save_name + '.svg'))
+    fig.savefig(os.path.join('plots/helix_strand_' + save_name + '.png'))
+
+def ss_box_whisker(data, colors, save_name):
+    fig, ax = plt.subplots(1, 3, figsize=(7, 3.5), sharex=True, sharey=True)
+    sns.boxplot(data=data, x="helix_percent", y="type", ax=ax[0], palette=colors)
+    sns.boxplot(data=data, x="strand_percent", y="type", ax=ax[1], palette=colors)
+    sns.boxplot(data=data, x="other_percent", y="type", ax=ax[2], palette=colors)
+    ax[0].set_xlabel('% Helix per Sequence')
+    ax[1].set_xlabel('% Strand per Sequence')
+    ax[2].set_xlabel('% Loop per Sequence')
+    [ax[i].set_ylabel(None) for i in range(len(ax))]
+    plt.tight_layout()
+    fig.savefig(os.path.join('plots/' + save_name + '_structure_box.svg'))
+    fig.savefig(os.path.join('plots/' + save_name + '_structure_box.png'))
+
+def plot_embedding(projected_embeddings, colors, i, runs, project_run):
+    fig, ax = plt.subplots(figsize=(5, 5))
+    # Plot test
+    plt.scatter(projected_embeddings[:1000, 0], projected_embeddings[:1000, 1], s=20, alpha=1, c=colors[:1000],
+                edgecolors='grey')
+    begin = 1000 * (i)
+    end = 1000 * (i + 1)
+    # Plot run
+    plt.scatter(projected_embeddings[begin:end, 0], projected_embeddings[begin:end, 1], s=20, alpha=0.95,
+                c=colors[begin:end], edgecolors='grey')
+    ax.axis('off')
+    fig.savefig(os.path.join('plots/fid_' + runs[i] + '_' + project_run + '.svg'))
+    fig.savefig(os.path.join('plots/fid_' + runs[i] + '_' + project_run + '.png'))
