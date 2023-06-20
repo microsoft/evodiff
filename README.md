@@ -27,7 +27,10 @@ Available models are:
 * ``` OA_AR_38M() ```
 * ``` LR_AR_640M() ```
 * ``` LR_AR_38M() ```
-* TODO: ADD MSA MODELS
+* ``` MSA_D3PM_BLOSUM() ```
+* ``` MSA_D3PM_UNIFORM() ```
+* ``` MSA_D3PM_OA_AR_RANDSUB() ```
+* ``` MSA_D3PM_OA_AR_MAXSUB() ```
 
 ### Unconditional sequence generation
 For sequence generation run:
