@@ -12,6 +12,7 @@ from sequence_models.datasets import UniRefDataset
 from sequence_models.utils import parse_fasta
 from torch.utils.data import DataLoader
 from torch.utils.data import Subset
+from dms.pretrained import D3PM_BLOSUM_640M, D3PM_BLOSUM_38M, D3PM_UNIFORM_640M, D3PM_UNIFORM_38M, OA_AR_640M, OA_AR_38M, LR_AR_640M, LR_AR_38M, MSA_D3PM_BLOSUM, MSA_D3PM_UNIFORM, MSA_D3PM_OA_AR_RANDSUB, MSA_D3PM_OA_AR_MAXSUB, CARP_38M, CARP_640M, ESM1b_640M
 from tqdm import tqdm
 from analysis.plot import aa_reconstruction_parity_plot
 import pandas as pd
@@ -28,18 +29,18 @@ home = str(pathlib.Path.home())
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('config_fpath')
+    # parser.add_argument('config_fpath')
     parser.add_argument('out_fpath', type=str, nargs='?', default=os.getenv('PT_OUTPUT_DIR', '/tmp') + '/')
     parser.add_argument('--dropout', type=float, default=0.0)
     parser.add_argument('--tie_weights', action='store_true')
     parser.add_argument('--final_norm', action='store_true')
     parser.add_argument('--norm_first', action='store_true') # turns norm_first on in transformer model
-    parser.add_argument('--checkpoint', type=int, default=None)
+    # parser.add_argument('--checkpoint', type=int, default=None)
     parser.add_argument('--num-seqs', type=int, default=20)
-    parser.add_argument('--mask', type=str, default='autoreg')
+    # parser.add_argument('--mask', type=str, default='autoreg')
     parser.add_argument('--penalty', type=float, default=None) # repetition penalty, commonly 1.2 is used
-    parser.add_argument('--model_type', type=str, default='ByteNet',
-                        help='ByteNet or Transformer')
+    parser.add_argument('--model_type', type=str,
+                        help='Model options are: d3pm-blosum-640M, d3pm-blosum-38M, d3pm-uniform-640M, d3pm-uniform-38M, oaar-640M, oaar-38M, lrar-640M, lrar-38M, msa-d3pm-blosum, msa-d3pm-uniform, msa-oaar-randsub, msa-oaar-maxsub, carp-640M, carp-38M, esm1b-640M')
     parser.add_argument('-g', '--gpus', default=1, type=int,
                         help='number of gpus per node')
     parser.add_argument('--no-step', action='store_true') # For D3PM if true will predict x_0 from x_t, instead of x_tminus1
@@ -51,102 +52,136 @@ def main():
     _ = torch.manual_seed(0)
     np.random.seed(0)
 
-    with open(args.config_fpath, 'r') as f:
-        config = json.load(f)
+    load_model = None
+    if args.model_type == 'd3pm-blosum-640M':
+        load_model = D3PM_BLOSUM_640M()
+    elif args.model_type == 'd3pm-blosum-38M':
+        load_model = D3PM_BLOSUM_38M()
+    elif args.model_type == 'd3pm-uniform-640M':
+        load_model = D3PM_UNIFORM_640M()
+    elif args.model_type == 'd3pm-uniform-38M':
+        load_model = D3PM_UNIFORM_38M()
+    elif args.model_type == 'oaar-640M':
+        load_model = OA_AR_640M()
+    elif args.model_type == 'oaar-38M':
+        load_model = OA_AR_38M()
+    elif args.model_type == 'lrar-640M':
+        load_model = LR_AR_640M()
+    elif args.model_type == 'lrar-38M':
+        load_model = LR_AR_38M()
+    elif args.model_type == 'msa-d3pm-blosum':
+        load_model = MSA_D3PM_BLOSUM()
+    elif args.model_type == 'msa-d3pm-uniform':
+        load_model = MSA_D3PM_UNIFORM()
+    elif args.model_type == 'msa-oaar-randsub':
+        load_model = MSA_D3PM_OA_AR_RANDSUB()
+    elif args.model_type == 'msa-oaar-maxsub':
+        load_model = MSA_D3PM_OA_AR_MAXSUB()
+    elif args.model_type == 'carp-640M':
+        load_model = CARP_640M()
+    elif args.model_type == 'carp-38M':
+        load_model = CARP_38M()
+    elif args.model_type == 'esm1b-640M':
+        load_model = ESM1b_640M()
 
-    d_embed = config['d_embed']
-    d_model = config['d_model']
-    n_layers = config['n_layers']
-    if args.model_type == 'Transformer':
-        n_head = config['n_head']
-        d_feedforward = config['d_feedforward']
-    if args.model_type == 'ByteNet':
-        kernel_size = config['kernel_size']
-        r = config['r']
-    if 'rank' in config:
-        weight_rank = config['rank']
-    else:
-        weight_rank = None
-    if 'slim' in config:
-        slim = config['slim']
-    else:
-        slim = True
-    if 'activation' in config:
-        activation = config['activation']
-    else:
-        activation = 'relu'
-    data_top_dir = home + '/Desktop/DMs/data/'
-    project_dir = home + '/Desktop/DMs/'
+    model, collater, tokenizer, scheme = load_model
 
-    torch.cuda.set_device(args.gpus)
-    device = torch.device('cuda:' + str(args.gpus))
-    idr_flag = ''
-    causal = False
-    bidirectional = True
-    n_tokens = len(MSA_ALPHABET)
+    # with open(args.config_fpath, 'r') as f:
+    #     config = json.load(f)
 
-    if args.mask == 'autoreg' or args.mask == 'so' or args.mask == 'reference' or args.mask == 'test-sample' or args.mask == 'bert':
-        tokenizer = Tokenizer()
-        diffusion_timesteps = None  # Not input to model
-        if args.mask == 'so' or args.mask == 'bert':
-            n_tokens = len(PROTEIN_ALPHABET)
-            tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD)
-            if args.mask == 'so':
-                causal = True
-                bidirectional = False
-        if args.idr:
-            idr_flag = 'idr_'
-            print("IDR GENERATION ONLY WORKS WITH args.mask = 'autoreg' OR 'so'")
-    elif args.mask == 'blosum' or args.mask == 'random':
-        tokenizer = Tokenizer(path_to_blosum=data_top_dir + "blosum62-special-MSA.mat", sequences=True)
-        diffusion_timesteps = config['diffusion_timesteps']
-        if args.mask == 'random':
-            Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=diffusion_timesteps)
-        if args.mask == 'blosum':
-            Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=diffusion_timesteps)
-        Q_prod = Q_prod.to(device)
-        Q_t = Q_t.to(device)
-    else:
-        print("Choose 'autoreg', 'so', 'test-sample', 'reference', 'blosum' or 'random' as args.mask OR chose idr")
-    print("Using", args.mask, "scheme")
-    masking_idx = tokenizer.mask_id
-    padding_idx = tokenizer.pad_id
-    print(n_tokens)
-    print(masking_idx, padding_idx)
-    print("causal", causal)
+    # d_embed = config['d_embed']
+    # d_model = config['d_model']
+    # n_layers = config['n_layers']
+    # if args.model_type == 'Transformer':
+    #     n_head = config['n_head']
+    #     d_feedforward = config['d_feedforward']
+    # if args.model_type == 'ByteNet':
+    #     kernel_size = config['kernel_size']
+    #     r = config['r']
+    # if 'rank' in config:
+    #     weight_rank = config['rank']
+    # else:
+    #     weight_rank = None
+    # if 'slim' in config:
+    #     slim = config['slim']
+    # else:
+    #     slim = True
+    # if 'activation' in config:
+    #     activation = config['activation']
+    # else:
+    #     activation = 'relu'
+    # data_top_dir = home + '/Desktop/DMs/data/'
+    # project_dir = home + '/Desktop/DMs/'
 
-    if args.model_type == 'ByteNet':
-        model = ByteNetLMTime(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
-                          causal=causal, padding_idx=masking_idx, rank=weight_rank, dropout=args.dropout,
-                          tie_weights=args.tie_weights, final_ln=args.final_norm, slim=slim, activation=activation,
-                          timesteps=diffusion_timesteps)
-    elif args.model_type == 'Transformer':
-        model = TransformerTime(n_tokens, d_embed, d_model, n_layers, n_head, d_feedforward, padding_idx=masking_idx,
-                                bidirectional=bidirectional, dropout=args.dropout,
-                                norm_first=args.norm_first, activation=activation, timesteps=diffusion_timesteps)
-    model = model.to(device)
+    # torch.cuda.set_device(args.gpus)
+    # device = torch.device('cuda:' + str(args.gpus))
+    # idr_flag = ''
+    # causal = False
+    # bidirectional = True
+    # n_tokens = len(MSA_ALPHABET)
 
-    if args.checkpoint is not None:
-        last_epoch = args.checkpoint
-    else:
-        # Restore the model weights for the last checkpoint after training
-        outputs = os.listdir(args.out_fpath)
-        if len(outputs) > 0:
-           last_epoch = 0
-           for output in outputs:
-               if 'checkpoint' in output:
-                   epoch = int(output.split('checkpoint')[-1][:-4])
-                   if epoch > last_epoch:
-                       args.state_dict = args.out_fpath + output
-                       last_epoch = epoch
+    # if args.mask == 'autoreg' or args.mask == 'so' or args.mask == 'reference' or args.mask == 'test-sample' or args.mask == 'bert':
+    #     tokenizer = Tokenizer()
+    #     diffusion_timesteps = None  # Not input to model
+    #     if args.mask == 'so' or args.mask == 'bert':
+    #         n_tokens = len(PROTEIN_ALPHABET)
+    #         tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD)
+    #         if args.mask == 'so':
+    #             causal = True
+    #             bidirectional = False
+    #     if args.idr:
+    #         idr_flag = 'idr_'
+    #         print("IDR GENERATION ONLY WORKS WITH args.mask = 'autoreg' OR 'so'")
+    # elif args.mask == 'blosum' or args.mask == 'random':
+    #     tokenizer = Tokenizer(path_to_blosum=data_top_dir + "blosum62-special-MSA.mat", sequences=True)
+    #     diffusion_timesteps = config['diffusion_timesteps']
+    #     if args.mask == 'random':
+    #         Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=diffusion_timesteps)
+    #     if args.mask == 'blosum':
+    #         Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=diffusion_timesteps)
+    #     Q_prod = Q_prod.to(device)
+    #     Q_t = Q_t.to(device)
+    # else:
+    #     print("Choose 'autoreg', 'so', 'test-sample', 'reference', 'blosum' or 'random' as args.mask OR chose idr")
+    # print("Using", args.mask, "scheme")
+    # masking_idx = tokenizer.mask_id
+    # padding_idx = tokenizer.pad_id
+    # print(n_tokens)
+    # print(masking_idx, padding_idx)
+    # print("causal", causal)
 
-    if args.mask != 'reference' and args.mask != 'test-sample':
-        print('Using checkpoint', last_epoch)
-        print('Loading weights from ' + args.state_dict + '...')
-        sd = torch.load(args.state_dict, map_location=torch.device(device))
-        msd = sd['model_state_dict']
-        msd = {k.split('module.')[1]: v for k, v in msd.items()}
-        model.load_state_dict(msd)
+    # if args.model_type == 'ByteNet':
+    #     model = ByteNetLMTime(n_tokens, d_embed, d_model, n_layers, kernel_size, r,
+    #                       causal=causal, padding_idx=masking_idx, rank=weight_rank, dropout=args.dropout,
+    #                       tie_weights=args.tie_weights, final_ln=args.final_norm, slim=slim, activation=activation,
+    #                       timesteps=diffusion_timesteps)
+    # elif args.model_type == 'Transformer':
+    #     model = TransformerTime(n_tokens, d_embed, d_model, n_layers, n_head, d_feedforward, padding_idx=masking_idx,
+    #                             bidirectional=bidirectional, dropout=args.dropout,
+    #                             norm_first=args.norm_first, activation=activation, timesteps=diffusion_timesteps)
+    # model = model.to(device)
+
+    # if args.checkpoint is not None:
+    #     last_epoch = args.checkpoint
+    # else:
+    #     # Restore the model weights for the last checkpoint after training
+    #     outputs = os.listdir(args.out_fpath)
+    #     if len(outputs) > 0:
+    #        last_epoch = 0
+    #        for output in outputs:
+    #            if 'checkpoint' in output:
+    #                epoch = int(output.split('checkpoint')[-1][:-4])
+    #                if epoch > last_epoch:
+    #                    args.state_dict = args.out_fpath + output
+    #                    last_epoch = epoch
+
+    # if args.mask != 'reference' and args.mask != 'test-sample':
+    #     print('Using checkpoint', last_epoch)
+    #     print('Loading weights from ' + args.state_dict + '...')
+    #     sd = torch.load(args.state_dict, map_location=torch.device(device))
+    #     msd = sd['model_state_dict']
+    #     msd = {k.split('module.')[1]: v for k, v in msd.items()}
+    #     model.load_state_dict(msd)
 
     seq_lengths = [64, 128, 256, 384] #, 64, 128, 256, 384, 512] #, 1024, 2048] # Generate diff length sequences
     seqs = ""
@@ -165,10 +200,12 @@ def main():
                 count = args.count
                 fasta_string = ""
 
-                if args.mask == 'autoreg' or args.mask=='so' or args.mask == 'bert':
+                # if args.mask == 'autoreg' or args.mask=='so' or args.mask == 'bert':
+                if scheme == 'mask':
                     sample, string = generate_text(model, seq_len, tokenizer=tokenizer, penalty=args.penalty, causal=causal,
                                                    batch_size=args.num_seqs, device=device)
-                elif args.mask == 'blosum' or args.mask == 'random':
+                # elif args.mask == 'blosum' or args.mask == 'random':
+                elif scheme == 'd3pm':
                     sample, string = generate_text_d3pm(model, seq_len, Q_bar=Q_prod, Q=Q_t, tokenizer=tokenizer,
                                                         timesteps=diffusion_timesteps, no_step=args.no_step,
                                                         batch_size=args.num_seqs, device=device,
