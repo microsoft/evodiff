@@ -27,9 +27,6 @@ Available models are:
 * ``` OA_AR_38M() ```
 * ``` LR_AR_640M() ```
 * ``` LR_AR_38M() ```
-* ``` CARP_38M() ```
-* ``` CARP_640M() ```
-* ``` ESM1b_640M() ```
 * TODO: ADD MSA MODELS
 
 ### Unconditional sequence generation
@@ -67,7 +64,6 @@ We also compute the self-consistency perplexity to evaluate the foldability of g
 * [TM score](https://zhanggroup.org/TM-score/)
 * [Omegafold](https://github.com/HeliXonProtein/OmegaFold)
 * [ProteinMPNN](https://github.com/dauparas/ProteinMPNN)
-* [Alphafold](https://github.com/deepmind/alphafold/tree/main)
 * [ESM-IF1](https://github.com/facebookresearch/esm/tree/main/esm/inverse_folding); see this [Jupyter notebook](https://colab.research.google.com/github/facebookresearch/esm/blob/main/examples/inverse_folding/notebook.ipynb) for setup details.
 * [PGP](https://github.com/hefeda/PGP)
 
