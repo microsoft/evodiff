@@ -12,39 +12,12 @@ import numpy as np
 import seaborn as sns
 import difflib
 from itertools import chain
-
-def removekey(d, list_of_keys):
-    r = d.copy()
-    for key in list_of_keys:
-        del r[key]
-    return r
-
-def csv_to_dict(generate_file):
-    seqs = ''
-    with open(generate_file, 'r') as file:
-        filecontent = csv.reader(file)
-        for row in filecontent:
-            if len(row) >= 1:
-                if row[0][0] != '>':
-                    seqs += str(row[0])
-    aminos_gen = Counter(
-        {'A': 0, 'M': 0, 'R': 0, 'T': 0, 'D': 0, 'Y': 0, 'P': 0, 'F': 0, 'L': 0, 'E': 0, 'W': 0, 'I': 0, 'N': 0, 'S': 0, \
-         'K': 0, 'Q': 0, 'H': 0, 'V': 0, 'G': 0, 'C': 0, 'X': 0, 'B': 0, 'Z': 0, 'U': 0, 'O': 0, 'J': 0, '-': 0})
-    aminos_gen.update(seqs)
-
-    order_of_keys = ['A','M','R','T','D','Y','P','F','L','E','W','I','N','S',
-                     'K','Q','H','V','G','C','X','B','Z','J','O','U','-']
-    list_of_tuples = [(key, aminos_gen[key]) for key in order_of_keys]
-    aminos_gen_ordered = OrderedDict(list_of_tuples)
-    return aminos_gen_ordered
-
-def normalize(list):
-    norm = sum(list)
-    new_list = [item / norm for item in list]
-    return new_list
+from dms.utils import extract_seq_a3m, csv_to_dict, normalize, removekey, get_matrix, get_pairs, normalize_matrix, \
+                      get_pairwise
 
 def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=False, idr=False, gen_file=True,
                                   start_valid=False, start_query=False, start_msa=False):
+    "Parity plots for generated vs test (for sequence models) or valid (for MSA models)"
     # Load in approx train distribution
     idr_flag = ""
     # Eliminate BXJOU for KL since they occur at 0 freq in test dataset
@@ -154,48 +127,6 @@ def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=Fals
     if not gen_file:
         return a # return train probability distribution
 
-def get_matrix(all_pairs, all_aa_pairs, alphabet):
-    count_map = {}
-    for i in all_pairs:
-        count_map[i] = count_map.get(i, 0) + (1 / 63)
-    for aa_pair in all_aa_pairs:
-        if aa_pair not in count_map.keys():
-            pass
-            count_map[aa_pair] = 0
-    _dict = {k: count_map[k] for k in sorted(count_map.keys())}
-    _matrix = list(_dict.values())
-    _matrix = np.asarray(_matrix).reshape(len(alphabet), len(alphabet))
-    return _matrix
-
-
-def get_pairs(array, alphabet):
-    all_pairs = []
-    all_q_val = []
-    for b in np.arange(array.shape[0]):
-        curr_msa = array[b]
-        for col in np.arange(curr_msa.shape[1]):
-            q_val = curr_msa[0, col]
-            if q_val < len(alphabet):
-                q_val = curr_msa[0, col]
-                all_q_val.append(q_val)
-                col_vals = list(curr_msa[1:, col])
-                col_vals = filter(lambda val: val < len(alphabet), col_vals)
-                curr_pairs = [(q_val, v) for v in col_vals]
-                all_pairs.append(curr_pairs)
-    all_pairs = list(itertools.chain(*all_pairs))
-    return all_pairs
-
-
-def normalize_matrix(data, alphabet):
-    alpha_labels = list(alphabet)
-    table = pd.DataFrame(data, index=alpha_labels, columns=alpha_labels)
-    table = table / table.sum(axis=0)  # normalize
-    table.fillna(0, inplace=True)
-
-    table_vals = table.values
-    table_diag_vals = np.diag(table)
-    return table, table_vals, table_diag_vals
-
 
 def msa_substitution_rate(generated_msa, train_msa, alphabet, out_path):
     print(alphabet, "len: ", len(alphabet))
@@ -281,18 +212,6 @@ def msa_substitution_rate(generated_msa, train_msa, alphabet, out_path):
     fig.savefig(os.path.join(out_path, 'substitution_diag.svg'))
     fig.savefig(os.path.join(out_path, 'substitution_diag.png'))
 
-def get_pairwise(msa, alphabet):
-    all_pairs = []
-    queries = msa[:, 0, :]
-    for row in queries:
-        row = row.astype(int)
-        curr_query = list(row[row < len(alphabet)])
-        curr_query = [alphabet[c] for c in curr_query if c < len(alphabet)]
-        curr_pairs = itertools.permutations(curr_query, 2)
-        all_pairs.append(list(curr_pairs))
-    all_pairs = list(itertools.chain(*all_pairs))
-    return all_pairs
-
 def msa_pairwise_interactions(generated_msa, train_msa, all_aa, out_path):  # Look at AA pairwise interactions within each MSA within each sample
 
     all_aa_pairs = list(itertools.product(all_aa, all_aa))
@@ -334,12 +253,6 @@ def msa_pairwise_interactions(generated_msa, train_msa, all_aa, out_path):  # Lo
     train_vals = list(train_dict.values())
     gen_vals = list(gen_dict.values())
 
-    # r2_val = r2_score(train_vals, gen_vals)
-    # mse = mean_squared_error(train_vals, gen_vals)
-    # with open(out_path + 'generate_metrics.csv', 'a') as f:
-    #     f.write("\nR-squared task 3: "+ str(r2_val))
-    #     f.write("\nMean squared error task 3: "+str(mse))
-    # f.close()
     r_squared = stats.pearsonr(train_vals, gen_vals).statistic
 
     fig, ax = plt.subplots(figsize=(3, 2.5))
@@ -387,23 +300,12 @@ def plot_percent_similarity(out_fpath):
         fig.savefig(os.path.join(out_fpath, 'query_similarity.png'))
         fig.savefig(os.path.join(out_fpath, 'query_similarity.svg'))
 
-def extract_seq_a3m(generate_file):
-    list_of_seqs = []
-    with open(generate_file, 'r') as file:
-            filecontent = csv.reader(file)
-            for row in filecontent:
-                if len(row) >= 1:
-                    if row[0][0] != '>':
-                        list_of_seqs.append(str(row[0]))
-    return list_of_seqs[1:]
-
 def plot_percent_similarity_entiremsa(out_fpath):
+    "Plot the % similarity between generated query sequences and each sequence in the MSA as well as the original query"
     df_gen = pd.read_csv(out_fpath + 'gen_msas_onlyquery.txt', delim_whitespace=True, header=None,
                          names=['seq'])
     df_valid = pd.read_csv(out_fpath + 'valid_msas_onlyquery.txt', delim_whitespace=True, header=None,
                            names=['seq'])
-
-    # print(df_gen)
     sim = []
     sim_msa = []
     for i in range(len(df_gen)):
@@ -428,6 +330,7 @@ def plot_percent_similarity_entiremsa(out_fpath):
     fig.savefig(os.path.join(out_fpath, 'similarity_msa.png'))
 
 def plot_perp_group_masked(df, save_name):
+    "Plot perplexity computed from Masked models, binned by % of sequence masked "
     bins = np.arange(0, 1.1, 0.1)
     df['binned'] = pd.cut(df['time'], bins)
     group = df.groupby(pd.cut(df['time'], bins))
@@ -446,6 +349,7 @@ def plot_perp_group_masked(df, save_name):
     fig.savefig(os.path.join('plots/perp_'+save_name+'.png'))
 
 def plot_perp_group_d3pm(df, save_name):
+    "Plot perplexity computed from D3PM models, binned by timestep intervals"
     bins = np.arange(0, 550, 50)
     df['binned'] = pd.cut(df['time'], bins)
     group = df.groupby(pd.cut(df['time'], bins))
@@ -465,6 +369,7 @@ def plot_perp_group_d3pm(df, save_name):
 
 
 def plot_ecdf_bylength(perp_groups, colors, labels, seq_lengths, metric='perp', model='esm-if'):
+    "Plots cumulative density as a function of sequence length"
     fig, ax = plt.subplots(1,4, figsize=(8.,2.5), sharey=True, sharex=True)
     for j, perp_group in enumerate(perp_groups):
         for i,p in enumerate(perp_group):
@@ -493,6 +398,8 @@ def plot_ecdf_bylength(perp_groups, colors, labels, seq_lengths, metric='perp', 
 
 
 def plot_ecdf(perp_groups, colors, labels, metric='perp', model='ESM-IF'):
+    "Plot cumulative density plot of plddt, or perp scores for each set of gen sequences. Uses the mean of test set \
+    (indexed at 0) to create a hline boundary"
     fig, ax = plt.subplots(1,1, figsize=(2.5,2.5), sharey=True, sharex=True)
     for i, perp_group in enumerate(perp_groups):
         c = colors[i]
@@ -520,6 +427,7 @@ def plot_ecdf(perp_groups, colors, labels, metric='perp', model='ESM-IF'):
     fig.savefig(os.path.join('plots/sc_'+metric+'_'+model+'.png'))
 
 def plot_plddt_perp(ordered_plddt_group, ordered_perp_group, idx, colors, labels, perp_model='ESM-IF'):
+    "Plot pLDDT vs Perplexity for each set of generated sequences against train data"
     fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5), sharey=True, sharex=True)
     plt.scatter(ordered_plddt_group[0], ordered_perp_group[0], c=colors[0], s=20, alpha=1, label=labels[0], edgecolors='grey')
     plt.scatter(ordered_plddt_group[idx], ordered_perp_group[idx], c=colors[idx], s=20, alpha=1, label=labels[idx], edgecolors='grey')
@@ -534,6 +442,7 @@ def plot_plddt_perp(ordered_plddt_group, ordered_perp_group, idx, colors, labels
     fig.savefig(os.path.join('plots/sc_plddt_perp_'+labels[idx]+'.png'))
 
 def ss_helix_strand(runs, data, labels, save_name):
+    "2D Probability Density plots for DSSP 3-state predictions of % Helix and % Sheet"
     fig, ax = plt.subplots(nrows=3, ncols=4, figsize=(10, 7.5), constrained_layout=True, sharex=False, sharey=False)
     ax = ax.ravel()
     for i, run in enumerate(runs):
@@ -556,6 +465,7 @@ def ss_helix_strand(runs, data, labels, save_name):
     fig.savefig(os.path.join('plots/helix_strand_' + save_name + '.png'))
 
 def ss_box_whisker(data, colors, save_name):
+    "Create box and whisker plot for DSSP 3-state secondary structure predictions"
     fig, ax = plt.subplots(1, 3, figsize=(7, 3.5), sharex=True, sharey=True)
     sns.boxplot(data=data, x="helix_percent", y="type", ax=ax[0], palette=colors)
     sns.boxplot(data=data, x="strand_percent", y="type", ax=ax[1], palette=colors)
@@ -569,6 +479,7 @@ def ss_box_whisker(data, colors, save_name):
     fig.savefig(os.path.join('plots/' + save_name + '_structure_box.png'))
 
 def plot_embedding(projected_embeddings, colors, i, runs, project_run):
+    "Plot embedding space of sequences as 2D TSNE "
     fig, ax = plt.subplots(figsize=(5, 5))
     # Plot test
     plt.scatter(projected_embeddings[:1000, 0], projected_embeddings[:1000, 1], s=20, alpha=1, c=colors[:1000],
