@@ -1,12 +1,18 @@
-#from dms.data import loadMatrix
 import torch
 import numpy as np
 from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS, GAP
 from dms.constants import BLOSUM_ALPHABET
 from sklearn.preprocessing import normalize
+import itertools
+from collections import Counter, OrderedDict
+import csv
+import pandas as pd
 
 def loadMatrix(path):
     """
+    Taken from https://pypi.org/project/blosum/
+    Edited slightly from original implementation
+
     Reads a Blosum matrix from file. Changed slightly to read in larger blosum matrix
     File in a format like:
         https://www.ncbi.nlm.nih.gov/IEB/ToolBox/C_DOC/lxr/source/data/BLOSUM62
@@ -85,7 +91,7 @@ def double_stochastic(q):
 def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=8):
     """
     Variance schedule for adding noise
-    Start/End will control the magnitude of sigmoidal and cosine schedules..
+    Start/End will control the magnitude of sigmoidal and cosine schedules.
     """
     if schedule == 'linear':
         betas = torch.linspace(start, end, num_timesteps)
@@ -139,7 +145,7 @@ def parse_fasta(seq_file, idx):
 class Tokenizer(object):
     """Convert between strings and index"""
     def __init__(self, protein_alphabet=MSA_ALPHABET, pad=MSA_PAD, mask=MASK, all_aas=MSA_AAS, gap=GAP,
-                 path_to_blosum=None, sequences=False):
+                 path_to_blosum=None, sequences=True):
         self.alphabet = list("".join(protein_alphabet))
         self.all_aas = list("".join(all_aas))
         self.pad = pad
@@ -150,9 +156,9 @@ class Tokenizer(object):
         if path_to_blosum is not None:
             self.matrix = loadMatrix(path_to_blosum)
             self.matrix_dict = dict(self.matrix)
-        self.sequences = sequences
+        self.sequences = sequences # only needed for D3PM MSA vs Seq
         self.K = len(self.all_aas)
-        if self.sequences:
+        if self.sequences: # This only matters for D3PM models
             self.K = len(self.all_aas[:-1]) # slice out GAPS for sequences
         #print("K is :", self.K)
 
@@ -245,3 +251,120 @@ class Tokenizer(object):
         "one hot -> seq"
         tokenized = [np.where(r==1)[0] for r in x_onehot]
         return tokenized
+
+def parse_txt(fasta_file):
+    "Read output of PGP seqs from text file"
+    train_seqs = []
+    with open(fasta_file, 'r') as file:
+        filecontent = csv.reader(file)
+        for row in filecontent:
+            if len(row) >= 1:
+                if row[0][0] != '>':
+                    train_seqs.append(str(row[0]))
+    return train_seqs
+
+def removekey(d, list_of_keys):
+    r = d.copy()
+    for key in list_of_keys:
+        del r[key]
+    return r
+
+def csv_to_dict(generate_file):
+    seqs = ''
+    with open(generate_file, 'r') as file:
+        filecontent = csv.reader(file)
+        for row in filecontent:
+            if len(row) >= 1:
+                if row[0][0] != '>':
+                    seqs += str(row[0])
+    aminos_gen = Counter(
+        {'A': 0, 'M': 0, 'R': 0, 'T': 0, 'D': 0, 'Y': 0, 'P': 0, 'F': 0, 'L': 0, 'E': 0, 'W': 0, 'I': 0, 'N': 0, 'S': 0, \
+         'K': 0, 'Q': 0, 'H': 0, 'V': 0, 'G': 0, 'C': 0, 'X': 0, 'B': 0, 'Z': 0, 'U': 0, 'O': 0, 'J': 0, '-': 0})
+    aminos_gen.update(seqs)
+
+    order_of_keys = ['A','M','R','T','D','Y','P','F','L','E','W','I','N','S',
+                     'K','Q','H','V','G','C','X','B','Z','J','O','U','-']
+    list_of_tuples = [(key, aminos_gen[key]) for key in order_of_keys]
+    aminos_gen_ordered = OrderedDict(list_of_tuples)
+    return aminos_gen_ordered
+
+def normalize(list):
+    norm = sum(list)
+    new_list = [item / norm for item in list]
+    return new_list
+
+def get_matrix(all_pairs, all_aa_pairs, alphabet):
+    count_map = {}
+    for i in all_pairs:
+        count_map[i] = count_map.get(i, 0) + (1 / 63)
+    for aa_pair in all_aa_pairs:
+        if aa_pair not in count_map.keys():
+            pass
+            count_map[aa_pair] = 0
+    _dict = {k: count_map[k] for k in sorted(count_map.keys())}
+    _matrix = list(_dict.values())
+    _matrix = np.asarray(_matrix).reshape(len(alphabet), len(alphabet))
+    return _matrix
+
+
+def get_pairs(array, alphabet):
+    all_pairs = []
+    all_q_val = []
+    for b in np.arange(array.shape[0]):
+        curr_msa = array[b]
+        for col in np.arange(curr_msa.shape[1]):
+            q_val = curr_msa[0, col]
+            if q_val < len(alphabet):
+                q_val = curr_msa[0, col]
+                all_q_val.append(q_val)
+                col_vals = list(curr_msa[1:, col])
+                col_vals = filter(lambda val: val < len(alphabet), col_vals)
+                curr_pairs = [(q_val, v) for v in col_vals]
+                all_pairs.append(curr_pairs)
+    all_pairs = list(itertools.chain(*all_pairs))
+    return all_pairs
+
+
+def normalize_matrix(data, alphabet):
+    alpha_labels = list(alphabet)
+    table = pd.DataFrame(data, index=alpha_labels, columns=alpha_labels)
+    table = table / table.sum(axis=0)  # normalize
+    table.fillna(0, inplace=True)
+
+    table_vals = table.values
+    table_diag_vals = np.diag(table)
+    return table, table_vals, table_diag_vals
+
+def extract_seq_a3m(generate_file):
+    "Get sequences from A3M file"
+    list_of_seqs = []
+    with open(generate_file, 'r') as file:
+            filecontent = csv.reader(file)
+            for row in filecontent:
+                if len(row) >= 1:
+                    if row[0][0] != '>':
+                        list_of_seqs.append(str(row[0]))
+    return list_of_seqs[1:]
+
+def get_pairwise(msa, alphabet):
+    all_pairs = []
+    queries = msa[:, 0, :]
+    for row in queries:
+        row = row.astype(int)
+        curr_query = list(row[row < len(alphabet)])
+        curr_query = [alphabet[c] for c in curr_query if c < len(alphabet)]
+        curr_pairs = itertools.permutations(curr_query, 2)
+        all_pairs.append(list(curr_pairs))
+    all_pairs = list(itertools.chain(*all_pairs))
+    return all_pairs
+
+def download_model(model_name):
+    #url = f"https://.. {model_name} .. " # TODO add links when uploaded to Zenodo
+    #state_dict = torch.hub.load_state_dict_from_url(url, progress=True, map_location="cpu")
+    state_dict = "zenodo/checkpoints/"+model_name+".tar"
+    return state_dict
+
+def download_generated_sequences(model_name):
+    sequence_list = "curl -O"
+    return sequence_list
+
