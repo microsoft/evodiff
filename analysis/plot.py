@@ -1,12 +1,9 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import csv
-from collections import Counter, OrderedDict
 import torch
 from torch.nn import KLDivLoss
 import os
 import itertools
-from sklearn.metrics import r2_score, mean_squared_error
 from scipy import stats
 import numpy as np
 import seaborn as sns
@@ -129,6 +126,7 @@ def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=Fals
 
 
 def msa_substitution_rate(generated_msa, train_msa, alphabet, out_path):
+    "Plot substitution rates for generated MSAs"
     print(alphabet, "len: ", len(alphabet))
     all_aa = np.arange(len(alphabet))
     all_aa_pairs = list(itertools.product(all_aa, all_aa))
@@ -213,7 +211,7 @@ def msa_substitution_rate(generated_msa, train_msa, alphabet, out_path):
     fig.savefig(os.path.join(out_path, 'substitution_diag.png'))
 
 def msa_pairwise_interactions(generated_msa, train_msa, all_aa, out_path):  # Look at AA pairwise interactions within each MSA within each sample
-
+    "Pairwise plots for MSAs"
     all_aa_pairs = list(itertools.product(all_aa, all_aa))
     all_aa_dict = {''.join(k): 1 for k in all_aa_pairs}
     all_aa_dict = {k: all_aa_dict[k] for k in sorted(all_aa_dict.keys())}
@@ -268,6 +266,7 @@ def msa_pairwise_interactions(generated_msa, train_msa, all_aa, out_path):  # Lo
     fig.savefig(os.path.join(out_path, 'pairwise.png'))
 
 def plot_tmscores(tmscore_path, out_path, y_min=0, y_max=30):
+    "TMscores for conditionally generated sequences, given MSAs"
     tmscores = pd.read_csv(tmscore_path, names=['scores'])
     fig, ax = plt.subplots(figsize=(3, 2.5))
     sns.histplot(tmscores['scores'], color='blue')
@@ -279,6 +278,7 @@ def plot_tmscores(tmscore_path, out_path, y_min=0, y_max=30):
     fig.savefig(os.path.join(out_path, 'tmscores.png'))
 
 def plot_percent_similarity(out_fpath):
+    "Plot percent similarity between generated sequence and original query sequence "
     df_gen = pd.read_csv(out_fpath + 'gen_msas_onlyquery.txt', delim_whitespace=True, header=None,
                          names=['seq'])
     df_valid = pd.read_csv(out_fpath + 'valid_msas_onlyquery.txt', delim_whitespace=True, header=None,
