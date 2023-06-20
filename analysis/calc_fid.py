@@ -16,6 +16,8 @@ from analysis.plot import plot_embedding
 # Need to run PGP first on generated seqs , this performs downstream analysis
 # https://github.com/hefeda/PGP
 
+# python calc_fid.py
+
 
 def calculate_fid(act1, act2):
     """calculate frechet inception distance"""

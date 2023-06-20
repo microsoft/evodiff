@@ -1,11 +1,12 @@
 import os
-import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-from scipy.stats import kde
 import re
 from analysis.plot import plot_ecdf_bylength, plot_ecdf, plot_plddt_perp
 from itertools import chain
+
+# Analyzes data generated from ESM-IF, ProteinMPNN, and Omegafold
+# run: python self_consistency_analysis.py
 
 def get_files(path):
     files = []
@@ -25,13 +26,9 @@ def get_mpnn(path):
     files = []
     for filename in os.listdir(path):
         if len(os.listdir(os.path.join(path, filename+'/scores/'))) > 0:
-            #print(path, filename)
             sub_file = os.listdir(os.path.join(path, filename+'/scores/'))[0]
-            #print(sub_file)
             sub_file_path = os.path.join(path+filename+'/scores/', sub_file)
-            #print(sub_file_path)
             if os.path.exists(sub_file_path):
-                #print(os.path.join(path, filename+'/scores', sub_f)
                 files.append(os.path.join(path+filename+'/scores/', sub_file))
     return files
 
@@ -44,15 +41,11 @@ def get_perp(files):
         if temp.empty:
             print("perp", f)
         else:
-            #print(f)
-            #print(temp)
             perplexity.append(temp.perp[0])
     return perplexity, perp_index
 
 def get_confidence_score(files):
-    #colors = {32:'red', 64:'orange', 128:'green', 256:'b', 384:'purple', 512:'grey', 1024:'k'}
     scores = []
-    #lengths = []
     pdb_index = []
     for f in files:
         #print(f)
@@ -60,38 +53,27 @@ def get_confidence_score(files):
         pdb_index.append(re.findall('\d+', f)[-1])
         df = pd.read_csv(f, delim_whitespace=True, header=None, usecols=[5,10], names=['residue','score'])
         df = df.dropna() # ignore empty rows
-        #print(df)
-        if df.empty:
+        if df.empty: # reading in PDBs can be finnicky if spacing is not correct
             print("confidence empty", f)
         else:
             if "C" in str(df.score):
                 print(df[df.isin(["C"])])
                 print("confidence", f)
                 print(df.score.mean())
-                #print(df.tail())
-                #import pdb; pdb.set_trace()
             else:
-                #print(df)
                 key = int(df.iloc[-1]['residue']+1)
                 #print(key)
-                #closest_key = min(list(colors.keys()), key = lambda x: abs(x-key))
-                #print(key, closest_key)
-                #lengths.append(colors[closest_key])
                 scores.append(df.score.mean())
     return scores, pdb_index
 
 def get_mpnn_scores(files):
     scores = []
     for f in files:
-        #print(f)
         d = np.load(f)
-        #print(d['score']) # average over residues that were designed negative log probability of sampled amino acids
-        #print(    d['global_score']) # same but average over all chains
         scores.append(np.exp(d['score'][0]))
     return scores
 
 def iterate_dirs(run, seq_lengths, mpnn=False):
-    # seq_lengths = [32, 64, 128, 256] #, 512] #, 384] #, 512]
     perp_group = []
     scores_group = []
     lengths_group = []
@@ -104,7 +86,6 @@ def iterate_dirs(run, seq_lengths, mpnn=False):
         if mpnn:
             mpnn_path = '/home/v-salamdari/Desktop/DMs/blobfuse/' + str(run) + 'mpnn/' + str(l) + '/'
         pdb_path = '/home/v-salamdari/Desktop/DMs/blobfuse/' + str(run) + 'pdb/' + str(l) + '/'
-        # Get ESMIF perp
         files = get_files(path)
         perplexity, perp_index = get_perp(files)
         perp_group.append(perplexity)
@@ -114,21 +95,12 @@ def iterate_dirs(run, seq_lengths, mpnn=False):
         pdb_files = get_pdb(pdb_path)
         score, pdb_index = get_confidence_score(pdb_files)
         scores_group.append(score)
-        #lengths_group.append(lengths)
         pdb_index_group.append(pdb_index)
         # Get MPNN score
         if mpnn:
             mpnn_files = get_mpnn(mpnn_path)
             mpnn_scores = get_mpnn_scores(mpnn_files)
             mpnn_scores_group.append(mpnn_scores)
-
-    all_perp = list(chain.from_iterable(perp_group))
-    #print("esmif mean", np.mean(all_perp))
-    if mpnn:
-        all_mpnn = list(chain.from_iterable(mpnn_scores_group))
-        #print("mpnn mean", np.mean(all_mpnn))
-    all_scores = list(chain.from_iterable(scores_group))
-    #print("omegafold mean", np.mean(all_scores))
     if mpnn:
         return perp_group, scores_group, lengths_group, mpnn_scores_group, pdb_index_group, perp_index_group
     else:
@@ -238,7 +210,6 @@ for idx in range(len(labels)):
     if idx>0:
         plot_plddt_perp(ordered_plddt_group, ordered_perp_group, idx, colors, labels, perp_model='ESM-IF')
     c_df = pd.DataFrame(np.array([ordered_plddt_group[idx], ordered_perp_group[idx]]).T, columns=['plddt', 'perp'])
-    #print(c_df[c_df['perp'] <= mean_train_perp])
     print(labels[idx],
           len(c_df[c_df['perp'] <= mean_train_perp]),
           len(c_df[c_df['plddt'] >= mean_train_score]),

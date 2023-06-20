@@ -5,8 +5,9 @@ from tqdm import tqdm
 from dms.utils import Tokenizer
 import math
 
-tokenizer = Tokenizer()
+# run python calc_nearestseq_hamming.py
 
+tokenizer = Tokenizer()
 def tokenize_fasta(fasta_file):
     seqs = []
     with open(fasta_file, 'r') as file:
@@ -113,7 +114,7 @@ for run in runs:
                     [train_gen_dists.append(dist) for dist in list_dist if dist <= 0.5]
         all_mins.append(min_train_gen_dists)
 
-    elif run == 'foldingdiff/' or run=='esm-1b/':
+    elif run == 'foldingdiff/': #or run=='esm-1b/': have 1 weird sequence in esm-1b
         print("Gathering seqs len for each sequence")
         # For Folding diff data, find minimum hamming to each len in train of same length
         gen_fasta = project_dir + 'blobfuse/'+run+'generated_samples_string.fasta'

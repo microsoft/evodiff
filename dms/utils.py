@@ -1,4 +1,3 @@
-#from dms.data import loadMatrix
 import torch
 import numpy as np
 from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS, GAP
@@ -11,6 +10,9 @@ import pandas as pd
 
 def loadMatrix(path):
     """
+    Taken from https://pypi.org/project/blosum/
+    Edited slightly from original implementation
+
     Reads a Blosum matrix from file. Changed slightly to read in larger blosum matrix
     File in a format like:
         https://www.ncbi.nlm.nih.gov/IEB/ToolBox/C_DOC/lxr/source/data/BLOSUM62
@@ -84,7 +86,7 @@ def double_stochastic(q):
 def _beta_schedule(num_timesteps, schedule='linear', start=1e-5, end=0.999, max=8):
     """
     Variance schedule for adding noise
-    Start/End will control the magnitude of sigmoidal and cosine schedules..
+    Start/End will control the magnitude of sigmoidal and cosine schedules.
     """
     if schedule == 'linear':
         betas = torch.linspace(start, end, num_timesteps)
@@ -151,7 +153,7 @@ class Tokenizer(object):
             self.matrix_dict = dict(self.matrix)
         self.sequences = sequences # only needed for D3PM MSA vs Seq
         self.K = len(self.all_aas)
-        if self.sequences:
+        if self.sequences: # This only matters for D3PM models
             self.K = len(self.all_aas[:-1]) # slice out GAPS for sequences
         #print("K is :", self.K)
 
