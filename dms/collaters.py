@@ -42,11 +42,6 @@ def _pad_msa(tokenized, num_seq, max_len, value, dim=3):
         print("padding not supported for dim > 4")
     return output
 
-def _unpad(x, value):
-    x_pad = x.clone()
-    mask_pad = x_pad != value
-    x = x[mask_pad].to(torch.int64)
-    return x
 
 def sample_transition_matrix(x_0, Q_bar):
     """
@@ -231,6 +226,20 @@ class D3PMCollater(object):
 
 class D3PMCollaterMSA(object):
     """
+    D3PM Collater for MSAs to generate batch data according to markov process according to Austin et al.
+    inputs:
+        msas : array of MSAs
+        tokenizer: Tokenizer()
+        masking scheme: 'BLOSUM' uses blosum matrix, 'RANDOM' uses uniform transition matrix
+        num_timesteps: number of diffusion timesteps
+
+    outputs:
+        src : source  masked sequences (model input)
+        timesteps: (D-t+1) term
+        tokenized: tokenized sequences (target seq)
+        masks: masks used to generate src
+        Q : markov matrix
+        q_x : forward transition probabilities
     """
     def __init__(self, tokenizer=Tokenizer(), num_timesteps=100, Q=None, Q_bar=None, num_seqs=64):
         self.tokenizer = tokenizer

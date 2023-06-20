@@ -3,9 +3,12 @@ import torch
 class MaskedAccuracyMSA(object):
     """Masked accuracy.
     Inputs:
+        N (batch size), L (MSA length), C (probability per output token)
         pred (N, L, C)
         tgt (N, L)
         mask (N, L)
+
+    Outputs: accuracy of predicted MSA
     """
 
     def __call__(self, pred, tgt, mask):

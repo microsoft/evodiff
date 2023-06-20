@@ -64,7 +64,9 @@ def loadMatrix(path):
 
 
 def cumprod_matrix(a):
-    "takes a list of transition matrices and ouputs a list of the cum prod (Q_bar) at each timestep"
+    """
+    Takes a list of transition matrices and ouputs a list of the cumulative products (Q_bar) at each timestep
+    """
     a_bar = [a[0]]  # initialize w/ first item in list
     start = a[0]
     for i in range(len(a) - 1):
@@ -74,6 +76,9 @@ def cumprod_matrix(a):
     return a_bar
 
 def softmax(x):
+    """
+    Compute softmax over x
+    """
     return np.exp(x)/np.sum(np.exp(x),axis=0)
 
 def double_stochastic(q):
@@ -244,7 +249,7 @@ class Tokenizer(object):
 
     def undo_one_hot(self, x_onehot):
         "one hot -> seq"
-        tokenized = [np.where(r==1)[0] for r in x_onehot] # TODO may need to fix now that using torch nn have not double checked
+        tokenized = [np.where(r==1)[0] for r in x_onehot]
         return tokenized
 
 def parse_txt(fasta_file):

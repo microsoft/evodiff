@@ -11,6 +11,99 @@ from sequence_models.utils import parse_fasta
 from sequence_models.constants import PROTEIN_ALPHABET, trR_ALPHABET, PAD, GAP
 from collections import Counter
 
+def read_openfold_files(data_dir, filename):
+    """
+    Helper function to read the openfold files
+
+    inputs:
+        data_dir : path to directory with data
+        filename: MSA name
+
+    outputs:
+        path: path to .a3m file
+    """
+    if os.path.exists(data_dir + filename + '/a3m/uniclust30.a3m'):
+        path = data_dir + filename + '/a3m/uniclust30.a3m'
+    elif os.path.exists(data_dir + filename + '/a3m/bfd_uniclust_hits.a3m'):
+        path = data_dir + filename + '/a3m/bfd_uniclust_hits.a3m'
+    else:
+        raise Exception("Missing filepaths")
+    return path
+
+def read_idr_files(data_dir, filename):
+    """
+    Helper function to read the idr files
+
+    inputs:
+        data_dir : path to directory with data
+        filename: IDR name
+
+    outputs:
+        path: path to IDR file
+    """
+    if os.path.exists(data_dir + filename):
+        path = data_dir + filename
+    else:
+        raise Exception("Missing filepaths")
+    return path
+
+def get_msa_depth_lengths(data_dir, all_files, save_depth_file, save_length_file, idr=False):
+    """
+    Function to compute openfold and IDR dataset depths
+
+    inputs:
+        data_dir : path to directory with data
+        all_files: all filenames
+        save_depth_file: file to save depth values in
+        save_length_file: file to save length values in
+    """
+    msa_depth = []
+    msa_lengths = []
+    for filename in tqdm(all_files):
+        if idr:
+            path = read_idr_files(data_dir, filename)
+        else:
+            path = read_openfold_files(data_dir, filename)
+        parsed_msa = parse_fasta(path)
+        msa_depth.append(len(parsed_msa))
+        msa_lengths.append(len(parsed_msa[0]))  # all seq in MSA are same length
+    np.savez_compressed(data_dir+save_depth_file, np.asarray(msa_depth))
+    np.savez_compressed(data_dir + save_length_file, np.asarray(msa_lengths))
+
+def get_idr_query_index(data_dir, all_files, save_file):
+    """
+    Function to get IDR query index
+
+    inputs:
+        data_dir : path to directory with data
+        all_files: all filenames
+        save_file: file to save query indexes in
+    """
+    query_idxs = []
+    for filename in tqdm(all_files):
+        msa_data, msa_names = parse_fasta(data_dir + filename, return_names=True)
+        query_idx = [i for i, name in enumerate(msa_names) if name == filename.split('_')[0]][0]  # get query index
+        query_idxs.append(query_idx)
+    np.savez_compressed(data_dir + save_file, np.asarray(query_idxs))
+
+def get_sliced_gap_depth_openfold(data_dir, all_files, save_file, max_seq_len=512):
+    """
+    Function to compute make sure every MSA has 64 sequences
+
+    inputs:
+        data_dir : path to directory with data
+        all_files: all filenames
+        save_file: file to save data to
+    """
+    sliced_depth = []
+    for filename in tqdm(all_files):
+        path=read_openfold_files(data_dir, filename)
+        parsed_msa = parse_fasta(path)
+        sliced_msa_depth = [seq for seq in parsed_msa if (Counter(seq)[GAP]) <= max_seq_len] # Only append seqs with gaps<512
+        sliced_depth.append(len(sliced_msa_depth))
+
+    np.savez_compressed(data_dir + save_file, np.asarray(sliced_depth))
+
 
 class TRRMSADataset(Dataset):
     """Build dataset for trRosetta data: MSA Absorbing Diffusion model"""
@@ -53,7 +146,7 @@ class TRRMSADataset(Dataset):
     def __len__(self):
         return len(self.filenames)
 
-    def __getitem__(self, idx):  # TODO: add error checking?
+    def __getitem__(self, idx):
         filename = self.filenames[idx]
         data = np.load(self.data_dir + filename)
         # Grab sequence info
@@ -118,55 +211,6 @@ class TRRMSADataset(Dataset):
         #import pdb; pdb.set_trace()
         return output
 
-
-def read_openfold_files(data_dir, filename):
-    if os.path.exists(data_dir + filename + '/a3m/uniclust30.a3m'):
-        path = data_dir + filename + '/a3m/uniclust30.a3m'
-    elif os.path.exists(data_dir + filename + '/a3m/bfd_uniclust_hits.a3m'):
-        path = data_dir + filename + '/a3m/bfd_uniclust_hits.a3m'
-    else:
-        raise Exception("Missing filepaths")
-    return path
-
-def read_idr_files(data_dir, filename):
-    if os.path.exists(data_dir + filename):
-        path = data_dir + filename
-    else:
-        raise Exception("Missing filepaths")
-    return path
-
-def get_msa_depth_lengths(data_dir, all_files, save_depth_file, save_length_file, idr=False):
-    "Function for openfold and IDR dataset depths"
-    msa_depth = []
-    msa_lengths = []
-    for filename in tqdm(all_files):
-        if idr:
-            path = read_idr_files(data_dir, filename)
-        else:
-            path = read_openfold_files(data_dir, filename)
-        parsed_msa = parse_fasta(path)
-        msa_depth.append(len(parsed_msa))
-        msa_lengths.append(len(parsed_msa[0]))  # all seq in MSA are same length
-    np.savez_compressed(data_dir+save_depth_file, np.asarray(msa_depth))
-    np.savez_compressed(data_dir + save_length_file, np.asarray(msa_lengths))
-
-def get_idr_query_index(data_dir, all_files, save_file):
-    query_idxs = []
-    for filename in tqdm(all_files):
-        msa_data, msa_names = parse_fasta(data_dir + filename, return_names=True)
-        query_idx = [i for i, name in enumerate(msa_names) if name == filename.split('_')[0]][0]  # get query index
-        query_idxs.append(query_idx)
-    np.savez_compressed(data_dir + save_file, np.asarray(query_idxs))
-
-def get_sliced_gap_depth_openfold(data_dir, all_files, save_file, max_seq_len=512):
-    sliced_depth = []
-    for filename in tqdm(all_files):
-        path=read_openfold_files(data_dir, filename)
-        parsed_msa = parse_fasta(path)
-        sliced_msa_depth = [seq for seq in parsed_msa if (Counter(seq)[GAP]) <= max_seq_len] # Only append seqs with gaps<512
-        sliced_depth.append(len(sliced_msa_depth))
-
-    np.savez_compressed(data_dir + save_file, np.asarray(sliced_depth))
 
 class A3MMSADataset(Dataset):
     """Build dataset for A3M data: MSA Absorbing Diffusion model"""
@@ -313,6 +357,7 @@ class A3MMSADataset(Dataset):
         output = [''.join(seq) for seq in self.alpha[output]]
         return output
 
+
 class IDRDataset(Dataset):
     """Build dataset for IDRs"""
 
@@ -353,7 +398,6 @@ class IDRDataset(Dataset):
         _depths = np.load(data_dir + 'idr_depths.npz')['arr_0']
         depths = pd.DataFrame(_depths, columns=['depth'])
 
-        # TODO these do not currently work together
         if min_depth is not None: # reindex, filtering out MSAs < min_depth
             raise Exception("MIN DEPTH CONSTRAINT NOT CURRENTLY WORKING ON IDRS")
         #    depths = depths[depths['depth'] >= min_depth]
