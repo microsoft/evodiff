@@ -143,14 +143,19 @@ def mean_metric(groups, metric='perp'):
 # Iterate over mdoels
 length_model='large'
 # TEST MUST GO FIRST FOR PLOTS TO REFERENCE CORRECTLY
-runs = ['test-data/', 'd3pm/blosum-640M-0/', 'd3pm/random-640M-0/', 'd3pm/oaardm-640M/', 'd3pm/soar-640M/',
-        'hyper12/cnn-650M/', 'esm-1b/','esm2/', 'random-ref/']
 
-#length_model='small'
-# runs = ['test-data/','sequence/blosum-0-seq/', 'd3pm-final/random-0-seq/', 'sequence/oaardm/', 'arcnn/cnn-38M/',
-#         'pretrain21/cnn-38M/', 'random-ref/']
+if length_model == 'large':
+    runs = ['test-data/', 'd3pm/blosum-640M-0/', 'd3pm/random-640M-0/', 'd3pm/oaardm-640M/', 'd3pm/soar-640M/',
+        'hyper12/cnn-650M/', 'esm-1b/','esm2/', 'foldingdiff/', 'random-ref/']
+    labels = ['Test', 'D3PM Blosum', 'D3PM Uniform', 'OA-AR', 'LR-AR', 'CARP', 'ESM-1b', 'ESM2', 'Random']
+    colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'mediumpurple', 'rebeccapurple',
+              'darkslateblue', 'firebrick']
+elif length_model == 'small':
+    runs = ['test-data/','sequence/blosum-0-seq/', 'd3pm-final/random-0-seq/', 'sequence/oaardm/', 'arcnn/cnn-38M/',
+         'pretrain21/cnn-38M/', 'random-ref/']
+    labels=['Test', 'D3PM Blosum', 'D3PM Uniform', 'OA-AR', 'LR-AR', 'CARP', 'Random']
+    colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'firebrick']
 
-labels=['Test', 'D3PM Blosum', 'D3PM Uniform', 'OA-AR', 'LR-AR', 'CARP', 'ESM-1b', 'ESM2', 'Random']
 mpnn=False # If you also ran MPNN
 
 perp_groups = []
@@ -163,7 +168,7 @@ seq_lengths = [64, 128, 256, 384]
 
 for run in runs:
     print("run", run)
-    if run == 'esm2/':
+    if run == 'esm2/' or run=='foldingdiff/':
         perp_group, scores_group, lengths_group, pdb_index_group, perp_index_group = iterate_dirs(run, [100],
                                                                                                   mpnn=mpnn)
     else:
@@ -179,24 +184,25 @@ for run in runs:
     if mpnn:
         mpnn_scores_groups.append(mpnn_scores_group)
 
-colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'mediumpurple', 'rebeccapurple', 'darkslateblue', 'firebrick']
-
 #For ESM-IF
 print("ESM-IF")
-plot_ecdf_bylength(perp_groups, colors, labels, seq_lengths, metric='perp', model='ESM-IF')
+if length_model == 'small':
+    plot_ecdf_bylength(perp_groups, colors, labels, seq_lengths, metric='perp', model='ESM-IF') # Look at length dependence of small models
 plot_ecdf(perp_groups, colors, labels, model='ESM-IF')
 mean_metric(perp_groups, metric='perp')
 
 # For MPNN
 if mpnn:
     print("MPNN")
-    plot_ecdf_bylength(mpnn_scores_groups, colors, labels, seq_lengths, metric='perp', model='MPNN')
+    if length_model == 'small':
+        plot_ecdf_bylength(mpnn_scores_groups, colors, labels, seq_lengths, metric='perp', model='MPNN')
     plot_ecdf(mpnn_scores_groups, colors, labels, model='MPNN')
     mean_metric(mpnn_scores_groups, metric='perp')
 
 print("Omegafold")
 # For Omegafold
-plot_ecdf_bylength(scores_groups, colors, labels, seq_lengths, metric='plddt', model='Omegafold')
+if length_model == 'small':
+    plot_ecdf_bylength(scores_groups, colors, labels, seq_lengths, metric='plddt', model='Omegafold')
 plot_ecdf(scores_groups, colors, labels, metric='plddt', model='Omegafold')
 mean_metric(scores_groups, metric='plddt')
 
@@ -207,7 +213,7 @@ ordered_plddt_group = []
 for i in range(len(labels)):
     ordered_perp = []
     ordered_plddt = []
-    if labels[i] == 'ESM2':
+    if runs[i] == 'esm2/' or runs[i] == 'foldingdiff/':
         seq_lengths=[100]
     else:
         seq_lengths= [64, 128, 256, 384]
