@@ -234,11 +234,12 @@ class D3PMCollaterMSA(object):
         num_timesteps: number of diffusion timesteps
 
     outputs:
-        src : source  masked sequences (model input)
+        src : source mutated sequences (model input)
         timesteps: (D-t+1) term
         tokenized: tokenized sequences (target seq)
         masks: masks used to generate src
         Q : markov matrix
+        Q_bar: cumulative prod of markov matrix
         q_x : forward transition probabilities
     """
     def __init__(self, tokenizer=Tokenizer(), num_timesteps=100, Q=None, Q_bar=None, num_seqs=64):
