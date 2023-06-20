@@ -135,7 +135,7 @@ def parse_fasta(seq_file, idx):
 class Tokenizer(object):
     """Convert between strings and index"""
     def __init__(self, protein_alphabet=MSA_ALPHABET, pad=MSA_PAD, mask=MASK, all_aas=MSA_AAS, gap=GAP,
-                 path_to_blosum=None, sequences=False):
+                 path_to_blosum=None, sequences=True):
         self.alphabet = list("".join(protein_alphabet))
         self.all_aas = list("".join(all_aas))
         self.pad = pad
@@ -252,3 +252,13 @@ def parse_txt(fasta_file):
                 if row[0][0] != '>':
                     train_seqs.append(str(row[0]))
     return train_seqs
+
+def download_model(model_name):
+    #url = f"https://.. {model_name} .. " # TODO add links when uploaded to Zenodo
+    #state_dict = torch.hub.load_state_dict_from_url(url, progress=True, map_location="cpu")
+    state_dict = "zenodo/checkpoints/"+model_name+".tar"
+    return state_dict
+
+def download_generated_sequences(model_name):
+    sequence_list = "curl -O"
+    return sequence_list
