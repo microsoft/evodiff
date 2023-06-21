@@ -84,7 +84,22 @@ def main():
     elif args.model_type == 'esm1b-640M':
         load_model = ESM1b_640M()
 
+    torch.cuda.set_device(args.gpus)
+    device = torch.device('cuda:' + str(args.gpus))
+    idr_flag = ''
+    causal = False
+    bidirectional = True
+    n_tokens = len(MSA_ALPHABET)
+
     model, collater, tokenizer, scheme = load_model
+    model = model.to(device)
+
+    diffusion_timesteps = 500
+
+    if scheme == 'd3pm':
+        Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=500)
+        Q_prod = Q_prod.to(device)
+        Q_t = Q_t.to(device)
 
     # with open(args.config_fpath, 'r') as f:
     #     config = json.load(f)
@@ -201,7 +216,7 @@ def main():
                 fasta_string = ""
 
                 # if args.mask == 'autoreg' or args.mask=='so' or args.mask == 'bert':
-                if scheme == 'mask':
+                if scheme == 'causal-mask':
                     sample, string = generate_text(model, seq_len, tokenizer=tokenizer, penalty=args.penalty, causal=causal,
                                                    batch_size=args.num_seqs, device=device)
                 # elif args.mask == 'blosum' or args.mask == 'random':
