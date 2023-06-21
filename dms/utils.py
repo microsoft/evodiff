@@ -180,6 +180,10 @@ class Tokenizer(object):
     def start_id(self):
         return self.tokenize(self.start)[0]
 
+    @property
+    def stop_id(self):
+        return self.tokenize(self.stop)[0]
+
     def q_blosum(self):
         q = np.array([i for i in self.matrix_dict.values()])
         q = q.reshape((len(self.all_aas),len(self.all_aas)))
