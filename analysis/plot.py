@@ -336,11 +336,12 @@ def plot_perp_group_masked(df, save_name):
     group = df.groupby(pd.cut(df['time'], bins))
     plot_centers = (bins[:-1] + bins[1:]) / 2
     plot_values = group['perplexity'].mean()
-    plot_std = group['perplexity'].std()
+    plot_err = group['perplexity'].std()
+    #plot_err = (group['perplexity'].min(), group['perplexity'].max())
 
     fig, ax = plt.subplots(figsize=(3, 2.5))
     plt.plot(plot_centers*100, plot_values, c='b')
-    plt.errorbar(plot_centers*100, plot_values, yerr=plot_std/2, fmt="o", c='b', capsize=3)
+    plt.errorbar(plot_centers*100, plot_values, yerr=plot_err, fmt="o", c='b', capsize=3)
     ax.set_xticks([0,20,40,60,80,100])
     plt.xlabel('% Masked')
     plt.ylabel('Perplexity')
@@ -397,7 +398,7 @@ def plot_ecdf_bylength(perp_groups, colors, labels, seq_lengths, metric='perp', 
     fig.savefig(os.path.join('plots/sc_'+metric+'_bylength_'+model+'.png'))
 
 
-def plot_ecdf(perp_groups, colors, labels, metric='perp', model='ESM-IF'):
+def plot_ecdf(perp_groups, colors, labels, metric='perp', model='ESM-IF', length_model='small'):
     "Plot cumulative density plot of plddt, or perp scores for each set of gen sequences. Uses the mean of test set \
     (indexed at 0) to create a hline boundary"
     fig, ax = plt.subplots(1,1, figsize=(2.5,2.5), sharey=True, sharex=True)
@@ -423,10 +424,10 @@ def plot_ecdf(perp_groups, colors, labels, metric='perp', model='ESM-IF'):
     elif model == 'Omegafold':
         ax.set_xlim(10, 100)
     plt.tight_layout()
-    fig.savefig(os.path.join('plots/sc_'+metric+'_'+model+'.svg'))
-    fig.savefig(os.path.join('plots/sc_'+metric+'_'+model+'.png'))
+    fig.savefig(os.path.join('plots/sc_'+metric+'_'+model+'_'+length_model+'.svg'))
+    fig.savefig(os.path.join('plots/sc_'+metric+'_'+model+'_'+length_model+'.png'))
 
-def plot_plddt_perp(ordered_plddt_group, ordered_perp_group, idx, colors, labels, perp_model='ESM-IF'):
+def plot_plddt_perp(ordered_plddt_group, ordered_perp_group, idx, colors, labels, perp_model='ESM-IF', length_model='small'):
     "Plot pLDDT vs Perplexity for each set of generated sequences against train data"
     fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5), sharey=True, sharex=True)
     plt.scatter(ordered_plddt_group[0], ordered_perp_group[0], c=colors[0], s=20, alpha=1, label=labels[0], edgecolors='grey')
@@ -438,8 +439,8 @@ def plot_plddt_perp(ordered_plddt_group, ordered_perp_group, idx, colors, labels
     ax.set_ylabel(perp_model + ' Perplexity')
     ax.set_xlabel('pLDDT')
     plt.tight_layout()
-    fig.savefig(os.path.join('plots/sc_plddt_perp_'+labels[idx]+'.svg'))
-    fig.savefig(os.path.join('plots/sc_plddt_perp_'+labels[idx]+'.png'))
+    fig.savefig(os.path.join('plots/sc_plddt_perp_'+labels[idx]+'_'+length_model+'.svg'))
+    fig.savefig(os.path.join('plots/sc_plddt_perp_'+labels[idx]+'_'+length_model+'.png'))
 
 def ss_helix_strand(runs, data, labels, save_name):
     "2D Probability Density plots for DSSP 3-state predictions of % Helix and % Sheet"
