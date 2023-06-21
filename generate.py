@@ -159,7 +159,7 @@ def main():
             os.remove(file)
             print("Deleting", file)
 
-    if args.mask != 'test-sample' and not args.idr:
+    if args.mask != 'test-sample' and args.mask !='so' and not args.idr:
         for i, seq_len in enumerate(seq_lengths):
             with open(args.out_fpath + 'generated_samples_string_' + str(seq_len) + '.fasta', 'a') as f:
                 count = args.count
@@ -168,9 +168,6 @@ def main():
                 if args.mask == 'autoreg' or args.mask == 'bert':
                     sample, string = generate_oaardm(model, seq_len, tokenizer=tokenizer, penalty=args.penalty,
                                                    batch_size=args.num_seqs, device=device)
-                elif args.mask=='so':
-                    sample, string = generate_autoreg(model, seq_len, tokenizer=tokenizer, penalty=args.penalty,
-                                                     batch_size=args.num_seqs, device=device)
                 elif args.mask == 'blosum' or args.mask == 'random':
                     sample, string = generate_d3pm(model, seq_len, Q_bar=Q_prod, Q=Q_t, tokenizer=tokenizer,
                                                         timesteps=diffusion_timesteps, no_step=args.no_step,
@@ -205,27 +202,34 @@ def main():
             f.write('\n')
 
 
-    elif args.mask == 'test-sample' and not args.idr:
-        #seq_lengths = [32] #, 64, 128, 256, 384, 512]
+    elif (args.mask == 'test-sample' or args.mask == 'so') and not args.idr:
         overall_count = 0
         seqs = ""
-        string = generate_valid_subset(data_top_dir=data_top_dir, samples=args.num_seqs)
-        for i, seq_len in enumerate(seq_lengths):
-            with open(args.out_fpath + 'generated_samples_string_'+str(seq_len)+'.fasta', 'a') as f:
-                fasta_string = ""
-                count=args.count
-                print(len(string[i]))
-                for _s in string[i]:
-                    fasta_string += ">SEQUENCE_" + str(count) + "\n" + str(_s) + "\n"
-                    count += 1
-                    seqs += ">SEQUENCE_" + str(overall_count) + "\n" + str(_s) + "\n"
-                    overall_count += 1
-                f.write(fasta_string)
-                f.close()
-        with open(args.out_fpath + 'generated_samples_string.fasta', 'a') as f:
-            f.write(seqs)
-            f.write('\n')
-
+        if args.mask == 'test-sample':
+            string = generate_valid_subset(data_top_dir=data_top_dir, samples=args.num_seqs)
+            for i, seq_len in enumerate(seq_lengths):
+                with open(args.out_fpath + 'generated_samples_string_' + str(seq_len) + '.fasta', 'a') as f:
+                    fasta_string = ""
+                    count = args.count
+                    print(len(string[i]))
+                    for _s in string[i]:
+                        fasta_string += ">SEQUENCE_" + str(count) + "\n" + str(_s) + "\n"
+                        count += 1
+                        seqs += ">SEQUENCE_" + str(overall_count) + "\n" + str(_s) + "\n"
+                        overall_count += 1
+                    f.write(fasta_string)
+                    f.close()
+            with open(args.out_fpath + 'generated_samples_string.fasta', 'a') as f:
+                f.write(seqs)
+                f.write('\n')
+        elif args.mask == 'so':
+            seq_len=100 # placeholder
+            sample, string = generate_autoreg(model, samples=args.num_seqs, tokenizer=tokenizer, penalty=args.penalty,
+                                              batch_size=args.num_seqs, device=device)
+            with open(args.out_fpath + 'generated_samples_string.csv', 'a') as f:
+                f.write(''.join([_s + "\n" for _s in string]))
+            with open(args.out_fpath + 'generated_samples_string.fasta', 'a') as f:
+                f.write(''.join([">SEQUENCE_" + str(i) + "\n" + str(_s) + "\n" for i,_s in enumerate(string)]))
     elif args.idr:
         sample, string, queries, sequences = generate_idr(model, data_top_dir, tokenizer=tokenizer, penalty=args.penalty,
                                       causal=causal, batch_size=args.num_seqs, device=device)
@@ -324,32 +328,44 @@ def generate_oaardm(model, seq_len, tokenizer=Tokenizer(), penalty=None, batch_s
     untokenized = [tokenizer.untokenize(s) for s in sample]
     return sample, untokenized
 
-def generate_autoreg(model, seq_len, tokenizer=Tokenizer(), penalty=None, batch_size=20, device='cuda'):
-    # Generate a random start string and convert to tokens
-    all_aas = tokenizer.all_aas
+def generate_autoreg(model, samples=100, tokenizer=Tokenizer(), penalty=None, batch_size=1, device='cuda',
+                     max_seq_len=1024):
+    # Generates 1 seq at a time, no batching, to make it easier to deal w variable seq lengths
+    # Generates until max length or until
     start = tokenizer.start_id
-    # Start from START token
-    sample = torch.zeros((batch_size, 1))+ start
-    sample = sample.to(torch.long)
-    sample = sample.to(device)
-    # Iterate over each residue in desired length
-    loc = np.arange(seq_len)
-    with torch.no_grad():
-        for i in tqdm(loc):
-            timestep = torch.tensor([0] * batch_size) # placeholder but not called in model
-            timestep = timestep.to(device)
-            prediction = model(sample, timestep) #, input_mask=input_mask.unsqueeze(-1)) #sample prediction given input
-            p = prediction[:, -1, :len(all_aas)-6] # predict next token (don't let predict non-standard AAs)
-            p = torch.nn.functional.softmax(p, dim=1) # softmax over categorical probs
-            p_sample = torch.multinomial(p, num_samples=1)
-            #print(p_sample.shape, sample.shape)
-            sample = torch.cat((sample, p_sample), dim=1)
-            #print(sample.shape)
-            #print([tokenizer.untokenize(s) for s in sample]) # check that sampling correctly
+    stop = tokenizer.stop_id
+    sample_out = []
+    untokenized_out = []
+    timestep = torch.tensor([0] * batch_size)  # placeholder but not called in model
+    timestep = timestep.to(device)
+    for s in tqdm(range(samples)):
+        # Start from START token
+        sample = (torch.zeros((1))+ start).unsqueeze(0) # add batch dim
+        sample = sample.to(torch.long)
+        sample = sample.to(device)
+        # Iterate over each residue until desired length
+        #max_loc = np.arange(max_seq_len)
+        reach_stop=False # initialize
+        with torch.no_grad():
+            for i in range(max_seq_len):
+                if reach_stop == False: # Add residues until it predicts STOP token or hits max seq len
+                    prediction = model(sample, timestep) #, input_mask=input_mask.unsqueeze(-1)) #sample prediction given input
+                    p = prediction[:, -1, :] # predict next token
+                    p = torch.nn.functional.softmax(p, dim=1) # softmax over categorical probs
+                    p_sample = torch.multinomial(p, num_samples=1)
+                    sample = torch.cat((sample, p_sample), dim=1)
+                    #print(tokenizer.untokenize(sample[0]))
+                    #print(p_sample, stop)
+                    if p_sample == stop:
+                        reach_stop = True
+                else:
+                    break
 
-    print("final seq", [tokenizer.untokenize(s[1:]) for s in sample]) # dont care about appending start token
-    untokenized = [tokenizer.untokenize(s) for s in sample]
-    return sample, untokenized
+        print("final seq", tokenizer.untokenize(sample[0,1:-1])) # dont care about appending start/stop token
+        untokenized = tokenizer.untokenize(sample[0,1:-1])
+        sample_out.append(sample[0,1:-1])
+        untokenized_out.append(untokenized)
+    return sample_out, untokenized_out
 
 def generate_idr(model, data_top_dir, tokenizer=Tokenizer(), penalty=None, causal=False, batch_size=20, device='cuda'):
     cutoff = 256 # TODO ADD FILTER
