@@ -45,6 +45,7 @@ def main():
                         help='number of gpus per node')
     parser.add_argument('--no-step', action='store_true') # For D3PM if true will predict x_0 from x_t, instead of x_tminus1
     parser.add_argument('--delete-prev',action='store_true')  # Will delete previous generated sequences
+    parser.add_argument('--seq-length', nargs='+', help='Input sequence lengths with the following syntax: --seq-length 100 200 400')  # Sequence length as a list
     parser.add_argument('--count', default=0, type=int) # Start new gen sequences from 0, unless
     parser.add_argument('--idr',action='store_true')  # Will delete previous generated sequences
     args = parser.parse_args()
