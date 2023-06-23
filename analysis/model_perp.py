@@ -15,47 +15,35 @@ def main():
     np.random.seed(0) # set random seed
 
     # Def read seqs from fasta
-    data = UniRefDataset('data/uniref50/', 'rtest', structure=False, max_len=1024) # For ESM max_len=1022 (1024+start/stop), for DIFF 2048
+    data = UniRefDataset('data/uniref50/', 'rtest', structure=False, max_len=1022) # For ESM max_len=1022 (1024+start/stop), for DIFF 2048
 
-    #checkpoint = ESM1b_640M()
-    #save_name = 'esm_1b_640M'
-    checkpoint = LR_AR_640M()
-    save_name = 'lr_ar_640M'
+    checkpoint = ESM1b_640M()
+    save_name = 'esm1b_640M'
 
-    perplexities = []
-    time_perp_data = []
+    losses = []
+    n_tokens = []
+    time_loss_data = []
     for i in tqdm(range(25000)): #len(data))):
         r_idx = np.random.choice(len(data))
         sequence = [data[r_idx]]
-        t, p = calculate_perplexity(sequence, checkpoint)
-        # This will work most of the time
-        perplexities.append(p)
-        time_perp_data.append([t,p])
+        t, loss, tokens = sum_nll_mask(sequence, checkpoint)
+        #print(t, loss, tokens)
+        if not np.isnan(loss): #esm-1b predicts nans at large % mask
+            losses.append(loss)
+            n_tokens.append(tokens)
+            time_loss_data.append([t, loss, tokens])
+        if i % 10000 == 0:
+            ll = -sum(losses) / sum(n_tokens)
+            perp = np.exp(-ll)
+            print(i, "samples, perp:", np.mean(perp))
+    print("Final test perp:", np.exp(sum(losses)/sum(n_tokens)))
+    df = pd.DataFrame(time_loss_data, columns=['time', 'loss', 'tokens'])
+    if checkpoint[-1] == 'd3pm':
+        plot_perp_group_d3pm(df, save_name)
+    else:
+        plot_perp_group_masked(df, save_name)
 
-        # Use this only for D3PM
-        # if p <= 26: # Ignore weird outliers at high timesteps (400-500) that happen for short sequences
-        #     perplexities.append(p)
-        #     time_perp_data.append([t,p])
-        # else:
-        #     perplexities.append(26)
-        #     time_perp_data.append([t,26])
-        #ESM generates nans sometimes
-        # if math.isnan(p):
-        #     pass
-        # else:
-        #     perplexities.append(p)
-        #     time_perp_data.append([t,p])
-        # #print(p)
-        if i % 1000 == 0:
-            print(i, "samples, perp:", np.mean(perplexities))
-    print("Final test perp:", np.mean(perplexities))
-
-    df = pd.DataFrame(time_perp_data, columns=['time', 'perplexity'])
-
-    plot_perp_group_masked(df, save_name)
-    #plot_perp_group_d3pm(df, save_name)
-
-def calculate_perplexity(sequence, checkpoint):
+def sum_nll_mask(sequence, checkpoint):
     model, collater, tokenizer, scheme = checkpoint
     # Use model.eval() if using CPU
     model.eval().cuda()
@@ -90,22 +78,27 @@ def calculate_perplexity(sequence, checkpoint):
     if scheme == 'd3pm':
         loss_func = CrossEntropyLoss(reduction='sum')
         nll_loss = loss_func(outputs.squeeze(), tgt.squeeze())
-        ll = -nll_loss.item() / len(tgt.squeeze()) # over all tokens
+        #ll = -nll_loss.item() / len(tgt.squeeze()) # over all tokens
         t_out=timestep
+        tokens = len(tgt.squeeze())
     elif scheme == 'mask' or scheme == 'esm-mask' or scheme=='causal-mask':
         if scheme=='causal-mask': # LR-AR only predict next token
-            loss_func = MaskedCrossEntropyLoss()
+            loss_func = MaskedCrossEntropyLoss(reduction='sum') # returns the mean
+            tokens = mask.sum().item()
             nll_loss = loss_func(outputs, tgt, mask)
+            #print(nll_loss, tokens)
             t_out=1
-            ll = -nll_loss.item() # First masked token only
+            #ll = -nll_loss.item()
         else:
-            loss_func = OAMaskedCrossEntropyLoss(reweight=False, return_reduced=False)
-            ce_loss, nll_loss = loss_func(outputs[:, :, :26], tgt, mask, timestep, input_mask)
-            t_out = int(mask.sum().item()) / int(len(tgt.squeeze()))
-            ll = -nll_loss.sum().item() / mask.sum().item() # over all masked tokens
+            loss_func = OAMaskedCrossEntropyLoss(reweight=False)
+            ce_loss, nll_loss = loss_func(outputs[:, :, :26], tgt, mask, timestep, input_mask) # returns a sum
+            tokens = mask.sum().item()
+            t_out = tokens / int(len(tgt.squeeze()))
+            #ll = -nll_loss.item() / mask.sum().item() # over all masked tokens
+
     # Get perp
-    perp = np.exp(-ll)
-    return t_out, perp
+    #perp = np.exp(-ll)
+    return t_out, nll_loss.item(), tokens
 
 if __name__ == '__main__':
     main()

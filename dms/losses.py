@@ -67,7 +67,7 @@ class OAMaskedCrossEntropyLoss(CrossEntropyLoss):
             ce_losses = ce_loss.sum()  # reduce mean
         else:
             ce_losses = nll_losses
-        return ce_losses, nll_losses.to(torch.float64) # normalize by # of tokens
+        return ce_losses, nll_losses.to(torch.float64)
 
 
 class D3PMCELoss(CrossEntropyLoss):

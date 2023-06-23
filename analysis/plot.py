@@ -9,7 +9,7 @@ import numpy as np
 import seaborn as sns
 import difflib
 from itertools import chain
-from dms.utils import extract_seq_a3m, csv_to_dict, normalize, removekey, get_matrix, get_pairs, normalize_matrix, \
+from dms.utils import extract_seq_a3m, csv_to_dict, normalize_list, removekey, get_matrix, get_pairs, normalize_matrix, \
                       get_pairwise
 
 def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=False, idr=False, gen_file=True,
@@ -56,19 +56,19 @@ def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=Fals
     else:
         gen_flag = '_train_only'
     # Normalize scores
-    a = normalize(values)  # normalize(list(aminos.values()))
+    a = normalize_list(values)  # normalize(list(aminos.values()))
     if start_valid:
-        a_kl = normalize(list(removekey(aminos, keys_to_remove).values()))
+        a_kl = normalize_list(list(removekey(aminos, keys_to_remove).values()))
     else:
         #print(aminos)
-        a_kl = normalize([each[0] for each in removekey(aminos, keys_to_remove).values()])
+        a_kl = normalize_list([each[0] for each in removekey(aminos, keys_to_remove).values()])
     if gen_file:
         b_list = list(aminos_gen.values())
-        b = normalize(b_list) # ADD GAPS IN
+        b = normalize_list(b_list) # ADD GAPS IN
         # Save KL to file
         kl_loss = KLDivLoss(reduction="sum")
         if msa:
-            b_kl = normalize(list(removekey(aminos_gen, keys_to_remove).values()))
+            b_kl = normalize_list(list(removekey(aminos_gen, keys_to_remove).values()))
             #print(len(a_kl), len(b_kl))
             #print(a_kl, b_kl)
             kl = kl_loss(torch.tensor(a_kl).log(), torch.tensor(b_kl)).item()
@@ -106,20 +106,20 @@ def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=Fals
         fig.savefig(os.path.join(out_path, idr_flag+'parity_scatter.png'))
         plt.close()
 
-    fig, ax = plt.subplots(figsize=(4.5, 2.5))
-    #print(aminos.keys())
-    plt.bar(list(aminos.keys())[:-5], a_kl, color='black', alpha=0.5)
-    if gen_file:
-        plt.bar(list(aminos_gen.keys())[:-6], b_kl, color='b', alpha=0.5)
-        ax.text(0.05, 0.95, kl_label, transform=ax.transAxes, fontsize=14,
-            verticalalignment='top')
-    plt.xlabel("Amino Acids", fontweight='bold')
-    plt.ylabel("Normalized Freq", fontweight='bold')
-    plt.tight_layout()
-    save_dir_test = os.path.join(out_path)
-    fig.savefig(save_dir_test+'/'+idr_flag+gen_flag+'parity_bar.svg')
-    fig.savefig(save_dir_test+'/'+idr_flag+gen_flag+'parity_bar.png')
-    plt.close()
+    # fig, ax = plt.subplots(figsize=(4.5, 2.5))
+    # #print(aminos.keys())
+    # plt.bar(list(aminos.keys())[:-5], a_kl, color='black', alpha=0.5)
+    # if gen_file:
+    #     plt.bar(list(aminos_gen.keys())[:-6], b_kl, color='b', alpha=0.5)
+    #     ax.text(0.05, 0.95, kl_label, transform=ax.transAxes, fontsize=14,
+    #         verticalalignment='top')
+    # plt.xlabel("Amino Acids", fontweight='bold')
+    # plt.ylabel("Normalized Freq", fontweight='bold')
+    # plt.tight_layout()
+    # save_dir_test = os.path.join(out_path)
+    # fig.savefig(save_dir_test+'/'+idr_flag+gen_flag+'parity_bar.svg')
+    # fig.savefig(save_dir_test+'/'+idr_flag+gen_flag+'parity_bar.png')
+    # plt.close()
 
     if not gen_file:
         return a # return train probability distribution
@@ -335,13 +335,13 @@ def plot_perp_group_masked(df, save_name):
     df['binned'] = pd.cut(df['time'], bins)
     group = df.groupby(pd.cut(df['time'], bins))
     plot_centers = (bins[:-1] + bins[1:]) / 2
-    plot_values = group['perplexity'].mean()
-    plot_err = group['perplexity'].std()
+    plot_values = np.exp(group['loss'].sum()/group['tokens'].sum())
+    #plot_err = group['loss'].std()
     #plot_err = (group['perplexity'].min(), group['perplexity'].max())
 
     fig, ax = plt.subplots(figsize=(3, 2.5))
-    plt.plot(plot_centers*100, plot_values, c='b')
-    plt.errorbar(plot_centers*100, plot_values, yerr=plot_err, fmt="o", c='b', capsize=3)
+    plt.plot(plot_centers*100, plot_values, c='b', marker='o')
+    #plt.errorbar(plot_centers*100, plot_values, yerr=plot_err, fmt="o", c='b', capsize=3)
     ax.set_xticks([0,20,40,60,80,100])
     plt.xlabel('% Masked')
     plt.ylabel('Perplexity')
@@ -355,12 +355,12 @@ def plot_perp_group_d3pm(df, save_name):
     df['binned'] = pd.cut(df['time'], bins)
     group = df.groupby(pd.cut(df['time'], bins))
     plot_centers = (bins[:-1] + bins[1:]) / 2
-    plot_values = group['perplexity'].mean()
-    plot_std = group['perplexity'].std()
+    plot_values = np.exp(group['loss'].sum()/group['tokens'].sum())
+    #plot_std = group['perplexity'].std()
 
     fig, ax = plt.subplots(figsize=(3, 2.5))
-    plt.plot(plot_centers, plot_values, c='b')
-    plt.errorbar(plot_centers, plot_values, yerr=plot_std/2, fmt="o", c='b', capsize=3)
+    plt.plot(plot_centers, plot_values, c='b', marker='o')
+    #plt.errorbar(plot_centers, plot_values, yerr=plot_std/2, fmt="o", c='b', capsize=3)
     ax.set_xticks([0, 100, 200, 300, 400, 500])
     plt.xlabel('Timestep')
     plt.ylabel('Perplexity')
