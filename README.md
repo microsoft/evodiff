@@ -52,6 +52,8 @@ The second is to generate the query from the alignment. To do so run:
 
 Note that you can only start-query or start-msa, not both. To generate unconditionally, omit the flags (see the example in the above section).
 
+To create the Potts model, which serves as a baseline, we use [CCMpredPy and CCMgen](https://github.com/soedinglab/CCMgen/wiki/Getting-Started-with-CCMgen-and-CCMpredPy).
+
 ### Analysis of generations
 To access the test sequences:
 ```
