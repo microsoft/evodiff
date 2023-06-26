@@ -493,3 +493,28 @@ def plot_embedding(projected_embeddings, colors, i, runs, project_run):
     ax.axis('off')
     fig.savefig(os.path.join('plots/fid_' + runs[i] + '_' + project_run + '.svg'))
     fig.savefig(os.path.join('plots/fid_' + runs[i] + '_' + project_run + '.png'))
+
+
+def plot_percent_similarity(runs, all_df):
+    fig, ax = plt.subplots(figsize=(3, 2.5))
+    sns.set_palette(sns.color_palette("viridis", len(runs)))
+    sns.ecdfplot(all_df, ax=ax, legend=False)
+    ax.set_xlabel('% Similarity to Original MSA')
+    #sns.ecdfplot(all_sim_df, ax=ax[1])
+    #ax[1].set_xlabel('% Similarity to Original Query')
+    ax.axvline(x=25, c='k', ls='--', lw=0.75)
+    #ax[1].axvline(x=25, c='k', ls='--', lw=0.75)
+    plt.tight_layout()
+    fig.savefig(os.path.join('plots/plddt_simmsa.svg'))
+    fig.savefig(os.path.join('plots/plddt_simmsa.png'))
+
+def plot_tmscore(tm_df, legend=False):
+    fig, ax = plt.subplots(figsize=(3, 2.5))
+    sns.ecdfplot(tm_df, ax=ax, legend=legend)
+    ax.axvline(x=0.5, c='k', ls='--', lw=0.75)
+    ax.set_ylabel('Proportion')
+    ax.set_xlabel('TM Score (Original Query | Gen Query)')
+    # plt.legend()
+    plt.tight_layout()
+    fig.savefig(os.path.join('plots/tmscore.svg'))
+    fig.savefig(os.path.join('plots/tmscore.png'))
