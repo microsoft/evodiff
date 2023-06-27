@@ -94,7 +94,7 @@ def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=Fals
                   'crimson', 'lightpink']
         fig, ax = plt.subplots(figsize=(3, 2.5))
         annotations = list(aminos_gen.keys())[0:len(a)]
-        plt.axline([0, 0], [0.1, 0.1], c='k', linestyle='dotted', alpha=0.5)
+        plt.axline([0, 0], [0.1, 0.1], c='k', linestyle='dotted', alpha=0.75)
         for i, label in enumerate(annotations):
             plt.scatter(a[i], b[i], label=label, c=colors[i], edgecolors='k')
         ax.text(0.05, 0.95, kl_label, transform=ax.transAxes, fontsize=14,
@@ -398,7 +398,7 @@ def plot_ecdf_bylength(perp_groups, colors, labels, seq_lengths, metric='perp', 
     fig.savefig(os.path.join('plots/sc_'+metric+'_bylength_'+model+'.png'))
 
 
-def plot_ecdf(perp_groups, colors, labels, metric='perp', model='ESM-IF', length_model='small'):
+def plot_ecdf(perp_groups, colors, labels, metric='perp', model='ESM-IF', length_model='small', legend=False):
     "Plot cumulative density plot of plddt, or perp scores for each set of gen sequences. Uses the mean of test set \
     (indexed at 0) to create a hline boundary"
     fig, ax = plt.subplots(1,1, figsize=(2.5,2.5), sharey=True, sharex=True)
@@ -416,6 +416,8 @@ def plot_ecdf(perp_groups, colors, labels, metric='perp', model='ESM-IF', length
             ax.set_xlabel(model + ' pLDDT')
         ax.set_title("all sequences")
         ax.axvline(x=np.mean(list(chain.from_iterable(perp_groups[0]))), c='k', ls='--', lw=0.75)
+    if legend:
+        ax.legend()
     #ax.legend(fontsize=8, loc='upper right', bbox_to_anchor=(1.7, 1.05),)
     if model=='ESM-IF':
         ax.set_xlim(0,25)
@@ -479,38 +481,33 @@ def ss_box_whisker(data, colors, save_name):
     fig.savefig(os.path.join('plots/' + save_name + '_structure_box.svg'))
     fig.savefig(os.path.join('plots/' + save_name + '_structure_box.png'))
 
-def plot_embedding(projected_embeddings, colors, i, runs, project_run):
+def plot_embedding(train_emb, run_emb, colors, i, runs, project_run):
     "Plot embedding space of sequences as 2D TSNE "
     fig, ax = plt.subplots(figsize=(5, 5))
     # Plot test
-    plt.scatter(projected_embeddings[:1000, 0], projected_embeddings[:1000, 1], s=20, alpha=1, c=colors[:1000],
+    plt.scatter(train_emb[:, 0][::10], train_emb[:, 1][::10], s=20, alpha=1, c=colors[0],
                 edgecolors='grey')
-    begin = 1000 * (i)
-    end = 1000 * (i + 1)
     # Plot run
-    plt.scatter(projected_embeddings[begin:end, 0], projected_embeddings[begin:end, 1], s=20, alpha=0.95,
-                c=colors[begin:end], edgecolors='grey')
+    plt.scatter(run_emb[:, 0], run_emb[:, 1], s=20, alpha=0.95,
+                c=colors[i+1], edgecolors='grey')
     ax.axis('off')
-    fig.savefig(os.path.join('plots/fid_' + runs[i] + '_' + project_run + '.svg'))
-    fig.savefig(os.path.join('plots/fid_' + runs[i] + '_' + project_run + '.png'))
+    fig.savefig(os.path.join('plots/fid_' + runs[i+1] + '_' + project_run + '.svg'))
+    fig.savefig(os.path.join('plots/fid_' + runs[i+1] + '_' + project_run + '.png'))
 
 
-def plot_percent_similarity(runs, all_df):
+def plot_percent_similarity(all_df, colors, legend=False):
     fig, ax = plt.subplots(figsize=(3, 2.5))
-    sns.set_palette(sns.color_palette("viridis", len(runs)))
-    sns.ecdfplot(all_df, ax=ax, legend=False)
+    #sns.set_palette(sns.color_palette("viridis", len(runs)))
+    sns.ecdfplot(all_df, ax=ax, legend=legend, palette=colors)
     ax.set_xlabel('% Similarity to Original MSA')
-    #sns.ecdfplot(all_sim_df, ax=ax[1])
-    #ax[1].set_xlabel('% Similarity to Original Query')
     ax.axvline(x=25, c='k', ls='--', lw=0.75)
-    #ax[1].axvline(x=25, c='k', ls='--', lw=0.75)
     plt.tight_layout()
-    fig.savefig(os.path.join('plots/plddt_simmsa.svg'))
-    fig.savefig(os.path.join('plots/plddt_simmsa.png'))
+    fig.savefig(os.path.join('plots/simmsa.svg'))
+    fig.savefig(os.path.join('plots/simmsa.png'))
 
-def plot_tmscore(tm_df, legend=False):
+def plot_tmscore(tm_df, palette, legend=False):
     fig, ax = plt.subplots(figsize=(3, 2.5))
-    sns.ecdfplot(tm_df, ax=ax, legend=legend)
+    sns.ecdfplot(tm_df, palette=palette, ax=ax, legend=legend)
     ax.axvline(x=0.5, c='k', ls='--', lw=0.75)
     ax.set_ylabel('Proportion')
     ax.set_xlabel('TM Score (Original Query | Gen Query)')
