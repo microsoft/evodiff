@@ -20,6 +20,8 @@ import pandas as pd
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 import random
 
+# python cond_gen.py --cond-task scaffold --pdb 5trv --motif-start-index 42 --motif-end-index 62 --num-seqs 50
+
 home = str(pathlib.Path.home())
 
 def main():
@@ -75,9 +77,9 @@ def main():
             strings.append(string)
 
     with open(out_fpath + 'generated_samples_string.csv', 'a') as f:
-        f.write(''.join([_s + "\n" for _s in string]))
+        f.write(''.join([_s + "\n" for _s in strings]))
     with open(out_fpath + 'generated_samples_string.fasta', 'a') as f:
-        f.write(''.join([">SEQUENCE_" + str(i) + "\n" + str(_s) + "\n" for i, _s in enumerate(string)]))
+        f.write(''.join([">SEQUENCE_" + str(i) + "\n" + str(_s) + "\n" for i, _s in enumerate(strings)]))
 
 def download_pdb(PDB_ID, outfile):
     "return PDB file from database online"
@@ -120,9 +122,9 @@ def generate_scaffold(model, PDB_ID, motif_start_idx, motif_end_idx, scaffold_le
 
     value, loc = (sample == mask).long().nonzero(as_tuple=True) # locations that need to be unmasked
     loc = np.array(loc)
-    print(loc)
+    #print(loc)
     np.random.shuffle(loc)
-    print(loc)
+    #print(loc)
     sample = sample.long().to(device)
     with torch.no_grad():
         for i in loc:
@@ -134,7 +136,7 @@ def generate_scaffold(model, PDB_ID, motif_start_idx, motif_end_idx, scaffold_le
             p_sample = torch.multinomial(p, num_samples=1)
             sample[:, i] = p_sample.squeeze()
 
-    # print("final seq", [tokenizer.untokenize(s) for s in sample])
+    #print("final seq", [tokenizer.untokenize(s) for s in sample])
     untokenized = [tokenizer.untokenize(s) for s in sample]
 
     return untokenized
