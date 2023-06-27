@@ -145,7 +145,7 @@ def parse_fasta(seq_file, idx):
 class Tokenizer(object):
     """Convert between strings and index"""
     def __init__(self, protein_alphabet=MSA_ALPHABET, pad=MSA_PAD, mask=MASK, all_aas=MSA_AAS, gap=GAP, start=START,
-                 stop=STOP, path_to_blosum=None, sequences=True):
+                 stop=STOP, path_to_blosum=None, sequences=False):
         self.alphabet = list("".join(protein_alphabet))
         self.all_aas = list("".join(all_aas))
         self.pad = pad
@@ -298,7 +298,7 @@ def csv_to_dict(generate_file):
     aminos_gen_ordered = OrderedDict(list_of_tuples)
     return aminos_gen_ordered
 
-def normalize(list):
+def normalize_list(list):
     norm = sum(list)
     new_list = [item / norm for item in list]
     return new_list
@@ -378,3 +378,28 @@ def download_generated_sequences(model_name):
     sequence_list = "curl -O"
     return sequence_list
 
+def get_valid_msas(data_top_dir, data_dir='openfold/', selection_type='MaxHamming', n_sequences=64, max_seq_len=512,
+                   out_path='../DMs/ref/'):
+    from dms.data import A3MMSADataset
+    import os
+    from torch.utils.data import Subset
+    from sequence_models.collaters import MSAAbsorbingCollater
+    from dms.collaters import D3PMCollaterMSA
+    from torch.utils.data import DataLoader
+    import tqdm as tqdm
+
+    valid_msas = []
+    query_msas = []
+    seq_lens = []
+
+    _ = torch.manual_seed(1) # same seeds as training
+    np.random.seed(1)
+
+    dataset = A3MMSADataset(selection_type, n_sequences, max_seq_len, data_dir=os.path.join(data_top_dir,data_dir), min_depth=64)
+
+    train_size = len(dataset)
+    random_ind = np.random.choice(train_size, size=(train_size - 10000), replace=False)
+    val_ind = np.delete(np.arange(train_size), random_ind)
+    ds_valid = Subset(dataset, val_ind)
+
+    return ds_valid
