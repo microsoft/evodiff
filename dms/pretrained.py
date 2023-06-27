@@ -5,7 +5,7 @@ from sequence_models.esm import MSATransformer
 from sequence_models.constants import MSA_ALPHABET, PROTEIN_ALPHABET, ALL_AAS, PAD, MSA_PAD, MASK
 from sequence_models.collaters import LMCollater
 from dms.utils import Tokenizer, download_model
-from dms.collaters import D3PMCollater, OAMaskCollater, ESMOAMaskCollater, D3PMCollaterMSA
+from dms.collaters import D3PMCollater, OAMaskCollater, ESMOAMaskCollater, D3PMCollaterMSA, ESMOAMaskCollaterMSA
 from sequence_models.collaters import MSAAbsorbingCollater
 import esm
 
@@ -99,7 +99,7 @@ def D3PM_UNIFORM_640M():
     model, tokenizer = load_sequence_checkpoint("d3pm-uniform-640M", "config/config640M.json", diffusion_timesteps=dt,
                                             tokenizer=tokenizer)
     scheme = 'd3pm'
-    return model, collater, tokenizer, scheme, Q_prod, Q_t
+    return model, collater, tokenizer, scheme
 
 
 def D3PM_UNIFORM_38M():
@@ -110,7 +110,7 @@ def D3PM_UNIFORM_38M():
     model, tokenizer = load_sequence_checkpoint("d3pm-uniform-38M", "config/config38M.json", diffusion_timesteps=dt,
                                             tokenizer=tokenizer)
     scheme = 'd3pm'
-    return model, collater, tokenizer, scheme, Q_prod, Q_t
+    return model, collater, tokenizer, scheme
 
 
 def OA_AR_640M():
@@ -168,35 +168,59 @@ def CARP_640M():
     scheme='mask'
     return model, collater, tokenizer, scheme
 
-def ESM1b_640M():
+def ESM1b_650M():
+    "Wrapper for ESM model"
     model, alphabet = esm.pretrained.esm1b_t33_650M_UR50S()
     collater = ESMOAMaskCollater(alphabet=alphabet)
     scheme='esm-mask'
     return model, collater, alphabet, scheme
 
-def MSA_D3PM_BLOSUM():
+def MSA_D3PM_BLOSUM_RANDSUB():
     dt = 500
-    tokenizer = tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat")
+    tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
     collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
-    model, tokenizer = load_msa_checkpoint("msa-d3pm-blosum", "config/configMSA.json",
+    model, tokenizer = load_msa_checkpoint("msa-d3pm-blosum-randsub", "config/configMSA.json",
                                                 diffusion_timesteps=dt,
                                                 tokenizer=tokenizer)
     scheme = 'd3pm'
     return model, collater, tokenizer, scheme
 
-def MSA_D3PM_UNIFORM():
+def MSA_D3PM_BLOSUM_MAXSUB():
     dt = 500
-    tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat")
+    tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
     collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
-    model, tokenizer = load_msa_checkpoint("msa-d3pm-uniform", "config/configMSA.json",
+    model, tokenizer = load_msa_checkpoint("msa-d3pm-blosum-maxsub", "config/configMSA.json",
                                                 diffusion_timesteps=dt,
                                                 tokenizer=tokenizer)
     scheme = 'd3pm'
     return model, collater, tokenizer, scheme
 
-def MSA_D3PM_OA_AR_RANDSUB():
+def MSA_D3PM_UNIFORM_RANDSUB():
+    dt = 500
+    tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
+    Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
+    collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
+    model, tokenizer = load_msa_checkpoint("msa-d3pm-uniform-randsub", "config/configMSA.json",
+                                                diffusion_timesteps=dt,
+                                                tokenizer=tokenizer)
+    scheme = 'd3pm'
+    return model, collater, tokenizer, scheme
+
+def MSA_D3PM_UNIFORM_MAXSUB():
+    dt = 500
+    tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
+    Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
+    collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
+    model, tokenizer = load_msa_checkpoint("msa-d3pm-uniform-maxsub", "config/configMSA.json",
+                                                diffusion_timesteps=dt,
+                                                tokenizer=tokenizer)
+    scheme = 'd3pm'
+    return model, collater, tokenizer, scheme
+
+
+def MSA_OA_AR_RANDSUB():
     tokenizer = Tokenizer()
     collater = MSAAbsorbingCollater(alphabet=MSA_ALPHABET)
     model, tokenizer = load_msa_checkpoint("msa-oaar-randsub", "config/configMSA.json",
@@ -205,7 +229,7 @@ def MSA_D3PM_OA_AR_RANDSUB():
     scheme = 'mask'
     return model, collater, tokenizer, scheme
 
-def MSA_D3PM_OA_AR_MAXSUB():
+def MSA_OA_AR_MAXSUB():
     tokenizer = Tokenizer()
     collater = MSAAbsorbingCollater(alphabet=MSA_ALPHABET)
     model, tokenizer = load_msa_checkpoint("msa-oaar-maxsub", "config/configMSA.json",
@@ -214,4 +238,9 @@ def MSA_D3PM_OA_AR_MAXSUB():
     scheme = 'mask'
     return model, collater, tokenizer, scheme
 
-
+def ESM_MSA_1b():
+    "Wrapper for ESM model"
+    model, alphabet = esm.pretrained.esm_msa1b_t12_100M_UR50S()
+    collater = ESMOAMaskCollaterMSA(alphabet=alphabet)
+    scheme='esm-mask'
+    return model, collater, alphabet, scheme
