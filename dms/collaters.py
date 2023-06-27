@@ -276,6 +276,7 @@ class D3PMCollaterMSA(object):
             x_t, q_x_t = sample_transition_matrix(curr_msa, self.Q_bar[t])  # x = tgt, x_t = src, Q_bar accounts for time
             # Reshape back to MSA
             x_t = x_t.reshape(length, depth)
+            #print(q_x_t.shape)
             q_x_t = q_x_t.reshape(length, depth, tokens)
             src[i] = x_t
             src_one_hot[i] = [self.tokenizer.one_hot(t) for t in x_t]
@@ -310,7 +311,7 @@ class ESMOAMaskCollater(object):
         for i,x in enumerate(sample):
             # Randomly generate timestep and indices to mask
             D = len(x) # D should have the same dimensions as each sequence length, minus start stop token
-            t = np.random.randint(1, D-1) # randomly sample timestep, not start or end tokens
+            t = np.random.randint(1, D-1) # randomly sample timestep (don't want to sample start/stop token)
             num_mask = (D-t+1) # from OA-ARMS
             # Append timestep
             timesteps.append(num_mask)
@@ -329,3 +330,51 @@ class ESMOAMaskCollater(object):
         masks = _pad(masks*1,0) #, self.seq_length, 0)
         tokenized = _pad(sample, self.alphabet.padding_idx)
         return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), masks)
+
+
+class ESMOAMaskCollaterMSA(object):
+    "Wrapped for OA Collater to operate on ESM MSA w/ ESM alphabet and batch converter/tokens"
+    def __init__(self, alphabet, num_seqs=64):
+        self.alphabet= alphabet
+        self.batch_converter = alphabet.get_batch_converter()
+        self.num_seqs = num_seqs
+    def __call__(self, msa_batch):
+        input_data = [("seq"+str(i), seq) for i, seq in enumerate(msa_batch[0])]
+        batch_labels, batch_strs, sample = self.batch_converter(input_data)
+        #print([len(seq) for seq in batch_strs[0]])
+        tgt = [[[self.alphabet.get_idx(c) for c in [*seq]] for seq in msa] for msa in batch_strs]
+        #tgt = sample
+        #print(sample[0][0])
+        #print(tgt[0][0])
+        #print("CLS, EOS INDEX", self.alphabet.cls_idx, self.alphabet.eos_idx)
+
+        #print(batch_strs[0][0])
+        #print([[''.join([self.alphabet.get_tok(s) for s in seq]) for seq in tgt[0]]])
+
+        src = tgt.copy()
+        #tgt = torch.Tensor(tgt).long()
+        longest_msa = 0
+        for i,x in enumerate(src):
+            x = torch.Tensor(x)
+            length, depth = x.shape
+            x = x.flatten()
+            # Randomly generate timestep and indices to mask
+            D = len(x) # D should have the same dimensions as each sequence length
+            t = np.random.randint(1, D) # randomly sample timestep
+            num_mask = (D-t+1) # from OA-ARMS
+            # Generate mask
+            mask_idx = np.random.choice(D, num_mask, replace=False)
+            x[mask_idx] = self.alphabet.mask_idx
+            x = x.reshape(length, depth)
+            src[i] = x
+            longest_msa = max(depth, longest_msa)
+            #print(x_t)
+        # PAD out
+        src = torch.stack(src) # No batches #_pad_msa(src, self.num_seqs, self.alphabet.padding_idx, longest_msa)
+        tgt = torch.tensor(tgt)
+        # print(src.shape, tgt.shape)
+        # print(src[0][0], tgt[0][0])
+        #print([[''.join([self.alphabet.get_tok(s) for s in seq]) for seq in src[0]]])
+        #print([[''.join([self.alphabet.get_tok(s) for s in seq]) for seq in tgt[0]]])
+        masks = (src == self.alphabet.mask_idx)
+        return (src.to(torch.long), tgt, masks)
