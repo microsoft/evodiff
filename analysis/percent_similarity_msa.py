@@ -35,8 +35,11 @@ def calc_sim(df_gen, df_valid, path_to_file):
         #msa_seqs = extract_seq_a3m(path_to_file+run+'gen-'+str(i+1)+'/generated_msas.a3m')
         start=i*63
         end = (i+1)*63
+        #print(msa_seqs.shape)
         #print(i, start, end, len(msa_seqs))
+        #import pdb ; pdb.set_trace()
         #print(msa_seqs[start:end])
+        #if i >= 1: # for seqs in msa (not including query)
         for index, seq in msa_seqs[start:end].iterrows():
             #print(seq)
             #print(list(itertools.chain.from_iterable(seq)))
@@ -45,34 +48,31 @@ def calc_sim(df_gen, df_valid, path_to_file):
     return sim, sim_msa
 
 path_to_file = '../DMs/amlt-generate-msa/'
-runs = ['msa-oaardm-max-train-startmsa/', 'msa-oaardm-random-train-startmsa/', 'msa-esm-startmsa-t2/','potts/']
-labels = ['Cond Max', 'Cond Rand', 'ESM-1b','Potts']
+runs = ['msa-oaardm-max-train-startmsa/', 'msa-oaardm-max-train-startmsa/', 'msa-oaardm-random-train-startmsa/', 'msa-esm-startmsa-t2/','potts/']
+labels = ['Valid', 'Cond Max', 'Cond Rand', 'ESM-1b','Potts']
+colors = ['#848484'] + sns.color_palette("viridis", len(runs)-1) #+ ['#D0D0D0']
+palette = {labels[i]: colors[i] for i in range(len(labels))}
 
-all_sim = []
-all_msa = []
-for run in runs:
+for i, run in enumerate(runs):
     print(run)
     df_gen = pd.read_csv(path_to_file + run + 'gen_msas_onlyquery.txt', delim_whitespace=True, header=None, names=['seq'])
     df_valid = pd.read_csv(path_to_file + run + 'valid_msas_onlyquery.txt', delim_whitespace=True, header=None, names=['seq'])
-
-    sim, sim_msa = calc_sim(df_gen, df_valid, path_to_file)
-    all_sim.append(sim)
-    all_msa.append(sim_msa)
-
-all_df = pd.DataFrame(np.append(np.array(all_sim), (np.array(all_msa)), axis=1).T, columns=labels)
+    if i == 0: # append valid 1x
+        sim, sim_msa = calc_sim(df_valid, df_valid, path_to_file)
+        all_df = pd.DataFrame(sim_msa, columns=[labels[i]]) # only want query to msa sim for valid
+    else:
+        sim, sim_msa = calc_sim(df_gen, df_valid, path_to_file)
+        new = pd.DataFrame(np.append(np.array(sim), np.array(sim_msa)), columns=[labels[i]])
+        all_df = pd.concat([all_df, new], axis=1)
+    #print(all_df.head())
 print([(label, all_df[label].mean()) for label in labels])
-
-#all_sim_df = pd.DataFrame(np.array(all_sim).T, columns=labels)
-#all_msa_df = pd.DataFrame(np.array(all_msa).T, columns=labels)
-plot_percent_similarity(runs, all_df)
+plot_percent_similarity(all_df, palette, legend=True)
 
 all_tm = []
-for i, run in enumerate(runs):
-    tm = pd.read_csv(path_to_file + run + 'tmscores.txt', names=['tmscore_'+labels[i]])
+for i, run in enumerate(runs[1:]):
+    tm = pd.read_csv(path_to_file + run + 'tmscores.txt', names=[labels[1:][i]])
     print(len(tm))
     all_tm.append(tm)
-#print(all_tm)
-#tm_df = pd.DataFrame(np.array(all_tm).T)
 tm_df = pd.concat(all_tm, axis=1)
 print(tm_df.head())
-plot_tmscore(tm_df, legend=False)
+plot_tmscore(tm_df, palette, legend=True)
