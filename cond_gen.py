@@ -38,12 +38,19 @@ def main():
                         help="Choice of 'scaffold' or 'idr'")
     parser.add_argument('--pdb', type=str, default=None,
                         help="If using cond-task=scaffold, provide a PDB code and motif indexes")
-    parser.add_argument('--motif-start-index', type=int, default=0,
-                        help="If using cond-task=scaffold, provide start and end indexes for motif being scaffolded")
-    parser.add_argument('--motif-end-index', type=int, default=0,
-                      help="If using cond-task=scaffold, provide start and end indexes for motif being scaffolded")
+    #parser.add_argument('--motif_idxs', type=list, default=[(0,10)])
+    parser.add_argument('--start-idxs', type=int, action='append')
+    parser.add_argument('--end-idxs', type=int, action='append')
+    # parser.add_argument('--motif-start-index', type=int, default=0,
+    #                     help="If using cond-task=scaffold, provide start and end indexes for motif being scaffolded")
+    # parser.add_argument('--motif-end-index', type=int, default=0,
+    #                   help="If using cond-task=scaffold, provide start and end indexes for motif being scaffolded")
     parser.add_argument('--num-seqs', type=int, default=10,
                         help="Number of sequences generated per scaffold length")
+    parser.add_argument('--scaffold-min', type=int, default=1,
+                        help="Min scaffold len ")
+    parser.add_argument('--scaffold-max', type=int, default=30,
+                        help="Max scaffold len, will randomly choose a value between min/max")
     args = parser.parse_args()
 
     if args.model_type == 'oa_ar_38M':
@@ -61,7 +68,9 @@ def main():
 
     data_top_dir = home + '/Desktop/DMs/data/'
 
-    out_fpath = home + '/Desktop/DMs/cond-gen/'
+    out_fpath = home + '/Desktop/DMs/cond-gen/' + args.pdb +'/'
+    if not os.path.exists(out_fpath):
+        os.mkdir(out_fpath)
 
     if args.cond_task == 'idr':
         #TODO Finish IDR
@@ -69,17 +78,34 @@ def main():
                                                           penalty=args.penalty, batch_size=1, device=device)
     elif args.cond_task == 'scaffold':
         strings = []
+        start_idxs = []
+        scaffold_lengths = []
+        spacers = []
         for i in range(args.num_seqs):
-            scaffold_length = random.randint(30, 100)
-            print("scaffold length", scaffold_length)
-            string = generate_scaffold(model, args.pdb, args.motif_start_index, args.motif_end_index, scaffold_length, data_top_dir,
+            scaffold_length = random.randint(args.scaffold_min, args.scaffold_max)
+            #print("scaffold length", scaffold_length)
+            #print("motif length", args.motif_end_index+1-args.motif_start_index)
+            print(args.start_idxs)
+            print(args.end_idxs)
+            string, new_start_idx, spacer = generate_scaffold(model, args.pdb, args.start_idxs, args.end_idxs, scaffold_length, data_top_dir,
                                        tokenizer, device=device)
+            #print(string, new_start_idx)
             strings.append(string)
+            start_idxs.append(new_start_idx)
+            spacers.append(spacer)
+            scaffold_lengths.append(scaffold_length)
+    #print(strings)
+
+    save_df = pd.DataFrame(list(zip(strings, start_idxs, spacers, scaffold_lengths)), columns=['seqs', 'start_idxs', 'spacers', 'scaffold_lengths'])
+    save_df.to_csv(out_fpath+'motif_df.csv', index=True)
 
     with open(out_fpath + 'generated_samples_string.csv', 'a') as f:
-        f.write(''.join([_s + "\n" for _s in strings]))
+        for _s in strings:
+            #print(_s[0])
+            f.write(_s[0]+"\n")
     with open(out_fpath + 'generated_samples_string.fasta', 'a') as f:
-        f.write(''.join([">SEQUENCE_" + str(i) + "\n" + str(_s) + "\n" for i, _s in enumerate(strings)]))
+        for i, _s in enumerate(strings):
+            f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
 
 def download_pdb(PDB_ID, outfile):
     "return PDB file from database online"
@@ -90,7 +116,7 @@ def download_pdb(PDB_ID, outfile):
         print("DOWNLOADING PDB FILE FROM", url)
         urllib.request.urlretrieve(url, outfile)
 
-def get_motif(PDB_ID, start_idx, end_idx, data_top_dir='../data'):
+def get_motif(PDB_ID, start_idxs, end_idxs, data_top_dir='../data'):
     "Get motif of sequence from PDB code"
     pdb_path = os.path.join(data_top_dir, 'scaffolding-pdbs/'+str(PDB_ID)+'.pdb')
     download_pdb(PDB_ID, pdb_path)
@@ -101,25 +127,47 @@ def get_motif(PDB_ID, start_idx, end_idx, data_top_dir='../data'):
     coords, native_seqs = esm.inverse_folding.multichain_util.extract_coords_from_complex(structure)
     sequence = native_seqs[chain_ids[0]]
     print("sequence extracted from pdb", sequence)
-    print("motif extracted from sequence:", sequence[start_idx: end_idx])
+    print("sequence length", len(sequence))
+    assert len(start_idxs) == len(end_idxs)
 
-    return sequence[start_idx: end_idx]
+    end_idxs = [i+1 for i in end_idxs] # inclusive of final residue
+    if len(start_idxs) > 1:
+        #print(min(start_idxs))
+        #print(max(end_idxs))
+        motif = ''
+        spacers = []
+        print("start idxs", start_idxs)
+        print("end idxs", end_idxs)
+        for i in range(len(start_idxs)):
+            motif += sequence[start_idxs[i]:end_idxs[i]]
+            if i < (len(start_idxs)-1):
+                #print('#' * len(sequence[end_idxs[i]:start_idxs[i+1]]))
+                print(start_idxs[i+1], end_idxs[i])
+                spacer = start_idxs[i+1] - end_idxs[i]
+                print(spacer)
+                motif += '#' * spacer
+                spacers.append(spacer)
+    else:
+        motif = sequence[start_idxs[0]: end_idxs[0]]
+        spacers=[0]
+    return motif, spacers
 
-def generate_scaffold(model, PDB_ID, motif_start_idx, motif_end_idx, scaffold_length, data_top_dir, tokenizer,
+
+def generate_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_length, data_top_dir, tokenizer,
                       batch_size=1, device='gpu'):
     mask = tokenizer.mask_id
 
-    motif_seq = get_motif(PDB_ID, motif_start_idx, motif_end_idx, data_top_dir=data_top_dir)
+    motif_seq, spacers = get_motif(PDB_ID, motif_start_idxs, motif_end_idxs, data_top_dir=data_top_dir)
     motif_tokenized = tokenizer.tokenize((motif_seq,))
     #print("motif tokenized", motif_tokenized)
 
     # Create input motif + scaffold
     seq_len = scaffold_length + len(motif_seq)
     sample = torch.zeros((batch_size, seq_len)) + mask # start from all mask
-    i = np.random.choice(scaffold_length) # randomly place motif in scaffold
-    sample[:, i:i+len(motif_seq)] = torch.tensor(motif_tokenized)
-    #print([tokenizer.untokenize(s) for s in sample])
-
+    new_start = np.random.choice(scaffold_length) # randomly place motif in scaffold
+    sample[:, new_start:new_start+len(motif_seq)] = torch.tensor(motif_tokenized)
+    print([tokenizer.untokenize(s) for s in sample])
+    print("new start", new_start, "new end", new_start +len(motif_seq))
     value, loc = (sample == mask).long().nonzero(as_tuple=True) # locations that need to be unmasked
     loc = np.array(loc)
     #print(loc)
@@ -136,10 +184,10 @@ def generate_scaffold(model, PDB_ID, motif_start_idx, motif_end_idx, scaffold_le
             p_sample = torch.multinomial(p, num_samples=1)
             sample[:, i] = p_sample.squeeze()
 
-    #print("final seq", [tokenizer.untokenize(s) for s in sample])
+    print("new sequence", [tokenizer.untokenize(s) for s in sample])
     untokenized = [tokenizer.untokenize(s) for s in sample]
 
-    return untokenized
+    return untokenized, new_start, spacers
 
 def generate_idr(model, data_top_dir, tokenizer=Tokenizer(), penalty=None, causal=False, batch_size=20, device='cuda'):
     cutoff = 256 # TODO ADD FILTER
