@@ -3,21 +3,13 @@ import numpy as np
 import argparse
 import urllib.request
 import esm.inverse_folding
-from sequence_models.constants import MSA_ALPHABET, ALL_AAS, PROTEIN_ALPHABET, PAD
 import torch
 import os
-import glob
-import json
 from dms.utils import Tokenizer
 import pathlib
-from sequence_models.datasets import UniRefDataset
 from sequence_models.utils import parse_fasta
-from torch.utils.data import DataLoader
-from torch.utils.data import Subset
 from tqdm import tqdm
-from analysis.plot import aa_reconstruction_parity_plot
 import pandas as pd
-from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 import random
 
 # python cond_gen.py --cond-task scaffold --pdb 5trv --motif-start-index 42 --motif-end-index 62 --num-seqs 50
@@ -38,13 +30,15 @@ def main():
                         help="Choice of 'scaffold' or 'idr'")
     parser.add_argument('--pdb', type=str, default=None,
                         help="If using cond-task=scaffold, provide a PDB code and motif indexes")
-    #parser.add_argument('--motif_idxs', type=list, default=[(0,10)])
-    parser.add_argument('--start-idxs', type=int, action='append')
+    parser.add_argument('--start-idxs', type=int, action='append',
+                        help="If using cond-task=scaffold, provide start and end indexes for motif being scaffolded\
+                             If defining multiple motifs, supply the start and end -idx motif as a new argument\
+                              ex: --start-idx 3 --end-idx 10 --start-idx 20 --end-idx 25\
+                              indexes are inclusive of both start and end values.\
+                              WARNING: PDBs are OFTEN indexed at a number that is not 0. If your PDB file begins at 4\
+                              and the motif you want to query is residues 5 to 10, as defined by the PDB, your inputs to\
+                              this code should be --start-idx 1 and --end-idx 6")
     parser.add_argument('--end-idxs', type=int, action='append')
-    # parser.add_argument('--motif-start-index', type=int, default=0,
-    #                     help="If using cond-task=scaffold, provide start and end indexes for motif being scaffolded")
-    # parser.add_argument('--motif-end-index', type=int, default=0,
-    #                   help="If using cond-task=scaffold, provide start and end indexes for motif being scaffolded")
     parser.add_argument('--num-seqs', type=int, default=10,
                         help="Number of sequences generated per scaffold length")
     parser.add_argument('--scaffold-min', type=int, default=1,
@@ -52,6 +46,9 @@ def main():
     parser.add_argument('--scaffold-max', type=int, default=30,
                         help="Max scaffold len, will randomly choose a value between min/max")
     args = parser.parse_args()
+
+    args.start_idxs.sort()
+    args.end_idxs.sort()
 
     if args.model_type == 'oa_ar_38M':
         checkpoint = OA_AR_38M()
@@ -79,29 +76,25 @@ def main():
     elif args.cond_task == 'scaffold':
         strings = []
         start_idxs = []
+        end_idxs = []
         scaffold_lengths = []
         spacers = []
         for i in range(args.num_seqs):
             scaffold_length = random.randint(args.scaffold_min, args.scaffold_max)
-            #print("scaffold length", scaffold_length)
-            #print("motif length", args.motif_end_index+1-args.motif_start_index)
-            print(args.start_idxs)
-            print(args.end_idxs)
-            string, new_start_idx, spacer = generate_scaffold(model, args.pdb, args.start_idxs, args.end_idxs, scaffold_length, data_top_dir,
+            string, new_start_idx, new_end_idx, spacer = generate_scaffold(model, args.pdb, args.start_idxs, args.end_idxs, scaffold_length, data_top_dir,
                                        tokenizer, device=device)
-            #print(string, new_start_idx)
             strings.append(string)
             start_idxs.append(new_start_idx)
+            end_idxs.append(new_end_idx)
             spacers.append(spacer)
             scaffold_lengths.append(scaffold_length)
-    #print(strings)
 
-    save_df = pd.DataFrame(list(zip(strings, start_idxs, spacers, scaffold_lengths)), columns=['seqs', 'start_idxs', 'spacers', 'scaffold_lengths'])
+
+    save_df = pd.DataFrame(list(zip(strings, start_idxs, end_idxs, spacers, scaffold_lengths)), columns=['seqs', 'start_idxs', 'end_idxs', 'spacers', 'scaffold_lengths'])
     save_df.to_csv(out_fpath+'motif_df.csv', index=True)
 
     with open(out_fpath + 'generated_samples_string.csv', 'a') as f:
         for _s in strings:
-            #print(_s[0])
             f.write(_s[0]+"\n")
     with open(out_fpath + 'generated_samples_string.fasta', 'a') as f:
         for i, _s in enumerate(strings):
@@ -132,25 +125,36 @@ def get_motif(PDB_ID, start_idxs, end_idxs, data_top_dir='../data'):
 
     end_idxs = [i+1 for i in end_idxs] # inclusive of final residue
     if len(start_idxs) > 1:
-        #print(min(start_idxs))
-        #print(max(end_idxs))
         motif = ''
         spacers = []
-        print("start idxs", start_idxs)
-        print("end idxs", end_idxs)
+        # print("start idxs", start_idxs)
+        # print("end idxs", end_idxs)
         for i in range(len(start_idxs)):
             motif += sequence[start_idxs[i]:end_idxs[i]]
             if i < (len(start_idxs)-1):
-                #print('#' * len(sequence[end_idxs[i]:start_idxs[i+1]]))
-                print(start_idxs[i+1], end_idxs[i])
                 spacer = start_idxs[i+1] - end_idxs[i]
-                print(spacer)
                 motif += '#' * spacer
                 spacers.append(spacer)
     else:
         motif = sequence[start_idxs[0]: end_idxs[0]]
         spacers=[0]
+    print("motif extracted from indexes supplied:", motif)
     return motif, spacers
+
+
+def get_intervals(list):
+    "Given a list (Tensor) of non-masked residues get new start and end index for motif placed in scaffold"
+    start = []
+    stop = []
+    for i, item in enumerate(list):
+        if i == 0:
+            start.append(item.item())
+        elif i == (len(list)-1):
+            stop.append(item.item())
+        elif i != len(list) and (item+1) != list[i+1]:
+            stop.append(item.item())
+            start.append(list[i+1].item())
+    return start, stop
 
 
 def generate_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_length, data_top_dir, tokenizer,
@@ -159,20 +163,17 @@ def generate_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_
 
     motif_seq, spacers = get_motif(PDB_ID, motif_start_idxs, motif_end_idxs, data_top_dir=data_top_dir)
     motif_tokenized = tokenizer.tokenize((motif_seq,))
-    #print("motif tokenized", motif_tokenized)
 
     # Create input motif + scaffold
     seq_len = scaffold_length + len(motif_seq)
     sample = torch.zeros((batch_size, seq_len)) + mask # start from all mask
     new_start = np.random.choice(scaffold_length) # randomly place motif in scaffold
     sample[:, new_start:new_start+len(motif_seq)] = torch.tensor(motif_tokenized)
-    print([tokenizer.untokenize(s) for s in sample])
-    print("new start", new_start, "new end", new_start +len(motif_seq))
+    nonmask_locations = (sample[0] != mask).nonzero().flatten()
+    new_start_idxs, new_end_idxs = get_intervals(nonmask_locations)
     value, loc = (sample == mask).long().nonzero(as_tuple=True) # locations that need to be unmasked
     loc = np.array(loc)
-    #print(loc)
     np.random.shuffle(loc)
-    #print(loc)
     sample = sample.long().to(device)
     with torch.no_grad():
         for i in loc:
@@ -183,11 +184,10 @@ def generate_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_
             p = torch.nn.functional.softmax(p, dim=1)  # softmax over categorical probs
             p_sample = torch.multinomial(p, num_samples=1)
             sample[:, i] = p_sample.squeeze()
-
     print("new sequence", [tokenizer.untokenize(s) for s in sample])
     untokenized = [tokenizer.untokenize(s) for s in sample]
 
-    return untokenized, new_start, spacers
+    return untokenized, new_start_idxs, new_end_idxs, spacers
 
 def generate_idr(model, data_top_dir, tokenizer=Tokenizer(), penalty=None, causal=False, batch_size=20, device='cuda'):
     cutoff = 256 # TODO ADD FILTER
@@ -201,22 +201,20 @@ def generate_idr(model, data_top_dir, tokenizer=Tokenizer(), penalty=None, causa
         loc = np.arange(start_idxs[s], end_idxs[s])
         if len(loc) < cutoff:
             print("QUERY", queries[s])
-            #print("ORIGINAL SEQUENCE", sequences[s])
             print("ORIGINAL IDR", sequences[s][start_idxs[s]:end_idxs[s]])
             sequences_idr.append(sequences[s][start_idxs[s]:end_idxs[s]])
             sample = sample.to(torch.long)
             sample = sample.to(device)
             seq_len = len(sample)
-            #print(start_idxs[s], end_idxs[s])
             if causal == False:
                 np.random.shuffle(loc)
             with torch.no_grad():
                 for i in tqdm(loc):
                     timestep = torch.tensor([0]) # placeholder but not called in model
                     timestep = timestep.to(device)
-                    prediction = model(sample.unsqueeze(0), timestep) #, input_mask=input_mask.unsqueeze(-1)) #sample prediction given input
-                    p = prediction[:, i, :len(all_aas)-6] # sample at location i (random), dont let it predict non-standard AA
-                    p = torch.nn.functional.softmax(p, dim=1) # softmax over categorical probs
+                    prediction = model(sample.unsqueeze(0), timestep)
+                    p = prediction[:, i, :len(all_aas)-6]
+                    p = torch.nn.functional.softmax(p, dim=1)
                     p_sample = torch.multinomial(p, num_samples=1)
                     # Repetition penalty
                     if penalty is not None: # ignore if value is None
@@ -228,14 +226,11 @@ def generate_idr(model, data_top_dir, tokenizer=Tokenizer(), penalty=None, causa
                                 p[j, int(p_sample[j])] /= penalty # reduce prob of that token by penalty value
                                 p_sample[j] = torch.multinomial(p[j], num_samples=1) # resample
                     sample[i] = p_sample.squeeze()
-                    #print(tokenizer.untokenize(sample))
-            #print("GENERATED SEQUENCES", tokenizer.untokenize(sample))
             print("GENERATED IDR", tokenizer.untokenize(sample[start_idxs[s]:end_idxs[s]]))
             samples.append(sample)
             samples_idr.append(sample[start_idxs[s]:end_idxs[s]])
         else:
             pass
-    #untokenized = [tokenizer.untokenize(s) for s in samples]
     untokenized_idr = [tokenizer.untokenize(s) for s in samples_idr]
     return samples, untokenized_idr, queries, sequences_idr
 
