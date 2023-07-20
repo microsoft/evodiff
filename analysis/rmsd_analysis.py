@@ -135,17 +135,18 @@ def calc_rmsd(num_structures, reference_PDB, fpath='conda/gen/6exz', ref_motif_s
             ref_selection += str(ref_motif_starts[j]+1) + ':' + str(ref_motif_ends[j]+1) + ' ' # +1 (PDB indexed at 1)
             u_selection += str(new_motif_starts[j]) + ':' + str(new_motif_ends[j]) + ' '
 
-        # # Uncomment to make sure that selections are mapped correctly
-        print("ref selection", ref_selection)
-        print("len", len(ref.select_atoms(ref_selection).positions))
-        print(ref.select_atoms(ref_selection).resnames)
+        # make sure that selections are mapped correctly
+        #print("ref selection", ref_selection)
+        #print("len", len(ref.select_atoms(ref_selection).positions))
+        #print(ref.select_atoms(ref_selection).resnames)
         #print(ref.select_atoms(ref_selection)[25:31])
-        print("u selection", u_selection)
-        print("len", len(u.select_atoms(u_selection).positions))
-        print(u.select_atoms(u_selection).resnames)
+        #print("u selection", u_selection)
+        #print("len", len(u.select_atoms(u_selection).positions))
+        #print(u.select_atoms(u_selection).resnames)
         #print(u.select_atoms(u_selection)[25:31])
         #import pdb; pdb.set_trace()
-
+        assert (ref.select_atoms(ref_selection).resnames == u.select_atoms(u_selection).resnames).all(), "Resnames for\
+                                                                        motifRMSD do not match, check indexing"
         rmsd = rms.rmsd(u.select_atoms(u_selection).positions,
                         # coordinates to align
                         ref.select_atoms(ref_selection).positions,

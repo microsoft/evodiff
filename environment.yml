@@ -1,4 +1,4 @@
-name: dms
+name: evodiff
 channels:
   - defaults
   - nvidia
@@ -25,3 +25,4 @@ dependencies:
       - torch_scatter
       - tqdm
       - git+https://github.com/HeliXonProtein/OmegaFold.git
+      - mdanalysis
