@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 import re
-from analysis.plot import plot_ecdf_bylength, plot_ecdf, plot_plddt_perp
+from evodiff.plot import plot_ecdf_bylength, plot_ecdf, plot_plddt_perp
 from itertools import chain
 import seaborn as sns
 

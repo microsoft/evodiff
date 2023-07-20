@@ -5,7 +5,7 @@ from itertools import groupby
 import torch
 import numpy as np
 import torch.nn.functional as F
-from analysis.plot import ss_helix_strand, ss_box_whisker
+from evodiff.plot import ss_helix_strand, ss_box_whisker
 
 def load_data(output_directory):
     "Edited directly from Noelia PGP Notebooks"

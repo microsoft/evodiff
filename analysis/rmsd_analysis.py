@@ -5,7 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 import seaborn as sns
-from analysis.plot import plot_tmscore
+from evodiff.plot import plot_tmscore
 import argparse
 import difflib
 from ast import literal_eval

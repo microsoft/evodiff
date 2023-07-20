@@ -11,7 +11,7 @@ from numpy import trace
 from numpy import iscomplexobj
 from scipy.linalg import sqrtm
 from evodiff.utils import parse_txt
-from analysis.plot import plot_embedding
+from evodiff.plot import plot_embedding
 
 # Need to run PGP first on generated seqs , this performs downstream analysis
 # https://github.com/hefeda/PGP

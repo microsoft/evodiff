@@ -7,3 +7,4 @@ from . import losses
 from . import data
 from . import metrics
 from . import pretrained
+from . import plot

@@ -2,16 +2,16 @@ from evodiff.pretrained import OA_AR_640M, OA_AR_38M, CARP_640M, LR_AR_38M, LR_A
 import numpy as np
 import argparse
 import urllib.request
-import esm.inverse_folding
+import esm
 import torch
 import os
-from evodiff.utils import Tokenizer
+from evodiff.utils import Tokenizer, run_omegafold, clean_pdb, run_tmscore
 import pathlib
 from sequence_models.utils import parse_fasta
 from tqdm import tqdm
 import pandas as pd
 import random
-from analysis.plot import aa_reconstruction_parity_plot
+from evodiff.plot import aa_reconstruction_parity_plot
 
 # python cond_gen.py --cond-task scaffold --pdb 5trv --motif-start-index 42 --motif-end-index 62 --num-seqs 50
 
@@ -122,6 +122,15 @@ def main():
     with open(out_fpath + 'generated_samples_string.fasta', 'a') as f:
         for i, _s in enumerate(strings):
             f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
+
+    # After cond gen, run omegafold
+    run_omegafold(out_fpath, fasta_file="generated_samples_string.fasta")
+
+    # clean PDB for TMScore analysis
+    clean_pdb(out_fpath, args.pdb)
+
+    # Get TMscores
+    run_tmscore(out_fpath, args.pdb, args.num_seqs)
 
 
 

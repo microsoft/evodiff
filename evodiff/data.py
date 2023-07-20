@@ -10,6 +10,10 @@ from evodiff.utils import Tokenizer
 from sequence_models.utils import parse_fasta
 from sequence_models.constants import PROTEIN_ALPHABET, trR_ALPHABET, PAD, GAP
 from collections import Counter
+import torch
+import os
+from torch.utils.data import Subset
+
 
 def read_openfold_files(data_dir, filename):
     """
@@ -69,6 +73,23 @@ def get_msa_depth_lengths(data_dir, all_files, save_depth_file, save_length_file
         msa_lengths.append(len(parsed_msa[0]))  # all seq in MSA are same length
     np.savez_compressed(data_dir+save_depth_file, np.asarray(msa_depth))
     np.savez_compressed(data_dir + save_length_file, np.asarray(msa_lengths))
+
+
+def get_valid_msas(data_top_dir, data_dir='openfold/', selection_type='MaxHamming', n_sequences=64, max_seq_len=512,
+                   out_path='../DMs/ref/'):
+    assert data_dir=='openfold', "get_valid_msas only works on OPENFOLD"
+    _ = torch.manual_seed(1) # same seeds used for training
+    np.random.seed(1)
+
+    dataset = A3MMSADataset(selection_type, n_sequences, max_seq_len, data_dir=os.path.join(data_top_dir,data_dir), min_depth=64)
+
+    train_size = len(dataset)
+    random_ind = np.random.choice(train_size, size=(train_size - 10000), replace=False)
+    val_ind = np.delete(np.arange(train_size), random_ind)
+    ds_valid = Subset(dataset, val_ind)
+
+    return ds_valid
+
 
 def get_idr_query_index(data_dir, all_files, save_file):
     """

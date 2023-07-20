@@ -9,13 +9,9 @@ import json
 from evodiff.utils import Tokenizer
 import pathlib
 from sequence_models.datasets import UniRefDataset
-from sequence_models.utils import parse_fasta
-from torch.utils.data import DataLoader
-from torch.utils.data import Subset
 from tqdm import tqdm
-from analysis.plot import aa_reconstruction_parity_plot
+from evodiff.plot import aa_reconstruction_parity_plot
 import pandas as pd
-from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 import random
 
 home = str(pathlib.Path.home())

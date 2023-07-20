@@ -7,6 +7,8 @@ import itertools
 from collections import Counter, OrderedDict
 import csv
 import pandas as pd
+import subprocess
+import os
 
 def loadMatrix(path):
     """
@@ -375,31 +377,27 @@ def download_model(model_name):
     return state_dict
 
 def download_generated_sequences(model_name):
+    # TODO update when uploaded on zenodo
     sequence_list = "curl -O"
     return sequence_list
 
-def get_valid_msas(data_top_dir, data_dir='openfold/', selection_type='MaxHamming', n_sequences=64, max_seq_len=512,
-                   out_path='../DMs/ref/'):
-    from evodiff.data import A3MMSADataset
-    import os
-    from torch.utils.data import Subset
-    from sequence_models.collaters import MSAAbsorbingCollater
-    from evodiff.collaters import D3PMCollaterMSA
-    from torch.utils.data import DataLoader
-    import tqdm as tqdm
+def run_omegafold(fpath, fasta_file="generated_samples_string.fasta"):
+    out_fpath = os.path.join(fpath, 'pdb/')
+    if not os.path.exists(out_fpath):
+        os.makedirs(out_fpath)
+        print("Running omegafold")
+        subprocess.run(["omegafold", os.path.join(fpath,fasta_file), os.path.join(out_fpath)], capture_output=True)
+    else:
+        print("Using omegafold from previous run")
 
-    valid_msas = []
-    query_msas = []
-    seq_lens = []
+def clean_pdb(fpath, pdb):
+    subprocess.run(["grep '^ATOM' ", os.path.join(fpath, pdb+'.pdb'), " > ",  os.path.join(fpath, pdb+'_clean.pdb')])
+    subprocess.run(["pdb_reres", os.path.join(fpath, pdb+'_clean.pdb'), " > ",  os.path.join(fpath, pdb+'_reres.pdb')])
 
-    _ = torch.manual_seed(1) # same seeds as training
-    np.random.seed(1)
-
-    dataset = A3MMSADataset(selection_type, n_sequences, max_seq_len, data_dir=os.path.join(data_top_dir,data_dir), min_depth=64)
-
-    train_size = len(dataset)
-    random_ind = np.random.choice(train_size, size=(train_size - 10000), replace=False)
-    val_ind = np.delete(np.arange(train_size), random_ind)
-    ds_valid = Subset(dataset, val_ind)
-
-    return ds_valid
+def run_tmscore(fpath, num_seqs):
+    out_fpath = os.path.join(fpath, 'pdb/')
+    assert os.path.exists(out_fpath), "Can't find out_fpath, did you run omegafold?"
+    for i in range(num_seqs):
+        subprocess.run(["tmscore ", os.path.join(out_fpath,'SEQUENCE_'+str(i)+'.pdb'),
+                        " | grep 'TM-score    =' | awk -v ", "RUN="+str(i),
+                        "'{print $3}' >> ", os.path.join(fpath, "tmscores.txt")])

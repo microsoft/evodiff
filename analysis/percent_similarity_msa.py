@@ -10,7 +10,7 @@ import itertools
 import difflib
 import seaborn as sns
 import pandas as pd
-from analysis.plot import plot_percent_similarity, plot_tmscore
+from evodiff.plot import plot_percent_similarity, plot_tmscore
 
 
 def extract_seq_a3m(generate_file):

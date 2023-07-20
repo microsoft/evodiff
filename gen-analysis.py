@@ -2,7 +2,7 @@ import numpy as np
 import os
 import pathlib
 import argparse
-from analysis.plot import aa_reconstruction_parity_plot, msa_substitution_rate, msa_pairwise_interactions, plot_percent_similarity_entiremsa
+from evodiff.plot import aa_reconstruction_parity_plot, msa_substitution_rate, msa_pairwise_interactions, plot_percent_similarity_entiremsa
 from evodiff.utils import Tokenizer
 import csv
 from sequence_models.collaters import MSAAbsorbingCollater

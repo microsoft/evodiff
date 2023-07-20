@@ -7,7 +7,7 @@ from sequence_models.losses import MaskedCrossEntropyLossMSA
 import torch
 from tqdm import tqdm
 import pandas as pd
-from analysis.plot import plot_perp_group_masked, plot_perp_group_d3pm
+from evodiff.plot import plot_perp_group_masked, plot_perp_group_d3pm
 import argparse
 import os
 
@@ -57,7 +57,7 @@ def main():
 
     num_seqs=20000
 
-    data = evodiff.utils.get_valid_msas(data_top_dir, data_dir='openfold/', selection_type=selection_type, n_sequences=64, max_seq_len=512,
+    data = evodiff.data.get_valid_msas(data_top_dir, data_dir='openfold/', selection_type=selection_type, n_sequences=64, max_seq_len=512,
                                         out_path='../evodiff/ref/')
 
     losses = []

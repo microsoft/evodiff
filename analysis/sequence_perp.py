@@ -8,7 +8,7 @@ import torch
 from sequence_models.datasets import UniRefDataset
 from tqdm import tqdm
 import pandas as pd
-from analysis.plot import plot_perp_group_masked, plot_perp_group_d3pm
+from evodiff.plot import plot_perp_group_masked, plot_perp_group_d3pm
 import argparse
 
 def main():
