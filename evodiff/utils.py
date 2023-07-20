@@ -390,14 +390,49 @@ def run_omegafold(fpath, fasta_file="generated_samples_string.fasta"):
     else:
         print("Using omegafold from previous run")
 
-def clean_pdb(fpath, pdb):
-    subprocess.run(["grep '^ATOM' ", os.path.join(fpath, pdb+'.pdb'), " > ",  os.path.join(fpath, pdb+'_clean.pdb')])
-    subprocess.run(["pdb_reres", os.path.join(fpath, pdb+'_clean.pdb'), " > ",  os.path.join(fpath, pdb+'_reres.pdb')])
+def clean_pdb(fpath, data_top_dir, pdb):
+    """
+    Clean up PDBs taken directly from pdb.org
+    Extract ATOM lines -> _clean.pdb
+    Re-number residues -> _reres.pdb
+    """
+    data_dir = data_top_dir + 'scaffolding-pdbs/'
+    fpath = os.path.join(fpath, 'pdb/')
+    clean_pdb_string=''
+    with open(os.path.join(data_dir, pdb+'.pdb')) as f:
+        for line in f:
+            if "ATOM" in line.split()[0]:
+                clean_pdb_string += line
+    f.close()
+    clean_pdb_string+='END'
 
-def run_tmscore(fpath, num_seqs):
+    with open(os.path.join(fpath, pdb+'_clean.pdb'), 'w') as f:
+        f.write(clean_pdb_string)
+    f.close()
+
+    reres_file = open(os.path.join(fpath, pdb+'_reres.pdb'), 'w')
+    subprocess.call(["pdb_reres", os.path.join(fpath, pdb+'_clean.pdb')],
+                                 stdout=reres_file)
+
+def run_tmscore(fpath, pdb, num_seqs, path_to_tmscore='TMscore'):
     out_fpath = os.path.join(fpath, 'pdb/')
     assert os.path.exists(out_fpath), "Can't find out_fpath, did you run omegafold?"
+    tm_scores = []
     for i in range(num_seqs):
-        subprocess.run(["tmscore ", os.path.join(out_fpath,'SEQUENCE_'+str(i)+'.pdb'),
-                        " | grep 'TM-score    =' | awk -v ", "RUN="+str(i),
-                        "'{print $3}' >> ", os.path.join(fpath, "tmscores.txt")])
+        temp_file = open(os.path.join(out_fpath, 'temp_tmscores.txt'), 'w')
+        subprocess.call([path_to_tmscore, os.path.join(out_fpath, pdb + '_reres.pdb'),
+                            os.path.join(out_fpath,'SEQUENCE_'+str(i)+'.pdb')],
+                        stdout=temp_file)
+        with open(os.path.join(out_fpath, 'temp_tmscores.txt')) as f:
+            for line in f:
+                if len(line.split())>1 and "TM-score" == line.split()[0]:
+                    tm_scores.append(line.split()[2])
+        f.close()
+    # Write all scores to file
+    with open(os.path.join(out_fpath, 'tmscores.txt'), 'w') as f:
+        [f.write(score) for score in tm_scores]
+    f.close()
+
+
+
+

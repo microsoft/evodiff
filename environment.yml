@@ -22,7 +22,7 @@ dependencies:
       - fair-esm
       - biotite
       #- torch_geometric
-      #- torch_scatter
+      #- torch_scatter # need to install w/ conda
       - tqdm
       - git+https://github.com/HeliXonProtein/OmegaFold.git
       - mdanalysis

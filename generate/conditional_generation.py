@@ -2,9 +2,9 @@ from evodiff.pretrained import OA_AR_640M, OA_AR_38M, CARP_640M, LR_AR_38M, LR_A
 import numpy as np
 import argparse
 import urllib.request
-import esm
 import torch
 import os
+import esm.inverse_folding
 from evodiff.utils import Tokenizer, run_omegafold, clean_pdb, run_tmscore
 import pathlib
 from sequence_models.utils import parse_fasta
@@ -75,7 +75,9 @@ def main():
     torch.cuda.set_device(args.gpus)
     device = torch.device('cuda:' + str(args.gpus))
 
-    data_top_dir = home + '/Desktop/DMs/data/'
+    top_dir = home + '/Desktop/DMs/'
+    data_top_dir = top_dir + 'data/'
+
 
     out_fpath = home + '/Desktop/DMs/cond-gen/' + args.model_type + '/' + args.pdb +'/'
     if not os.path.exists(out_fpath):
@@ -127,10 +129,10 @@ def main():
     run_omegafold(out_fpath, fasta_file="generated_samples_string.fasta")
 
     # clean PDB for TMScore analysis
-    clean_pdb(out_fpath, args.pdb)
+    clean_pdb(out_fpath, data_top_dir, args.pdb)
 
     # Get TMscores
-    run_tmscore(out_fpath, args.pdb, args.num_seqs)
+    run_tmscore(out_fpath, args.pdb, args.num_seqs, path_to_tmscore=top_dir+'TMscore')
 
 
 
