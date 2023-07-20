@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS, GAP, START, STOP
-from dms.constants import BLOSUM_ALPHABET
+from evodiff.constants import BLOSUM_ALPHABET
 from sklearn.preprocessing import normalize
 import itertools
 from collections import Counter, OrderedDict
@@ -380,11 +380,11 @@ def download_generated_sequences(model_name):
 
 def get_valid_msas(data_top_dir, data_dir='openfold/', selection_type='MaxHamming', n_sequences=64, max_seq_len=512,
                    out_path='../DMs/ref/'):
-    from dms.data import A3MMSADataset
+    from evodiff.data import A3MMSADataset
     import os
     from torch.utils.data import Subset
     from sequence_models.collaters import MSAAbsorbingCollater
-    from dms.collaters import D3PMCollaterMSA
+    from evodiff.collaters import D3PMCollaterMSA
     from torch.utils.data import DataLoader
     import tqdm as tqdm
 

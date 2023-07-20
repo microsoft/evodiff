@@ -6,7 +6,7 @@ import numpy as np
 from torch.utils.data import Dataset
 import pandas as pd
 
-from dms.utils import Tokenizer
+from evodiff.utils import Tokenizer
 from sequence_models.utils import parse_fasta
 from sequence_models.constants import PROTEIN_ALPHABET, trR_ALPHABET, PAD, GAP
 from collections import Counter

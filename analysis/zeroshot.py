@@ -8,8 +8,8 @@ import json
 from scipy.stats import spearmanr
 from sequence_models.datasets import A2MZeroShotDataset
 from sequence_models.constants import MSA_ALPHABET, PROTEIN_ALPHABET, ALL_AAS, PAD
-from dms.utils import Tokenizer
-from dms.model import ByteNetLMTime
+from evodiff.utils import Tokenizer
+from evodiff.model import ByteNetLMTime
 from tqdm import tqdm
 
 ## Takes in csv file with generated sequences and performs downstream tasks

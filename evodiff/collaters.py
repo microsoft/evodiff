@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from dms.utils import Tokenizer
+from evodiff.utils import Tokenizer
 from sequence_models.constants import PAD, PROTEIN_ALPHABET, GAP
 
 

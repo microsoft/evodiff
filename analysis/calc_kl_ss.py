@@ -119,18 +119,19 @@ def load_data(output_directory):
 
 
 folder = '../PGP/'
+
+# Decide what model to run
 save_name = 'small' # large or small
 
 # Large
 if save_name == 'large':
-    Large
     colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'mediumpurple', 'rebeccapurple',
               'darkslateblue', 'firebrick']
     random = load_data(folder+'PGP_OUT_LARGE/ref/') # ref baseline is random
     random.insert(0, "type", "ref")
     valid = load_data(folder+'PGP_OUT_LARGE/valid/')
     valid.insert(0, "type", "valid")
-    test = load_data(folder+'PGP_OUT_LARGE/test/')
+    test = load_data(folder+'PGP_OUT_LARGE/test3/')
     test.insert(0, "type", "test")
     blosum = load_data(folder+'PGP_OUT_LARGE/blosum/')
     blosum.insert(0, "type", "blosum d3pm")
@@ -161,7 +162,7 @@ elif save_name=='small':
     random.insert(0, "type", "ref")
     valid = load_data(folder+'PGP_OUT/valid/')
     valid.insert(0, "type", "valid")
-    test = load_data(folder+'PGP_OUT/test/')
+    test = load_data(folder+'PGP_OUT/test3/')
     test.insert(0, "type", "test")
     blosum = load_data(folder+'PGP_OUT/blosum/')
     blosum.insert(0, "type", "blosum d3pm")

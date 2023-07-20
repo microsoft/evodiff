@@ -1,11 +1,11 @@
 import torch
 import json
-from dms.model import ByteNetLMTime, MSATransformerTime
+from evodiff.model import ByteNetLMTime, MSATransformerTime
 from sequence_models.esm import MSATransformer
 from sequence_models.constants import MSA_ALPHABET, PROTEIN_ALPHABET, ALL_AAS, PAD, MSA_PAD, MASK
 from sequence_models.collaters import LMCollater
-from dms.utils import Tokenizer, download_model
-from dms.collaters import D3PMCollater, OAMaskCollater, ESMOAMaskCollater, D3PMCollaterMSA, ESMOAMaskCollaterMSA
+from evodiff.utils import Tokenizer, download_model
+from evodiff.collaters import D3PMCollater, OAMaskCollater, ESMOAMaskCollater, D3PMCollaterMSA, ESMOAMaskCollaterMSA
 from sequence_models.collaters import MSAAbsorbingCollater
 import esm
 
@@ -69,7 +69,7 @@ def load_msa_checkpoint(model_name, config_path, diffusion_timesteps, tokenizer=
     model.load_state_dict(msd)
     return model, tokenizer
 
-def D3PM_BLOSUM_640M():
+def D3PM_BLOSUM_640M(return_all=False):
     dt=500
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=True)
     Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=dt)
@@ -78,9 +78,12 @@ def D3PM_BLOSUM_640M():
                                                       diffusion_timesteps=dt,
                                                       tokenizer=tokenizer)
     scheme = 'd3pm'
-    return model, collater, tokenizer, scheme
+    if return_all:
+        return model, collater, tokenizer, scheme, dt, Q_prod, Q_t
+    else:
+        return model, collater, tokenizer, scheme
 
-def D3PM_BLOSUM_38M():
+def D3PM_BLOSUM_38M(return_all=False):
     dt=500
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=True)
     Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=dt)
@@ -89,9 +92,12 @@ def D3PM_BLOSUM_38M():
                                                       diffusion_timesteps=dt,
                                                       tokenizer=tokenizer)
     scheme = 'd3pm'
-    return model, collater, tokenizer, scheme
+    if return_all:
+        return model, collater, tokenizer, scheme, dt, Q_prod, Q_t
+    else:
+        return model, collater, tokenizer, scheme
 
-def D3PM_UNIFORM_640M():
+def D3PM_UNIFORM_640M(return_all=False):
     dt = 500
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=True)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
@@ -99,10 +105,13 @@ def D3PM_UNIFORM_640M():
     model, tokenizer = load_sequence_checkpoint("d3pm-uniform-640M", "config/config640M.json", diffusion_timesteps=dt,
                                             tokenizer=tokenizer)
     scheme = 'd3pm'
-    return model, collater, tokenizer, scheme
+    if return_all:
+        return model, collater, tokenizer, scheme, dt, Q_prod, Q_t
+    else:
+        return model, collater, tokenizer, scheme
 
 
-def D3PM_UNIFORM_38M():
+def D3PM_UNIFORM_38M(return_all=False):
     dt = 500
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=True)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
@@ -110,7 +119,10 @@ def D3PM_UNIFORM_38M():
     model, tokenizer = load_sequence_checkpoint("d3pm-uniform-38M", "config/config38M.json", diffusion_timesteps=dt,
                                             tokenizer=tokenizer)
     scheme = 'd3pm'
-    return model, collater, tokenizer, scheme
+    if return_all:
+        return model, collater, tokenizer, scheme, dt, Q_prod, Q_t
+    else:
+        return model, collater, tokenizer, scheme
 
 
 def OA_AR_640M():

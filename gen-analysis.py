@@ -3,10 +3,10 @@ import os
 import pathlib
 import argparse
 from analysis.plot import aa_reconstruction_parity_plot, msa_substitution_rate, msa_pairwise_interactions, plot_percent_similarity_entiremsa
-from dms.utils import Tokenizer
+from evodiff.utils import Tokenizer
 import csv
 from sequence_models.collaters import MSAAbsorbingCollater
-from dms.collaters import D3PMCollaterMSA
+from evodiff.collaters import D3PMCollaterMSA
 from sequence_models.constants import MSA_ALPHABET
 
 home = str(pathlib.Path.home())

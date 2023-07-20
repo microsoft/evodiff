@@ -4,8 +4,8 @@ import pandas as pd
 import csv
 from sequence_models.datasets import TRRMSADataset, A3MMSADataset
 from torch.utils.data import DataLoader
-from dms.utils import Tokenizer
-from dms.collaters import D3PMCollater
+from evodiff.utils import Tokenizer
+from evodiff.collaters import D3PMCollater
 import itertools
 import difflib
 import seaborn as sns
@@ -47,10 +47,10 @@ def calc_sim(df_gen, df_valid, path_to_file):
             sim_msa.append(sm.ratio()*100)
     return sim, sim_msa
 
-path_to_file = '../DMs/amlt-generate-msa/'
+path_to_file = '../evodiff/amlt-generate-msa/'
 runs = ['msa-oaardm-max-train-startmsa/', 'msa-oaardm-max-train-startmsa/', 'msa-oaardm-random-train-startmsa/', 'msa-esm-startmsa-t2/','potts/']
 labels = ['Valid', 'Cond Max', 'Cond Rand', 'ESM-1b','Potts']
-colors = ['#848484'] + sns.color_palette("viridis", len(runs)-1) #+ ['#D0D0D0']
+colors = ['#D0D0D0'] + sns.color_palette("viridis", len(runs)-1) #+ ['#D0D0D0']
 palette = {labels[i]: colors[i] for i in range(len(labels))}
 
 for i, run in enumerate(runs):

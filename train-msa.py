@@ -15,19 +15,19 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 import torch.distributed as dist
-from dms.collaters import D3PMCollaterMSA
-from dms.utils import Tokenizer
-from dms.losses import  D3PMCELoss,  D3PMLVBLossMSA
-from dms.model import MSATransformerTime
+from evodiff.collaters import D3PMCollaterMSA
+from evodiff.utils import Tokenizer
+from evodiff.losses import  D3PMCELoss,  D3PMLVBLossMSA
+from evodiff.model import MSATransformerTime
 from sequence_models.esm import MSATransformer
 from sequence_models.constants import MSA_ALPHABET
 #from sequence_models.datasets import TRRMSADataset #, A3MMSADataset # TODO move datasets back to sequence_models
-from dms.data import TRRMSADataset, A3MMSADataset
+from evodiff.data import TRRMSADataset, A3MMSADataset
 from sequence_models.collaters import MSAAbsorbingCollater
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 from sequence_models.losses import MaskedCrossEntropyLossMSA
 #from sequence_models.metrics import MaskedAccuracy # TODO move this back to sequence_models?
-from dms.metrics import MaskedAccuracyMSA
+from evodiff.metrics import MaskedAccuracyMSA
 from torch.utils.data import Subset
 from sequence_models.utils import warmup, transformer_lr
 

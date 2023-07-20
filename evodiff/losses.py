@@ -1,6 +1,6 @@
 import torch
 from torch.nn import CrossEntropyLoss, KLDivLoss
-from dms.utils import Tokenizer
+from evodiff.utils import Tokenizer
 from sequence_models.constants import MSA_AAS
 
 def sample_prior(a,b, _len=len(MSA_AAS)):

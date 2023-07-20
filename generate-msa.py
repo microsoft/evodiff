@@ -6,24 +6,24 @@ import torch
 import pandas as pd
 from sequence_models.esm import MSATransformer
 from sequence_models.constants import MSA_ALPHABET, MSA_PAD, MASK
-from dms.utils import Tokenizer
+from evodiff.utils import Tokenizer
 from sequence_models.utils import parse_fasta
-from dms.model import MSATransformerTime
-from dms.data import read_idr_files
+from evodiff.model import MSATransformerTime
+from evodiff.data import read_idr_files
 from tqdm import tqdm
 import pathlib
 import glob
 import string
 
-from dms.data import A3MMSADataset, IDRDataset
+from evodiff.data import A3MMSADataset, IDRDataset
 from torch.utils.data import Subset
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 from torch.utils.data import DataLoader
 import torch
 from sequence_models.collaters import MSAAbsorbingCollater
-from dms.collaters import D3PMCollaterMSA
+from evodiff.collaters import D3PMCollaterMSA
 from sequence_models.constants import MSA_ALPHABET
-from dms.utils import Tokenizer
+from evodiff.utils import Tokenizer
 from scipy.spatial.distance import hamming, cdist
 
 home = str(pathlib.Path.home())
@@ -195,7 +195,7 @@ def main():
                     next_seq_num = (seq+1) * args.seq_length
                     seq_string = str(msa[0][seq_num:next_seq_num]).replace('!', '')  # remove PADs
                     if seq_num == 0 :
-                        f.write(">SEQUENCE_0" + "\n" + str(seq_string) + "\n")
+                        f.write(">MSA_0" + "\n" + str(seq_string) + "\n")
                     else:
                         f.write(">tr \n" + str(seq_string) + "\n" )
                 f.write(fasta_string)
@@ -433,7 +433,7 @@ def get_valid_data(data_top_dir, num_seqs, arg_mask, data_dir='openfold/', selec
     query_msas = []
     seq_lens = []
 
-    _ = torch.manual_seed(1)
+    _ = torch.manual_seed(1) # same seeds as training
     np.random.seed(1)
 
     dataset = A3MMSADataset(selection_type, n_sequences, max_seq_len, data_dir=os.path.join(data_top_dir,data_dir), min_depth=64)

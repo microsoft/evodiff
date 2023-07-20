@@ -9,7 +9,7 @@ import numpy as np
 import seaborn as sns
 import difflib
 from itertools import chain
-from dms.utils import extract_seq_a3m, csv_to_dict, normalize_list, removekey, get_matrix, get_pairs, normalize_matrix, \
+from evodiff.utils import extract_seq_a3m, csv_to_dict, normalize_list, removekey, get_matrix, get_pairs, normalize_matrix, \
                       get_pairwise
 
 def aa_reconstruction_parity_plot(project_dir, out_path, generate_file, msa=False, idr=False, gen_file=True,
@@ -329,7 +329,7 @@ def plot_percent_similarity_entiremsa(out_fpath):
     fig.savefig(os.path.join(out_fpath, 'similairity_msa.svg'))
     fig.savefig(os.path.join(out_fpath, 'similarity_msa.png'))
 
-def plot_perp_group_masked(df, save_name):
+def plot_perp_group_masked(df, save_name, mask='mask'):
     "Plot perplexity computed from Masked models, binned by % of sequence masked "
     bins = np.arange(0, 1.1, 0.1)
     df['binned'] = pd.cut(df['time'], bins)
@@ -342,8 +342,13 @@ def plot_perp_group_masked(df, save_name):
     fig, ax = plt.subplots(figsize=(3, 2.5))
     plt.plot(plot_centers*100, plot_values, c='b', marker='o')
     #plt.errorbar(plot_centers*100, plot_values, yerr=plot_err, fmt="o", c='b', capsize=3)
-    ax.set_xticks([0,20,40,60,80,100])
-    plt.xlabel('% Masked')
+    ax.set_xticks([100, 80, 60, 40, 20, 0])
+    if mask=='causal-mask':
+        plt.gca().invert_xaxis()
+        plt.xlabel('% Sequence')
+    else:
+        ax.set_xticks([0, 20, 40, 60, 80, 100])
+        plt.xlabel('% Masked')
     plt.ylabel('Perplexity')
     plt.ylim(0,25)
     plt.tight_layout()
@@ -434,7 +439,8 @@ def plot_plddt_perp(ordered_plddt_group, ordered_perp_group, idx, colors, labels
     fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5), sharey=True, sharex=True)
     plt.scatter(ordered_plddt_group[0], ordered_perp_group[0], c=colors[0], s=20, alpha=1, label=labels[0], edgecolors='grey')
     plt.scatter(ordered_plddt_group[idx], ordered_perp_group[idx], c=colors[idx], s=20, alpha=1, label=labels[idx], edgecolors='grey')
-    ax.axhline(y=np.mean(ordered_perp_group[0]), c='k', ls='--', lw=0.75)
+    print(np.nanmean(ordered_perp_group[0]), np.mean(ordered_plddt_group[0]))
+    ax.axhline(y=np.nanmean(ordered_perp_group[0]), c='k', ls='--', lw=0.75)
     ax.axvline(x=np.mean(ordered_plddt_group[0]), c='k', ls='--', lw=0.75)
     plt.ylim(0, 24)
     plt.xticks([25, 50, 75, 100])
@@ -496,22 +502,24 @@ def plot_embedding(train_emb, run_emb, colors, i, runs, project_run):
 
 
 def plot_percent_similarity(all_df, colors, legend=False):
-    fig, ax = plt.subplots(figsize=(3, 2.5))
+    fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5), sharey=True, sharex=True)
     #sns.set_palette(sns.color_palette("viridis", len(runs)))
     sns.ecdfplot(all_df, ax=ax, legend=legend, palette=colors)
     ax.set_xlabel('% Similarity to Original MSA')
     ax.axvline(x=25, c='k', ls='--', lw=0.75)
+    ax.set_title("% Sim")
     plt.tight_layout()
     fig.savefig(os.path.join('plots/simmsa.svg'))
     fig.savefig(os.path.join('plots/simmsa.png'))
 
-def plot_tmscore(tm_df, palette, legend=False):
-    fig, ax = plt.subplots(figsize=(3, 2.5))
+def plot_tmscore(tm_df, palette, legend=False, save_file='tmscore'):
+    fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5), sharey=True, sharex=True)
     sns.ecdfplot(tm_df, palette=palette, ax=ax, legend=legend)
+    ax.set_title("  ")
     ax.axvline(x=0.5, c='k', ls='--', lw=0.75)
-    ax.set_ylabel('Proportion')
-    ax.set_xlabel('TM Score (Original Query | Gen Query)')
-    # plt.legend()
+    plt.xlim(0,1)
+    ax.set_ylabel('CDF')
+    ax.set_xlabel('TM Score')
     plt.tight_layout()
-    fig.savefig(os.path.join('plots/tmscore.svg'))
-    fig.savefig(os.path.join('plots/tmscore.png'))
+    fig.savefig(os.path.join('plots/'+save_file+'.svg'))
+    fig.savefig(os.path.join('plots/'+save_file+'.png'))

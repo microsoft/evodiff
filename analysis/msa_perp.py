@@ -1,8 +1,8 @@
 import numpy as np
-import dms.utils
-from dms.pretrained import MSA_D3PM_UNIFORM_RANDSUB, MSA_D3PM_UNIFORM_MAXSUB, MSA_D3PM_BLOSUM_RANDSUB, \
+import evodiff.utils
+from evodiff.pretrained import MSA_D3PM_UNIFORM_RANDSUB, MSA_D3PM_UNIFORM_MAXSUB, MSA_D3PM_BLOSUM_RANDSUB, \
     MSA_D3PM_BLOSUM_MAXSUB, MSA_OA_AR_RANDSUB, MSA_OA_AR_MAXSUB, ESM_MSA_1b
-from dms.losses import D3PMCELoss
+from evodiff.losses import D3PMCELoss
 from sequence_models.losses import MaskedCrossEntropyLossMSA
 import torch
 from tqdm import tqdm
@@ -57,8 +57,8 @@ def main():
 
     num_seqs=20000
 
-    data = dms.utils.get_valid_msas(data_top_dir, data_dir='openfold/', selection_type=selection_type, n_sequences=64, max_seq_len=512,
-                   out_path='../DMs/ref/')
+    data = evodiff.utils.get_valid_msas(data_top_dir, data_dir='openfold/', selection_type=selection_type, n_sequences=64, max_seq_len=512,
+                                        out_path='../evodiff/ref/')
 
     losses = []
     n_tokens = []

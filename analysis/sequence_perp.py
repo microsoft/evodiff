@@ -1,8 +1,8 @@
 import numpy as np
-from dms.pretrained import CARP_38M, CARP_640M, D3PM_BLOSUM_38M, D3PM_BLOSUM_640M, D3PM_UNIFORM_38M, D3PM_UNIFORM_640M,\
+from evodiff.pretrained import CARP_38M, CARP_640M, D3PM_BLOSUM_38M, D3PM_BLOSUM_640M, D3PM_UNIFORM_38M, D3PM_UNIFORM_640M,\
                            OA_AR_640M, OA_AR_38M, LR_AR_38M, LR_AR_640M, ESM1b_650M
 from torch.nn import CrossEntropyLoss
-from dms.losses import OAMaskedCrossEntropyLoss
+from evodiff.losses import OAMaskedCrossEntropyLoss
 from sequence_models.losses import MaskedCrossEntropyLoss
 import torch
 from sequence_models.datasets import UniRefDataset
@@ -63,24 +63,31 @@ def main():
     losses = []
     n_tokens = []
     time_loss_data = []
-    for i in tqdm(range(25000)): #len(data))):
+    for i in tqdm(range(60000)): #len(data))):
         r_idx = np.random.choice(len(data))
         sequence = [data[r_idx]]
         t, loss, tokens = sum_nll_mask(sequence, checkpoint)
-        if not np.isnan(loss): #esm-1b predicts nans at large % mask
-            losses.append(loss)
-            n_tokens.append(tokens)
-            time_loss_data.append([t, loss, tokens])
-        if i % 10000 == 0:
+        if len(loss) > 0:
+            for j in range(len(loss)):
+                if not np.isnan(loss[j]):  # esm-1b predicts nans at large % mask
+                    losses.append(loss[j].item())
+                    n_tokens.append(tokens[j])
+                    time_loss_data.append([t[j], loss[j], tokens[j]])
+        else:
+            if not np.isnan(loss): #esm-1b predicts nans at large % mask
+                losses.append(loss)
+                n_tokens.append(tokens)
+                time_loss_data.append([t, loss, tokens])
+        if i % 100 == 0:
             ll = -sum(losses) / sum(n_tokens)
             perp = np.exp(-ll)
-            print(i, "samples, perp:", np.mean(perp))
+            #print(i, "samples, perp:", np.mean(perp))
     print("Final test perp:", np.exp(sum(losses)/sum(n_tokens)))
     df = pd.DataFrame(time_loss_data, columns=['time', 'loss', 'tokens'])
     if checkpoint[-1] == 'd3pm':
         plot_perp_group_d3pm(df, save_name)
     else:
-        plot_perp_group_masked(df, save_name)
+        plot_perp_group_masked(df, save_name, mask=checkpoint[-1])
 
 def sum_nll_mask(sequence, checkpoint):
     model, collater, tokenizer, scheme = checkpoint
@@ -107,7 +114,7 @@ def sum_nll_mask(sequence, checkpoint):
     timestep = timestep.cuda()
     tgt = tgt.cuda()
     with torch.no_grad():
-        print(timestep)
+        #print(timestep)
         outputs = model(src, timestep) # outputs are x_tilde_0 (predicted tgt)
         if scheme == 'esm-mask':
             outputs = outputs["logits"]
@@ -116,20 +123,26 @@ def sum_nll_mask(sequence, checkpoint):
     if scheme == 'd3pm':
         loss_func = CrossEntropyLoss(reduction='sum')
         nll_loss = loss_func(outputs.squeeze(), tgt.squeeze())
+        nll_loss = nll_loss.item()
         t_out=timestep
         tokens = len(tgt.squeeze())
     elif scheme == 'mask' or scheme == 'esm-mask' or scheme=='causal-mask':
         if scheme=='causal-mask': # LR-AR only predict next token
-            loss_func = MaskedCrossEntropyLoss(reduction='sum')
-            tokens = mask.sum().item()
+            loss_func = MaskedCrossEntropyLoss(reduction='none')
+            n_tokens = mask.sum().item()
             nll_loss = loss_func(outputs, tgt, mask)
-            t_out=1 # placeholder to save to dataframe, can't tease out by timestep
+            # For each token in loss, append sum of loss up to N tokens, and N tokens
+            nll_loss = nll_loss.cpu()
+            nll_loss = [nll_loss[:i].sum() for i in range(n_tokens)]
+            tokens = [(i+1) for i in range(n_tokens)]
+            t_out = [(i+1)/n_tokens for i in range(n_tokens)]
         else:
             loss_func = OAMaskedCrossEntropyLoss(reweight=False)
             ce_loss, nll_loss = loss_func(outputs[:, :, :26], tgt, mask, timestep, input_mask) # returns a sum
+            nll_loss = nll_loss.item()
             tokens = mask.sum().item()
             t_out = tokens / int(len(tgt.squeeze()))
-    return t_out, nll_loss.item(), tokens # return timestep sampled (or % masked), sum of losses, and sum of tokens
+    return t_out, nll_loss, tokens # return timestep sampled (or % masked), sum of losses, and sum of tokens
 
 if __name__ == '__main__':
     main()
