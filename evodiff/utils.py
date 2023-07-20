@@ -430,7 +430,7 @@ def run_tmscore(fpath, pdb, num_seqs, path_to_tmscore='TMscore'):
         f.close()
     # Write all scores to file
     with open(os.path.join(out_fpath, 'tmscores.txt'), 'w') as f:
-        [f.write(score) for score in tm_scores]
+        [f.write(score+'\n') for score in tm_scores]
     f.close()
 
 

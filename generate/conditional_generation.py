@@ -238,7 +238,7 @@ def generate_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_
     return untokenized, new_start_idxs, new_end_idxs, spacers
 
 def generate_autoreg_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_length, data_top_dir, tokenizer,
-                      batch_size=1, device='gpu', single_res_domain=False, chain='A', max_seq_len=500):
+                      batch_size=1, device='gpu', single_res_domain=False, chain='A'):
     mask = tokenizer.mask_id # placeholder to calculate indices here
     start = tokenizer.start_id
     stop = tokenizer.stop_id
@@ -248,6 +248,7 @@ def generate_autoreg_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, s
 
     # Create input motif + scaffold (as reference for gen task)
     seq_len = scaffold_length + len(motif_seq)
+    max_seq_len = seq_len
     sample_ref = torch.zeros((batch_size, seq_len)) + mask # start from all mask
     new_start = np.random.choice(scaffold_length) # randomly place motif in scaffold
     sample_ref[:, new_start:new_start+len(motif_seq)] = torch.tensor(motif_tokenized)
