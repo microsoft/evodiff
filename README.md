@@ -1,12 +1,12 @@
-# Generation of protein sequences and evolutionary alignments via discrete diffusion models
+# EvoDiff: Generation of protein sequences and evolutionary alignments via discrete diffusion models
 
 In this work, we train and evaluate a series of discrete diffusion models for both unconditional and conditional generation of single protein sequences as well as multiple sequence alignments (MSAs). We test both order-agnostic autoregressive diffusion and discrete denoising diffusion probabilistic models for protein sequence generation; formulate unique, bio-inspired corruption schemes for both classes of models; and evaluate the quality of generated samples for fidelity, diversity, and structural plausibility.
 
 ### Installation
 ```
-cd dms
+cd evodiff
 conda env create -f environment.yml
-conda activate dms
+conda activate evodiff
 pip install -e .
 ```
 We obtain sequences from the [Uniref50 dataset](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4375400/), which contains approximately 45 million protein sequences. The Multiple Sequence Alignments (MSAs) are from the [OpenFold dataset](https://www.biorxiv.org/content/10.1101/2022.11.20.517210v2), containing MSAs for 132,000 unique Protein Data Bank (PDB) chains.
@@ -14,7 +14,7 @@ We obtain sequences from the [Uniref50 dataset](https://www.ncbi.nlm.nih.gov/pmc
 ### Loading pretrained models
 To load a model:
 ```
-from dms.pretrained import OA_AR_640M
+from evodiff.pretrained import OA_AR_640M
 
 model, collater, tokenizer, scheme = OA_AR_640M()
 ```
@@ -63,7 +63,7 @@ To access the generated sequences:
 ```
 TODO: function to download gen seqs from Zenodo
 ```
-To analyze the quality of the generations, we look at the amino acid KL divergence ([aa_reconstruction_parity_plot](https://github.com/microsoft/DMs/blob/main/analysis/plot.py), the secondary structure KL divergence ([DMs/analysis/calc_kl_ss.py](https://github.com/microsoft/DMs/blob/main/analysis/calc_kl_ss.py)), the model perplexity ([DMs/analysis/model_perp.py](https://github.com/microsoft/DMs/blob/main/analysis/model_perp.py)), the Fréchet inception distance ([DMs/analysis/calc_fid.py](https://github.com/microsoft/DMs/blob/main/analysis/calc_fid.py)), and the hamming distance ([DMs/analysis/calc_nearestseq_hamming.py](https://github.com/microsoft/DMs/blob/main/analysis/calc_nearestseq_hamming.py)).
+To analyze the quality of the generations, we look at the amino acid KL divergence ([aa_reconstruction_parity_plot](https://github.com/microsoft/evodiff/blob/main/analysis/plot.py), the secondary structure KL divergence ([evodiff/analysis/calc_kl_ss.py](https://github.com/microsoft/evodiff/blob/main/analysis/calc_kl_ss.py)), the model perplexity ([evodiff/analysis/model_perp.py](https://github.com/microsoft/evodiff/blob/main/analysis/model_perp.py)), the Fréchet inception distance ([evodiff/analysis/calc_fid.py](https://github.com/microsoft/evodiff/blob/main/analysis/calc_fid.py)), and the hamming distance ([evodiff/analysis/calc_nearestseq_hamming.py](https://github.com/microsoft/evodiff/blob/main/analysis/calc_nearestseq_hamming.py)).
 
 We also compute the self-consistency perplexity to evaluate the foldability of generated sequences. To do so, we make use of various tools:
 * [TM score](https://zhanggroup.org/TM-score/)
@@ -72,7 +72,7 @@ We also compute the self-consistency perplexity to evaluate the foldability of g
 * [ESM-IF1](https://github.com/facebookresearch/esm/tree/main/esm/inverse_folding); see this [Jupyter notebook](https://colab.research.google.com/github/facebookresearch/esm/blob/main/examples/inverse_folding/notebook.ipynb) for setup details.
 * [PGP](https://github.com/hefeda/PGP)
 
-Our analysis scripts for iterating over these tools are in the [DMs/analysis/downstream_scripts](https://github.com/microsoft/DMs/tree/main/analysis/downstream_bash_scripts) folder. Once we run the scripts in this folder, we analyze the results in [self_consistency_analysis.py](https://github.com/microsoft/DMs/blob/main/analysis/self_consistency_analysis.py).
+Our analysis scripts for iterating over these tools are in the [evodiff/analysis/downstream_scripts](https://github.com/microsoft/evodiff/tree/main/analysis/downstream_bash_scripts) folder. Once we run the scripts in this folder, we analyze the results in [self_consistency_analysis.py](https://github.com/microsoft/evodiff/blob/main/analysis/self_consistency_analysis.py).
 
 ## Contributing
 
