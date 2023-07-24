@@ -2,15 +2,15 @@ import MDAnalysis as mda
 from MDAnalysis.analysis import rms
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import os
-import seaborn as sns
-from evodiff.plot import plot_tmscore, plot_rmsd
+from evodiff.plot import plot_conditional_tmscores, plot_conditional_rmsd, plot_conditional_sim
 import argparse
 import difflib
 from ast import literal_eval
 from Bio.PDB import PDBParser, Selection
 import esm.inverse_folding
+import pathlib
+
 
 def main():
     # set seeds
@@ -42,9 +42,21 @@ def main():
                         help="Min scaffold len ")
     parser.add_argument('--scaffold-max', type=int, default=30,
                         help="Max scaffold len, will randomly choose a value between min/max")
+    parser.add_argument('--amlt', action='store_true')
+    parser.add_argument('--random-baseline', action='store_true')
     args = parser.parse_args()
 
-    home = 'cond-gen/' + args.model_type + '/'
+    if not args.amlt:
+        home = str(pathlib.Path.home())
+    else:
+        home = os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/'
+
+    if not args.random_baseline:
+        home += 'cond-gen/' + args.model_type + '/'
+    else:
+        home += 'cond-gen/' + 'random-baseline/'
+    if not os.path.exists(home+'plots/'):
+        os.mkdir(home+'plots/')
 
     args.start_idxs.sort()
     args.end_idxs.sort()
@@ -63,17 +75,17 @@ def main():
     candidates = motif_df_sorted[motif_df_sorted['rmsd'] <= 1.5]
     print(candidates[['seqs','scores','scores_sampled','scores_fixed','rmsd']])
     print("Success:", len(candidates))
-    with open(home + args.pdb + '/success.csv') as f:
-        f.write(len(candidates))
+    with open(home + args.pdb + '/successes.csv', 'w') as f:
+        f.write(str(len(candidates)) + " of " + str(args.num_seqs) + " total")
     f.close()
     motif_df.to_csv(home + args.pdb + '/motif_df_rmsd.csv', index=True)
 
     # Eval TM scores
     tm = pd.read_csv(home + args.pdb + '/pdb/tmscores.txt', names=['tmscore'])
-    plot_tmscore(tm, ['grey'], legend=False, save_file=args.pdb+'_tmscore')
+    plot_conditional_tmscores(tm, ['grey'], legend=False, save_path=home+'plots/'+args.pdb)
 
     # Plot rmsd vs plddt
-    plot_rmsd(args.pdb, motif_df)
+    plot_conditional_rmsd(args.pdb, motif_df, out_path=home+'plots/')
 
     # percent similarity in fixed region
     chain_ids=[args.chain]
@@ -89,14 +101,7 @@ def main():
         gen_fixed = gen_sequence[new_motif_starts:new_motif_ends]
         sim.append(calc_sim(original_fixed, gen_fixed))
 
-    fig, ax = plt.subplots(figsize=(2.5, 2.5))
-    sns.histplot(sim, color='grey', bins=10, ax=ax)
-    plt.xlabel('% Seq similarity (Fixed)')
-    plt.title("  ")
-    plt.xlim(0, 100)
-    plt.tight_layout()
-    fig.savefig(os.path.join('plots/' + args.pdb + '_similarity.png'))
-
+    plot_conditional_sim(sim, out_path=home+'plots/')
 
 def calc_sim(seq1, seq2):
     sm=difflib.SequenceMatcher(None,seq1,seq2)
@@ -123,6 +128,10 @@ def calc_rmsd(num_structures, reference_PDB, fpath='conda/gen/6exz', ref_motif_s
         for j in range(len(ref_motif_starts)):
             ref_selection += str(ref_motif_starts[j]+1) + ':' + str(ref_motif_ends[j]+1) + ' ' # +1 (PDB indexed at 1)
             u_selection += str(new_motif_starts[j]) + ':' + str(new_motif_ends[j]) + ' '
+
+        # print("SEQUENCE", i)
+        # print("ref", ref.select_atoms(ref_selection).resnames)
+        # print("gen", u.select_atoms(u_selection).resnames)
 
         assert (ref.select_atoms(ref_selection).resnames == u.select_atoms(u_selection).resnames).all(), "Resnames for\
                                                                         motifRMSD do not match, check indexing"

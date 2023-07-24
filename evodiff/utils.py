@@ -382,13 +382,17 @@ def download_generated_sequences(model_name):
     return sequence_list
 
 def run_omegafold(fpath, fasta_file="generated_samples_string.fasta"):
+    """
+    Wrapper for running omegafold
+    """
     out_fpath = os.path.join(fpath, 'pdb/')
+    if os.path.exists(out_fpath):
+        print("Deleting old omegafold runs")
+        os.system("rm -rf "+out_fpath)
     if not os.path.exists(out_fpath):
         os.makedirs(out_fpath)
         print("Running omegafold")
         subprocess.run(["omegafold", os.path.join(fpath,fasta_file), os.path.join(out_fpath)], capture_output=True)
-    else:
-        print("Using omegafold from previous run")
 
 def clean_pdb(fpath, data_top_dir, pdb):
     """
@@ -415,6 +419,9 @@ def clean_pdb(fpath, data_top_dir, pdb):
                                  stdout=reres_file)
 
 def run_tmscore(fpath, pdb, num_seqs, path_to_tmscore='TMscore'):
+    """
+    Wrapper for evaluating TM Scores
+    """
     out_fpath = os.path.join(fpath, 'pdb/')
     assert os.path.exists(out_fpath), "Can't find out_fpath, did you run omegafold?"
     tm_scores = []

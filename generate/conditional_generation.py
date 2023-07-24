@@ -1,3 +1,7 @@
+import os
+cwd = os.getcwd()
+print("WORKINg dir", cwd)
+
 from evodiff.pretrained import OA_AR_640M, OA_AR_38M, CARP_640M, LR_AR_38M, LR_AR_640M
 import numpy as np
 import argparse
@@ -13,9 +17,6 @@ import pandas as pd
 import random
 from evodiff.plot import aa_reconstruction_parity_plot
 
-# python cond_gen.py --cond-task scaffold --pdb 5trv --motif-start-index 42 --motif-end-index 62 --num-seqs 50
-
-home = str(pathlib.Path.home())
 
 def main():
     # set seeds
@@ -49,6 +50,7 @@ def main():
     parser.add_argument('--scaffold-max', type=int, default=30,
                         help="Max scaffold len, will randomly choose a value between min/max")
     parser.add_argument('--random-baseline', action='store_true')
+    parser.add_argument('--amlt', action='store_true')
     parser.add_argument('--single-res-domain', action='store_true', help="if start-idx = end-idx make sure to use single-res-domain flag or else you will get errors")
     args = parser.parse_args()
 
@@ -75,11 +77,18 @@ def main():
     torch.cuda.set_device(args.gpus)
     device = torch.device('cuda:' + str(args.gpus))
 
-    top_dir = home + '/Desktop/DMs/'
+    if args.amlt:
+        home = os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/'
+        top_dir = ''
+    else:
+        home = str(pathlib.Path.home())
+        top_dir = home + '/Desktop/DMs/'
     data_top_dir = top_dir + 'data/'
 
-
-    out_fpath = home + '/Desktop/DMs/cond-gen/' + args.model_type + '/' + args.pdb +'/'
+    if not args.random_baseline:
+        out_fpath = home + '/Desktop/DMs/cond-gen/' + args.model_type + '/' + args.pdb +'/'
+    else:
+        out_fpath = home + '/Desktop/DMs/cond-gen/' + 'random-baseline/' + args.pdb +'/'
     if not os.path.exists(out_fpath):
         os.makedirs(out_fpath)
 
