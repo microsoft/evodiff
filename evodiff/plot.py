@@ -512,7 +512,7 @@ def plot_percent_similarity(all_df, colors, legend=False):
     fig.savefig(os.path.join('plots/simmsa.svg'))
     fig.savefig(os.path.join('plots/simmsa.png'))
 
-def plot_tmscore(tm_df, palette, legend=False, save_file='tmscore'):
+def plot_conditional_tmscores(tm_df, palette, legend=False, save_path='plots/'):
     fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5), sharey=True, sharex=True)
     sns.ecdfplot(tm_df, palette=palette, ax=ax, legend=legend)
     ax.set_title("  ")
@@ -521,10 +521,10 @@ def plot_tmscore(tm_df, palette, legend=False, save_file='tmscore'):
     ax.set_ylabel('CDF')
     ax.set_xlabel('TM Score')
     plt.tight_layout()
-    fig.savefig(os.path.join('plots/'+save_file+'.svg'))
-    fig.savefig(os.path.join('plots/'+save_file+'.png'))
+    fig.savefig(os.path.join(save_path+'_tmscore.svg'))
+    fig.savefig(os.path.join(save_path+'_tmscore.png'))
 
-def plot_rmsd(pdb, motif_df):
+def plot_conditional_rmsd(pdb, motif_df, out_path='plots/'):
     fig, ax = plt.subplots(1, 3, figsize=(7.5, 2.5))
     ax[0].scatter(motif_df['scaffold_lengths'], motif_df['rmsd'], edgecolors='grey', c='#D0D0D0')
     ax[0].set_xlabel('Scaffold Lengths')
@@ -542,4 +542,13 @@ def plot_rmsd(pdb, motif_df):
     ax[1].set_xlim(0, 100)
     ax[2].set_xlim(0, 100)
     plt.tight_layout()
-    fig.savefig(os.path.join('plots/' + pdb + '.png'))
+    fig.savefig(os.path.join(out_path + pdb + '.png'))
+
+def plot_conditional_sim(sim, out_path='plots/'):
+    fig, ax = plt.subplots(figsize=(2.5, 2.5))
+    sns.histplot(sim, color='grey', bins=10, ax=ax)
+    plt.xlabel('% Seq similarity (Fixed)')
+    plt.title("  ")
+    plt.xlim(0, 100)
+    plt.tight_layout()
+    fig.savefig(out_path + '_similarity.png')
