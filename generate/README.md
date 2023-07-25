@@ -1,7 +1,10 @@
 # Scaffolding Task
 Benchmark conditional generation runs from Table S9 https://www.nature.com/articles/s41586-023-06415-8
+
 Start/end indexes are adjusted for the protein sequence extracted from PDB files
+
 Corresponding sequence domains are listed for reference
+
 All motifs were generated in a 50-100 residue scaffold
 
 ### PDB CODE: 1PRW
@@ -75,6 +78,7 @@ python generate/conditional_generation.py --model-type oa_ar_640M --cond-task sc
 
 ### PDB CODE: 7P19 -> (6VWI Baker reference, incorrect pdb citation?)
 Domain: 24-42 (QAKTFLDKFNHEAEDLFYQ), 64-82 (NAGDKWSAFLKEQSTLAQM) 
+
 WARNING: 7P19 has a residue BLYS that ruins analysis - pre-clean downloaded PDB (delete BLYS residue) before running
 ```
 python generate/conditional_generation.py --cond-task scaffold --pdb 7p19 --start-idx 5 --end-idx 23 --start-idx 45 
