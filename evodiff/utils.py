@@ -401,7 +401,7 @@ def clean_pdb(fpath, data_top_dir, pdb):
     Re-number residues -> _reres.pdb
     """
     data_dir = data_top_dir + 'scaffolding-pdbs/'
-    fpath = os.path.join(fpath, 'pdb/')
+    #fpath = os.path.join(fpath, 'pdb/')
     clean_pdb_string=''
     with open(os.path.join(data_dir, pdb+'.pdb')) as f:
         for line in f:
@@ -418,7 +418,7 @@ def clean_pdb(fpath, data_top_dir, pdb):
     subprocess.call(["pdb_reres", os.path.join(fpath, pdb+'_clean.pdb')],
                                  stdout=reres_file)
 
-def run_tmscore(fpath, pdb, num_seqs, path_to_tmscore='TMscore'):
+def run_tmscore(fpath, pdb, num_seqs, path_to_tmscore='TMscore', amlt=False):
     """
     Wrapper for evaluating TM Scores
     """
@@ -427,9 +427,14 @@ def run_tmscore(fpath, pdb, num_seqs, path_to_tmscore='TMscore'):
     tm_scores = []
     for i in range(num_seqs):
         temp_file = open(os.path.join(out_fpath, 'temp_tmscores.txt'), 'w')
-        subprocess.call([path_to_tmscore, os.path.join(out_fpath, pdb + '_reres.pdb'),
+        if amlt:
+            subprocess.call(['./'+path_to_tmscore, os.path.join(out_fpath, pdb + '_reres.pdb'),
                             os.path.join(out_fpath,'SEQUENCE_'+str(i)+'.pdb')],
                         stdout=temp_file)
+        else:
+            subprocess.call([path_to_tmscore, os.path.join(out_fpath, pdb + '_reres.pdb'),
+                             os.path.join(out_fpath, 'SEQUENCE_' + str(i) + '.pdb')],
+                            stdout=temp_file)
         with open(os.path.join(out_fpath, 'temp_tmscores.txt')) as f:
             for line in f:
                 if len(line.split())>1 and "TM-score" == line.split()[0]:

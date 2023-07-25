@@ -58,7 +58,7 @@ def main():
     num_seqs=20000
 
     data = evodiff.data.get_valid_msas(data_top_dir, data_dir='openfold/', selection_type=selection_type, n_sequences=64, max_seq_len=512,
-                                        out_path='../evodiff/ref/')
+                                       out_path='../evodiff/ref/')
 
     losses = []
     n_tokens = []
