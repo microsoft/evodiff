@@ -57,12 +57,15 @@ def main():
     args.start_idxs.sort()
     args.end_idxs.sort()
 
+    if args.random_baseline:
+        args.model_type = 'oa_ar_640M' # placeholder
+
     print("USING MODEL", args.model_type)
     if args.model_type == 'oa_ar_38M':
         checkpoint = OA_AR_38M()
     elif args.model_type == 'oa_ar_640M':
         checkpoint = OA_AR_640M()
-    elif args.model_type == 'carp-640M':
+    elif args.model_type == 'carp_640M':
         checkpoint = CARP_640M()
     elif args.model_type == 'lr_ar_38M':
         checkpoint = LR_AR_38M()
@@ -80,17 +83,19 @@ def main():
     if args.amlt:
         home = os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/'
         top_dir = ''
+        out_fpath = home
     else:
-        home = str(pathlib.Path.home())
-        top_dir = home + '/Desktop/DMs/'
-    data_top_dir = top_dir + 'data/'
+        home = str(pathlib.Path.home()) + '/Desktop/DMs/'
+        top_dir = home
 
-    if not args.random_baseline:
-        out_fpath = home + '/Desktop/DMs/cond-gen/' + args.model_type + '/' + args.pdb +'/'
-    else:
-        out_fpath = home + '/Desktop/DMs/cond-gen/' + 'random-baseline/' + args.pdb +'/'
-    if not os.path.exists(out_fpath):
-        os.makedirs(out_fpath)
+        if not args.random_baseline:
+            out_fpath = home + args.model_type + '/' + args.pdb +'/'
+        else:
+            out_fpath = home + 'random-baseline/' + args.pdb +'/'
+        if not os.path.exists(out_fpath):
+            os.makedirs(out_fpath)
+
+    data_top_dir = top_dir + 'data/'
 
     if args.cond_task == 'idr':
         #TODO Finish IDR
@@ -104,7 +109,8 @@ def main():
         spacers = []
         for i in range(args.num_seqs):
             scaffold_length = random.randint(args.scaffold_min, args.scaffold_max)
-            if args.model_type == 'oa_ar_38M' or args.model_type == 'oa_ar_640M':
+            if args.model_type == 'oa_ar_38M' or args.model_type == 'oa_ar_640M' or args.model_type == 'carp_38M'\
+                    or args.model_type == 'carp_640M':
                 string, new_start_idx, new_end_idx, spacer = generate_scaffold(model, args.pdb, args.start_idxs,
                                                                                args.end_idxs, scaffold_length,
                                                                                data_top_dir, tokenizer, device=device,
@@ -135,13 +141,16 @@ def main():
             f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
 
     # After cond gen, run omegafold
+    print("Finished generation, starting omegafold")
     run_omegafold(out_fpath, fasta_file="generated_samples_string.fasta")
 
+    print("Cleaning PDBs")
     # clean PDB for TMScore analysis
-    clean_pdb(out_fpath, data_top_dir, args.pdb)
+    clean_pdb(os.path.join(out_fpath, 'pdb/'), data_top_dir, args.pdb)
 
+    print("Getting TM scores")
     # Get TMscores
-    run_tmscore(out_fpath, args.pdb, args.num_seqs, path_to_tmscore=top_dir+'TMscore')
+    run_tmscore(out_fpath, args.pdb, args.num_seqs, path_to_tmscore=top_dir+'TMscore', amlt=args.amlt)
 
 
 
@@ -158,10 +167,13 @@ def get_motif(PDB_ID, start_idxs, end_idxs, data_top_dir='../data', chain='A'):
     "Get motif of sequence from PDB code"
     pdb_path = os.path.join(data_top_dir, 'scaffolding-pdbs/'+str(PDB_ID)+'.pdb')
     download_pdb(PDB_ID, pdb_path)
+    print("CLEANING PDB")
+    clean_pdb(os.path.join(data_top_dir, 'scaffolding-pdbs/'), data_top_dir, PDB_ID)
+    pdb_clean_path = os.path.join(data_top_dir, 'scaffolding-pdbs/' + str(PDB_ID) + '_clean.pdb')
 
     chain_ids = [chain]
     print("WARNING: USING CHAIN", chain, "FROM PDB FILE")
-    structure = esm.inverse_folding.util.load_structure(pdb_path, chain_ids)
+    structure = esm.inverse_folding.util.load_structure(pdb_clean_path, chain_ids)
     coords, native_seqs = esm.inverse_folding.multichain_util.extract_coords_from_complex(structure)
     sequence = native_seqs[chain_ids[0]]
     print("sequence extracted from pdb", sequence)
@@ -211,7 +223,7 @@ def get_intervals(list, single_res_domain=False):
 def generate_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_length, data_top_dir, tokenizer,
                       batch_size=1, device='gpu', random_baseline=False, single_res_domain=False, chain='A'):
     if random_baseline:
-        train_prob_dist = aa_reconstruction_parity_plot(data_top_dir+'/../', 'reference/', 'placeholder.csv', gen_file=False)
+        train_prob_dist = aa_reconstruction_parity_plot(data_top_dir+'../', 'reference/', 'placeholder.csv', gen_file=False)
     mask = tokenizer.mask_id
 
     motif_seq, spacers = get_motif(PDB_ID, motif_start_idxs, motif_end_idxs, data_top_dir=data_top_dir, chain=chain)

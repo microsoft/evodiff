@@ -48,13 +48,13 @@ def main():
 
     if not args.amlt:
         home = str(pathlib.Path.home())
+        if not args.random_baseline:
+            home += '/Desktop/DMs/' + args.model_type + '/' + args.pdb
+        else:
+            home += '/Desktop/DMs/random-baseline/' + args.pdb
     else:
         home = os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/'
 
-    if not args.random_baseline:
-        home += 'cond-gen/' + args.model_type + '/'
-    else:
-        home += 'cond-gen/' + 'random-baseline/'
     if not os.path.exists(home+'plots/'):
         os.mkdir(home+'plots/')
 
@@ -64,9 +64,9 @@ def main():
 
     ref_pdb = args.pdb + '_reres.pdb'
     # Iterate over all generated files and calc rmsd
-    motif_df = calc_rmsd(args.num_seqs, ref_pdb, fpath=home + args.pdb, ref_motif_starts=args.start_idxs,
+    motif_df = calc_rmsd(args.num_seqs, ref_pdb, fpath=home, ref_motif_starts=args.start_idxs,
                          ref_motif_ends=args.end_idxs)
-    ci_scores, ci_sampled, ci_fixed = get_confidence_score(home + args.pdb, args.num_seqs,  motif_df)
+    ci_scores, ci_sampled, ci_fixed = get_confidence_score(home, args.num_seqs,  motif_df)
     motif_df['scores'] = ci_scores
     motif_df['scores_sampled'] = ci_sampled
     motif_df['scores_fixed'] = ci_fixed
@@ -75,13 +75,13 @@ def main():
     candidates = motif_df_sorted[motif_df_sorted['rmsd'] <= 1.5]
     print(candidates[['seqs','scores','scores_sampled','scores_fixed','rmsd']])
     print("Success:", len(candidates))
-    with open(home + args.pdb + '/successes.csv', 'w') as f:
+    with open(home + '/successes.csv', 'w') as f:
         f.write(str(len(candidates)) + " of " + str(args.num_seqs) + " total")
     f.close()
-    motif_df.to_csv(home + args.pdb + '/motif_df_rmsd.csv', index=True)
+    motif_df.to_csv(home + '/motif_df_rmsd.csv', index=True)
 
     # Eval TM scores
-    tm = pd.read_csv(home + args.pdb + '/pdb/tmscores.txt', names=['tmscore'])
+    tm = pd.read_csv(home + '/pdb/tmscores.txt', names=['tmscore'])
     plot_conditional_tmscores(tm, ['grey'], legend=False, save_path=home+'plots/'+args.pdb)
 
     # Plot rmsd vs plddt
@@ -89,7 +89,7 @@ def main():
 
     # percent similarity in fixed region
     chain_ids=[args.chain]
-    structure = esm.inverse_folding.util.load_structure(home+args.pdb+'/pdb/'+ref_pdb, chain_ids)
+    structure = esm.inverse_folding.util.load_structure(home+'/pdb/'+ref_pdb, chain_ids)
     coords, native_seqs = esm.inverse_folding.multichain_util.extract_coords_from_complex(structure)
     sequence = native_seqs[chain_ids[0]]
     original_fixed = sequence[args.start_idxs[0]:args.end_idxs[-1]]
@@ -132,6 +132,12 @@ def calc_rmsd(num_structures, reference_PDB, fpath='conda/gen/6exz', ref_motif_s
         # print("SEQUENCE", i)
         # print("ref", ref.select_atoms(ref_selection).resnames)
         # print("gen", u.select_atoms(u_selection).resnames)
+        # print("ASSERT")
+        # print(len(ref.select_atoms(ref_selection).resnames))
+        # print(len(u.select_atoms(u_selection).resnames))
+        assert len(ref.select_atoms(ref_selection).resnames) == len(u.select_atoms(u_selection).resnames), "Motif \
+                                                                        lengths do not match, check PDB preprocessing\
+                                                                        for extra residues"
 
         assert (ref.select_atoms(ref_selection).resnames == u.select_atoms(u_selection).resnames).all(), "Resnames for\
                                                                         motifRMSD do not match, check indexing"
