@@ -1,10 +1,8 @@
-# Scaffolding Task 
-```
+# Scaffolding Task
 Benchmark conditional generation runs from Table S9 https://www.nature.com/articles/s41586-023-06415-8
 Start/end indexes are adjusted for the protein sequence extracted from PDB files
 Corresponding sequence domains are listed for reference
 All motifs were generated in a 50-100 residue scaffold
-```
 
 ### PDB CODE: 1PRW
 Domains: 16-35 (FSLFDKDGDGTITTKELGTV), 52-71 (INEVDADGNGTIDFPEFLTM)
