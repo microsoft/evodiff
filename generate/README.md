@@ -26,21 +26,21 @@ python generate/conditional_generation.py --cond-task scaffold --pdb 5tpn --star
     --scaffold-min 50 -scaffold-max 100 --num-seqs 100
 ```
 
-### PDB CODE: 5TPN (Site II) -> (3IXT BAKER)
+### PDB CODE: 5TPN (Site II) -> (3IXT Baker reference)
 Domain: 254-277 (NSELLSLINDMPITNDQKKLMSNN)
 ```
 python generate/conditional_generation.py --cond-task scaffold --pdb 5tpn --start-idx 199 --end-idx 222
     --scaffold-min 50 -scaffold-max 100 --num-seqs 100
 ```
 
-### PDB CODE: 5TPN (Site 0) -> (4JHW BAKER)
+### PDB CODE: 5TPN (Site 0) -> (4JHW Baker reference)
 Domain: 63-69 (NIKKIKC), 196-212 (KNYIDKQLLPIVNKQSC)
 ```
 python generate/conditional_generation.py --cond-task scaffold --pdb 5tpn --start-idx 36 --end-idx 42 --start-idx 141 
     --end-idx 157 --scaffold-min 50 --scaffold-max 100 --num-seqs 100 
 ```
 
-### PDB CODE: 5TPN (Site IV) -> (4ZYP BAKER)
+### PDB CODE: 5TPN (Site IV) -> (4ZYP Baker reference)
 Domain: 422-436 (CTASNKNRGIIKTFS)
 ```
 python generate/conditional_generation.py --cond-task scaffold --pdb 5tpn --start-idx 367 --end-idx 381
@@ -73,7 +73,7 @@ python generate/conditional_generation.py --model-type oa_ar_640M --cond-task sc
     --scaffold-max 100
 ```
 
-### PDB CODE: 7P19 -> (6VWI BAKER, incorrect pdb citation?)
+### PDB CODE: 7P19 -> (6VWI Baker reference, incorrect pdb citation?)
 Domain: 24-42 (QAKTFLDKFNHEAEDLFYQ), 64-82 (NAGDKWSAFLKEQSTLAQM) 
 WARNING: 7P19 has a residue BLYS that ruins analysis - pre-clean downloaded PDB (delete BLYS residue) before running
 ```
