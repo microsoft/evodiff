@@ -3,7 +3,7 @@ Benchmark conditional generation runs from Table S9 https://www.nature.com/artic
 
 Start/end indexes are adjusted for the protein sequence extracted from PDB files
 
-Corresponding sequence domains are listed for reference
+Corresponding motif domains held frozen for each scaffolding task are listed for reference
 
 All motifs were generated in a 50-100 residue scaffold
 
