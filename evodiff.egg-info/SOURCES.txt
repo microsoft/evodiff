@@ -1,0 +1,17 @@
+LICENSE
+README.md
+pyproject.toml
+setup.py
+evodiff/__init__.py
+evodiff/collaters.py
+evodiff/constants.py
+evodiff/data.py
+evodiff/losses.py
+evodiff/metrics.py
+evodiff/model.py
+evodiff/pretrained.py
+evodiff/utils.py
+evodiff.egg-info/PKG-INFO
+evodiff.egg-info/SOURCES.txt
+evodiff.egg-info/dependency_links.txt
+evodiff.egg-info/top_level.txt

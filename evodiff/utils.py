@@ -371,9 +371,8 @@ def get_pairwise(msa, alphabet):
     return all_pairs
 
 def download_model(model_name):
-    #url = f"https://.. {model_name} .. " # TODO add links when uploaded to Zenodo
-    #state_dict = torch.hub.load_state_dict_from_url(url, progress=True, map_location="cpu")
-    state_dict = "zenodo/checkpoints/"+model_name+".tar"
+    url = f"https://zenodo.org/record/8045076/files/" + model_name + ".tar?download=1"
+    state_dict = torch.hub.load_state_dict_from_url(url, progress=True, map_location=torch.device('cpu'))
     return state_dict
 
 def download_generated_sequences(model_name):
