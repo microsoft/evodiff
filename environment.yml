@@ -2,15 +2,15 @@ name: evodiff
 channels:
   - defaults
   - nvidia
-  - pytorch
+  # - pytorch
 dependencies:
   - python=3.8.5
   - pandas
   - numpy
   - python-lmdb
-  - pytorch::pytorch
-  - nvidia::cudatoolkit=11.3
-  - torchvision
+  # - pytorch::pytorch
+  # - nvidia::cudatoolkit=11.3
+  # - torchvision
   - pip
   - pip:
       - git+https://github.com/microsoft/protein-sequence-models.git
@@ -21,8 +21,8 @@ dependencies:
       - matplotlib
       - fair-esm
       - biotite
-      - torch_geometric
-      - torch_scatter # need to install w/ conda
+      # - torch_geometric
+      # - torch_scatter # need to install w/ conda
       - tqdm
       # - git+https://github.com/HeliXonProtein/OmegaFold.git
       - mdanalysis
