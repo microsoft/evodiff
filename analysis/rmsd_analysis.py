@@ -129,9 +129,9 @@ def calc_rmsd(num_structures, reference_PDB, fpath='conda/gen/6exz', ref_motif_s
             ref_selection += str(ref_motif_starts[j]+1) + ':' + str(ref_motif_ends[j]+1) + ' ' # +1 (PDB indexed at 1)
             u_selection += str(new_motif_starts[j]) + ':' + str(new_motif_ends[j]) + ' '
 
-        # print("SEQUENCE", i)
-        # print("ref", ref.select_atoms(ref_selection).resnames)
-        # print("gen", u.select_atoms(u_selection).resnames)
+        print("SEQUENCE", i)
+        print("ref", ref.select_atoms(ref_selection).resnames)
+        print("gen", u.select_atoms(u_selection).resnames)
         # print("ASSERT")
         # print(len(ref.select_atoms(ref_selection).resnames))
         # print(len(u.select_atoms(u_selection).resnames))
