@@ -17,7 +17,7 @@ conda activate evodiff
 pip install -e .
 ```
 
-Note that if you are not working on a GPU platform, you should not install Cudatoolkit.
+You will also need to install PyTorch. We tested our models on ` v2.0.1 `.
 
 We obtain sequences from the [Uniref50 dataset](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4375400/), which contains approximately 45 million protein sequences. The Multiple Sequence Alignments (MSAs) are from the [OpenFold dataset](https://www.biorxiv.org/content/10.1101/2022.11.20.517210v2), containing MSAs for 132,000 unique Protein Data Bank (PDB) chains.
 
