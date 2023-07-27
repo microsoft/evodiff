@@ -3,10 +3,19 @@
 In this work, we train and evaluate a series of discrete diffusion models for both unconditional and conditional generation of single protein sequences as well as multiple sequence alignments (MSAs). We test both order-agnostic autoregressive diffusion and discrete denoising diffusion probabilistic models for protein sequence generation; formulate unique, bio-inspired corruption schemes for both classes of models; and evaluate the quality of generated samples for fidelity, diversity, and structural plausibility.
 
 ### Installation
+To download our code, 
+```
+pip install evodiff
+pip install git+https://github.com/microsoft/protein-sequence-models.git # bleeding edge, current repo main branch
+```
+
+To setup a working environment, run:
 ```
 cd evodiff
 conda env create -f environment.yml
 conda activate evodiff
+conda install pytorch::pytorch torchvision torchaudio -c pytorch
+conda install pytorch-scatter -c pyg
 pip install -e .
 ```
 We obtain sequences from the [Uniref50 dataset](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4375400/), which contains approximately 45 million protein sequences. The Multiple Sequence Alignments (MSAs) are from the [OpenFold dataset](https://www.biorxiv.org/content/10.1101/2022.11.20.517210v2), containing MSAs for 132,000 unique Protein Data Bank (PDB) chains.
