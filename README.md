@@ -9,15 +9,16 @@ pip install evodiff
 pip install git+https://github.com/microsoft/protein-sequence-models.git # bleeding edge, current repo main branch
 ```
 
-To setup a working environment, run:
+To set up a working environment, run:
 ```
 cd evodiff
 conda env create -f environment.yml
 conda activate evodiff
-conda install pytorch::pytorch torchvision torchaudio -c pytorch
-conda install pytorch-scatter -c pyg
 pip install -e .
 ```
+
+Note that if you are not working on a GPU platform, you should not install Cudatoolkit.
+
 We obtain sequences from the [Uniref50 dataset](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4375400/), which contains approximately 45 million protein sequences. The Multiple Sequence Alignments (MSAs) are from the [OpenFold dataset](https://www.biorxiv.org/content/10.1101/2022.11.20.517210v2), containing MSAs for 132,000 unique Protein Data Bank (PDB) chains.
 
 ### Loading pretrained models
@@ -80,6 +81,8 @@ We also compute the self-consistency perplexity to evaluate the foldability of g
 * [ProteinMPNN](https://github.com/dauparas/ProteinMPNN)
 * [ESM-IF1](https://github.com/facebookresearch/esm/tree/main/esm/inverse_folding); see this [Jupyter notebook](https://colab.research.google.com/github/facebookresearch/esm/blob/main/examples/inverse_folding/notebook.ipynb) for setup details.
 * [PGP](https://github.com/hefeda/PGP)
+
+Please follow the setup instructions outlined by the authors of those tools.
 
 Our analysis scripts for iterating over these tools are in the [evodiff/analysis/downstream_scripts](https://github.com/microsoft/evodiff/tree/main/analysis/downstream_bash_scripts) folder. Once we run the scripts in this folder, we analyze the results in [self_consistency_analysis.py](https://github.com/microsoft/evodiff/blob/main/analysis/self_consistency_analysis.py).
 
