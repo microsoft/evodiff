@@ -106,59 +106,6 @@ class OAMaskCollater(object):
         tokenized = _pad(tokenized, self.tokenizer.pad_id)
         return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), masks)
 
-class LRMaskCollater(object):
-    """
-    Mask Collater for masking batch data in a L->R Autoregressive fashion (used only for downstream)
-    inputs:
-        sequences : list of sequences
-        inputs_padded: if inputs are padded (due to truncation in Simple_Collater) set True (default False)
-
-    OA-ARM variables:
-        D : possible permutations from 0.. max length
-        t : randomly selected timestep
-
-    outputs:
-        src : source  masked sequences (model input)
-        timesteps: (D-t+1) term
-        tokenized: tokenized sequences (target seq)
-        masks: masks used to generate src
-    """
-    def __init__(self, tokenizer=Tokenizer()):
-        self.tokenizer = tokenizer
-
-    def __call__(self, sequences):
-        tokenized = [torch.tensor(self.tokenizer.tokenize(s)) for s in sequences]
-        max_len = max(len(t) for t in tokenized)
-        src=[]
-        timesteps = []
-        masks=[]
-        mask_id = torch.tensor(self.tokenizer.mask_id, dtype=torch.int64)
-        for i,x in enumerate(tokenized):
-            # Randomly generate timestep and indices to mask
-            D = len(x) # D should have the same dimensions as each sequence length
-            if D <= 1:  # for sequence length = 1 in dataset
-                t = 1
-            else:
-                t = np.random.randint(1, D) # randomly sample timestep
-            num_mask = (D-t+1)
-            # Append timestep
-            timesteps.append(num_mask)
-            # Generate mask
-            mask_arr = np.arange(t,D) # Generates array of len num_mask # TODO if this is the only diff line merge with collater above)
-            index_arr = np.arange(0, max_len) #index array [1...seq_len]
-            mask = np.isin(index_arr, mask_arr, invert=False).reshape(index_arr.shape) # mask bools indices specified by mask_arr
-            # Mask inputs
-            mask = torch.tensor(mask, dtype=torch.bool)
-            masks.append(mask)
-            x_t = ~mask[0:D] * x + mask[0:D] * mask_id
-            src.append(x_t)
-        # PAD out
-        src = _pad(src, self.tokenizer.pad_id)
-        masks = _pad(masks*1,0) #, self.seq_length, 0)
-        tokenized = _pad(tokenized, self.tokenizer.pad_id)
-        return (src.to(torch.long), torch.tensor(timesteps), tokenized.to(torch.long), masks)
-
-
 class D3PMCollater(object):
     """
     D3PM Collater for generating batch data according to markov process according to Austin et al.
