@@ -24,6 +24,6 @@ dependencies:
       #- torch_geometric
       #- torch_scatter # need to install w/ conda
       - tqdm
-      - git+https://github.com/HeliXonProtein/OmegaFold.git
+      # - git+https://github.com/HeliXonProtein/OmegaFold.git
       - mdanalysis
       - pdb-tools
