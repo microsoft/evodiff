@@ -1,7 +1,3 @@
-import os
-cwd = os.getcwd()
-print("WORKINg dir", cwd)
-
 from evodiff.pretrained import OA_AR_640M, OA_AR_38M, CARP_640M, LR_AR_38M, LR_AR_640M
 import numpy as np
 import argparse
@@ -72,7 +68,8 @@ def main():
     elif args.model_type == 'lr_ar_640M':
         checkpoint = LR_AR_640M()
     else:
-        print("Please select valid model, if you want to generate a random baseline add --random-baseline flag to any model")
+        print("Please select valid model, if you want to generate a random baseline add --random-baseline flag to any"
+              " model")
 
     model, collater, tokenizer, scheme = checkpoint
     model.eval().cuda()
@@ -106,19 +103,18 @@ def main():
         start_idxs = []
         end_idxs = []
         scaffold_lengths = []
-        spacers = []
         for i in range(args.num_seqs):
             scaffold_length = random.randint(args.scaffold_min, args.scaffold_max)
             if args.model_type == 'oa_ar_38M' or args.model_type == 'oa_ar_640M' or args.model_type == 'carp_38M'\
                     or args.model_type == 'carp_640M':
-                string, new_start_idx, new_end_idx, spacer = generate_scaffold(model, args.pdb, args.start_idxs,
+                string, new_start_idx, new_end_idx = generate_scaffold(model, args.pdb, args.start_idxs,
                                                                                args.end_idxs, scaffold_length,
                                                                                data_top_dir, tokenizer, device=device,
                                                                                random_baseline=args.random_baseline,
                                                                                single_res_domain=args.single_res_domain,
                                                                                chain=args.chain)
             elif args.model_type == 'lr_ar_38M' or args.model_type == 'lr_ar_640M':
-                string, new_start_idx, new_end_idx, spacer = generate_autoreg_scaffold(model, args.pdb, args.start_idxs,
+                string, new_start_idx, new_end_idx = generate_autoreg_scaffold(model, args.pdb, args.start_idxs,
                                                                                args.end_idxs, scaffold_length,
                                                                                data_top_dir, tokenizer, device=device,
                                                                                single_res_domain=args.single_res_domain,
@@ -126,17 +122,16 @@ def main():
             strings.append(string)
             start_idxs.append(new_start_idx)
             end_idxs.append(new_end_idx)
-            spacers.append(spacer)
             scaffold_lengths.append(scaffold_length)
 
 
-    save_df = pd.DataFrame(list(zip(strings, start_idxs, end_idxs, spacers, scaffold_lengths)), columns=['seqs', 'start_idxs', 'end_idxs', 'spacers', 'scaffold_lengths'])
+    save_df = pd.DataFrame(list(zip(strings, start_idxs, end_idxs, scaffold_lengths)), columns=['seqs', 'start_idxs', 'end_idxs', 'scaffold_lengths'])
     save_df.to_csv(out_fpath+'motif_df.csv', index=True)
 
-    with open(out_fpath + 'generated_samples_string.csv', 'a') as f:
+    with open(out_fpath + 'generated_samples_string.csv', 'w') as f:
         for _s in strings:
             f.write(_s[0]+"\n")
-    with open(out_fpath + 'generated_samples_string.fasta', 'a') as f:
+    with open(out_fpath + 'generated_samples_string.fasta', 'w') as f:
         for i, _s in enumerate(strings):
             f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
 
@@ -198,7 +193,7 @@ def get_motif(PDB_ID, start_idxs, end_idxs, data_top_dir='../data', chain='A'):
         motif = sequence[start_idxs[0]: end_idxs[0]]
         spacers=[0]
     print("motif extracted from indexes supplied:", motif)
-    return motif, spacers
+    return motif
 
 
 def get_intervals(list, single_res_domain=False):
@@ -226,7 +221,7 @@ def generate_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_
         train_prob_dist = aa_reconstruction_parity_plot(data_top_dir+'../', 'reference/', 'placeholder.csv', gen_file=False)
     mask = tokenizer.mask_id
 
-    motif_seq, spacers = get_motif(PDB_ID, motif_start_idxs, motif_end_idxs, data_top_dir=data_top_dir, chain=chain)
+    motif_seq = get_motif(PDB_ID, motif_start_idxs, motif_end_idxs, data_top_dir=data_top_dir, chain=chain)
     motif_tokenized = tokenizer.tokenize((motif_seq,))
 
     # Create input motif + scaffold
@@ -256,7 +251,7 @@ def generate_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_
     print("new sequence", [tokenizer.untokenize(s) for s in sample])
     untokenized = [tokenizer.untokenize(s) for s in sample]
 
-    return untokenized, new_start_idxs, new_end_idxs, spacers
+    return untokenized, new_start_idxs, new_end_idxs
 
 def generate_autoreg_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_length, data_top_dir, tokenizer,
                       batch_size=1, device='gpu', single_res_domain=False, chain='A'):
@@ -264,7 +259,7 @@ def generate_autoreg_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, s
     start = tokenizer.start_id
     stop = tokenizer.stop_id
 
-    motif_seq, spacers = get_motif(PDB_ID, motif_start_idxs, motif_end_idxs, data_top_dir=data_top_dir, chain=chain)
+    motif_seq = get_motif(PDB_ID, motif_start_idxs, motif_end_idxs, data_top_dir=data_top_dir, chain=chain)
     motif_tokenized = tokenizer.tokenize((motif_seq,))
 
     # Create input motif + scaffold (as reference for gen task)
@@ -318,7 +313,7 @@ def generate_autoreg_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, s
     print("new sequence", [tokenizer.untokenize(s) for s in sample[:,1:-1]]) # dont need start/stop tokens
     untokenized = [tokenizer.untokenize(s) for s in sample[:,1:-1]]
 
-    return untokenized, new_start_idxs, new_end_idxs, spacers
+    return untokenized, new_start_idxs, new_end_idxs
 
 
 def generate_idr(model, data_top_dir, tokenizer=Tokenizer(), penalty=None, causal=False, batch_size=20, device='cuda'):

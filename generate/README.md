@@ -10,8 +10,7 @@ All motifs were generated in a 50-100 residue scaffold
 ### PDB CODE: 1PRW
 Domains: 16-35 (FSLFDKDGDGTITTKELGTV), 52-71 (INEVDADGNGTIDFPEFLTM)
 ```
-python generate/conditional_generation.py --model-type oa_ar_640M --cond-task scaffold --pdb 1prw --start-idxs 15 
-    --end-idxs 34 --start-idxs 51 --end-idxs 70 --num-seqs 100 --scaffold-min 50 --scaffold-max 100
+python generate/conditional_generation.py --model-type oa_ar_640M --cond-task scaffold --pdb 1prw --start-idxs 15 --end-idxs 34 --start-idxs 51 --end-idxs 70 --num-seqs 100 --scaffold-min 50 --scaffold-max 100
 ```
 ### PDB CODE: 1BCF 
 
@@ -59,7 +58,7 @@ python generate/conditional_generation.py --cond-task scaffold --pdb 5wn9 --star
 analysis needs diff indices b/c postprocessed-pdb file retains chain indexing  
 ```
 python analysis/rmsd_analysis.py --pdb 5wn9 --start-idxs 237 --end-idxs 257 --num-seqs 1 --scaffold-min 50 
-    --scaffold-max 100 --chain A 
+    --scaffold-max 100
 ```
 ### PDB CODE: 5IUS 
 Domains: 63-82 (FHVVWHRESPSGQTDTLAAF), 119-140 (GTYVCGVISLAPKIQIKESLRA)
@@ -95,8 +94,7 @@ python generate/conditional_generation.py --cond-task scaffold --pdb 1qjg --star
 ### PBD CODE: 1YCR
 Domains: 19-27 (Chain B: FSDLWKLLP)
 ```
-python generate/conditional_generation.py --cond-task scaffold --pdb 1ycr --start-idx 2 --end-idx 10 --scaffold-min 50 
-    --scaffold-max 100 --num-seqs 100 --chain B
+python generate/conditional_generation.py --cond-task scaffold --pdb 1ycr --start-idx 2 --end-idx 10 --scaffold-min 50 --scaffold-max 100 --num-seqs 100 --chain B
 ```
 analysis needs diff indices b/c postprocessed-pdb file retains chain indexing  
 ```
