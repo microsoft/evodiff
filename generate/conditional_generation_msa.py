@@ -57,14 +57,17 @@ def main():
     if args.model_type == 'msa_oa_ar_randsub':
         checkpoint = MSA_OA_AR_RANDSUB()
         selection_type = 'random'
+        mask_id = checkpoint[2].mask_id
     elif args.model_type == 'msa_oa_ar_maxsub':
         checkpoint = MSA_OA_AR_MAXSUB()
         selection_type = 'MaxHamming'
+        mask_id = checkpoint[2].mask_id
     elif args.model_type == 'esm_msa_1b':
         checkpoint = ESM_MSA_1b()
         selection_type = 'MaxHamming'
+        mask_id = checkpoint[2].mask_idx
     else:
-        print("Please select either msa_or_ar_randsub, msa_oa_oar_maxsub, or esm_msa_1b baseline. You selected:", args.model_type)
+        raise Exception("Please select either msa_or_ar_randsub, msa_oa_oar_maxsub, or esm_msa_1b baseline. You selected:", args.model_type)
 
     model, collater, tokenizer, scheme = checkpoint
     model.eval().cuda()
@@ -99,14 +102,15 @@ def main():
         end_idxs = []
         scaffold_lengths = []
         for i in range(args.num_seqs): # no batching
-            string, new_start_idx, new_end_idx, seq_len = generate_scaffold_msa(model, args.pdb, args.start_idxs,
-                                                                       args.end_idxs,
+            string, new_start_idx, new_end_idx, seq_len = generate_scaffold_msa(args.model_type, model, args.pdb,
+                                                                                args.start_idxs, args.end_idxs,
                                                                        data_top_dir, tokenizer, device=device,
                                                                        random_baseline=args.random_baseline,
                                                                        query_only=args.query_only,
                                                                        max_seq_len=args.max_seq_len,
                                                                        n_sequences=args.n_sequences,
-                                                                       selection_type=selection_type)
+                                                                       selection_type=selection_type,
+                                                                       mask=mask_id)
             #print("STRING", string)
             strings.append(string)
             start_idxs.append(new_start_idx)
@@ -258,7 +262,7 @@ def subsample_MSA(tokenized_msa, start_idxs, end_idxs, tokenizer, query_idx=0, m
     print("og", original_motif)
     print("out", output_motif)
     assert original_motif == output_motif, "RE-SLICED MOTIFS DON'T MATCH, CHECK INDEXING"
-    #output = [tokenizer.untokenize(seq) for seq in output]
+    output = [tokenizer.untokenize(seq) for seq in output]
     # print(len(output), len(output[0]))
     return output, sliced_start_idxs, sliced_end_idxs, original_motif
 
@@ -280,25 +284,51 @@ def mask_sequence(seq, mask_locations, mask_id):
             masked_seq.append(seq[i])
     return masked_seq
 
-def generate_scaffold_msa(model, PDB_ID, motif_start_idxs, motif_end_idxs, data_top_dir, tokenizer, query_only=True,
-                      device='gpu', random_baseline=False,  max_seq_len=512, n_sequences=64, selection_type='random'):
+def tokenize_msa(model_type, untokenized, tokenizer):
+    if model_type == 'msa_oa_ar_maxsub' or model_type == 'msa_oa_ar_randsub':
+        return [tokenizer.tokenizeMSA(seq) for seq in untokenized]
+    elif model_type == 'esm_msa_1b':
+        src = []
+        for i, seq in enumerate(untokenized):
+            new_seq = [tokenizer.cls_idx] + [tokenizer.get_idx(c) for c in [*seq]] + [tokenizer.eos_idx]
+            src.append(new_seq)
+        return src
+
+def untokenize_msa(model_type, tokenized, tokenizer):
+    if model_type == 'msa_oa_ar_maxsub' or model_type == 'msa_oa_ar_randsub':
+        return tokenizer.untokenize(tokenized)
+    elif model_type == 'esm_msa_1b':
+        return ''.join([tokenizer.get_tok(s) for s in tokenized[1:-1]])
+
+
+def generate_scaffold_msa(model_type, model, PDB_ID, motif_start_idxs, motif_end_idxs, data_top_dir, tokenizer, query_only=True,
+                      device='gpu', random_baseline=False,  max_seq_len=512, n_sequences=64, selection_type='random',
+                      mask=0):
     motif_end_idxs = [i + 1 for i in motif_end_idxs]  # inclusive of final residue
     if random_baseline:
         train_prob_dist = aa_reconstruction_parity_plot(data_top_dir+'../', 'reference/', 'placeholder.csv', gen_file=False)
-    mask = tokenizer.mask_id
 
-    tokenized_msa = get_MSA(data_top_dir + '/scaffolding-msas/' + PDB_ID+'.a3m', tokenizer)
+    tokenized_msa = get_MSA(data_top_dir + '/scaffolding-msas/' + PDB_ID+'.a3m', tokenizer=Tokenizer())
     sliced_msa, sliced_start_idxs, sliced_end_idxs, original_motif = subsample_MSA(tokenized_msa, motif_start_idxs, motif_end_idxs,
-                                                                 tokenizer, query_idx=0, max_seq_len=max_seq_len,
+                                                                 Tokenizer(), query_idx=0, max_seq_len=max_seq_len,
                                                                  n_sequences=n_sequences, selection_type=selection_type)
+    # Now tokenize using tokenizer of choice
+    sliced_msa = tokenize_msa(model_type, sliced_msa, tokenizer)
+    query_sequence = sliced_msa[0]  # ensure query is first seq -> not true for IDRs
 
-    query_sequence = sliced_msa[0] # ensure query is first seq -> not true for IDRs
-    seq_len = len(query_sequence)
+    if model_type == 'esm_msa_1b':
+        seq_len = len(query_sequence)-2
+        mask_locations = get_masked_locations(query_sequence[1:-1], sliced_start_idxs, sliced_end_idxs)
+        mask_locations = [i + 1 for i in mask_locations]
+        max_token = len(tokenizer)
+    else:
+        seq_len = len(query_sequence)
+        mask_locations = get_masked_locations(query_sequence, sliced_start_idxs, sliced_end_idxs)
+        max_token = tokenizer.K - 1
 
-    mask_locations = get_masked_locations(query_sequence, sliced_start_idxs, sliced_end_idxs)
     masked_loc_y = mask_locations
     # Mask out non-motif residues in query sequence of msa
-    sliced_msa[0] = mask_sequence(sliced_msa[0], mask_locations, mask)
+    sliced_msa[0] = mask_sequence(query_sequence, mask_locations, mask)
     masked_loc_x = [0]
     query_ind = np.transpose([np.tile(masked_loc_x, len(masked_loc_y)), np.repeat(masked_loc_y, len(masked_loc_x))])
     np.random.shuffle(query_ind)
@@ -309,7 +339,6 @@ def generate_scaffold_msa(model, PDB_ID, motif_start_idxs, motif_end_idxs, data_
         all_ind = np.transpose([np.tile(masked_loc_x, len(masked_loc_y)), np.repeat(masked_loc_y, len(masked_loc_x))])
         np.random.shuffle(all_ind)
 
-    print("INPUT QUERY", tokenizer.untokenize(sliced_msa[0]))
     sample = torch.tensor(sliced_msa).unsqueeze(0)
     sample = sample.to(device)
     with torch.no_grad():
@@ -317,26 +346,36 @@ def generate_scaffold_msa(model, PDB_ID, motif_start_idxs, motif_end_idxs, data_
             # First gen MSA
             for i in tqdm(all_ind):
                 random_x, random_y = i
-                preds = model(sample)  # Output shape of preds is (BS=1, N=64, L, n_tokens=31)
-                p = preds[:, random_x, random_y, :tokenizer.K]  # for first row don't let p_softmax predict gaps
+                if model_type == 'esm_msa_1b':
+                    results = model(sample, repr_layers=[33], return_contacts=True)
+                    preds = results["logits"]
+                else:
+                    preds = model(sample)  # Output shape of preds is (BS=1, N=64, L, n_tokens=31)
+                p = preds[:, random_x, random_y, :]  # for first row don't let p_softmax predict gaps
                 p_softmax = torch.nn.functional.softmax(p, dim=1)
                 p_sample = torch.multinomial(input=p_softmax, num_samples=1)
                 p_sample = p_sample.squeeze()
                 sample[:, random_x, random_y] = p_sample
-                print(tokenizer.untokenize(sample[0][0]))
-                print(tokenizer.untokenize(sample[0][1]))
-                print(tokenizer.untokenize(sample[0][2]))
-        # Then gen seq
+                #print(untokenize_msa(model_type, sample[0][0], tokenizer))
+        # Then gen query seq
         for i in tqdm(query_ind):
             random_x, random_y = i
-            preds = model(sample)  # Output shape of preds is (BS=1, N=64, L, n_tokens=31)
-            p = preds[:, random_x, random_y, :tokenizer.K-1] # for first row don't let p_softmax predict gaps
+            #print(random_x, random_y, len(sample[0][0]))
+            if model_type == 'esm_msa_1b':
+                results = model(sample, repr_layers=[33], return_contacts=True)
+                preds = results["logits"]
+            else:
+                preds = model(sample)  # Output shape of preds is (BS=1, N=64, L, n_tokens=31)
+            p = preds[:, random_x, random_y, :max_token] # for first row don't let p_softmax predict gaps
             p_softmax = torch.nn.functional.softmax(p, dim=1)
             p_sample = torch.multinomial(input=p_softmax, num_samples=1)
             p_sample = p_sample.squeeze()
             sample[:, random_x, random_y] = p_sample
+            #print(untokenize_msa(model_type, sample[0][0], tokenizer))
 
-    untokenized = [tokenizer.untokenize(sample[0][0])] # only return query sequence
+    untokenized = [untokenize_msa(model_type, sample[0][0], tokenizer)] # only return query sequence
+    print(untokenized)
+
     return untokenized, sliced_start_idxs, [i - 1 for i in sliced_end_idxs], seq_len  # return output and untokenized output, re-indexed motif starts and ends (ends-1 for rmsd analyis)
 
 
