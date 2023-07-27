@@ -57,7 +57,7 @@ def main():
     parser.add_argument('--mask', default='blosum')
     parser.add_argument('--checkpoint_freq', type=float, default=120)  # in minutes
     parser.add_argument('--weight-save-freq', type=float, default=None)  # in minutes
-    parser.add_argument('--log_freq', type=float, default=1000)  # in steps
+    parser.add_argument('--log-freq', type=float, default=1000)  # in steps
     parser.add_argument('--reweighting_term', type=float, default=0.001) # lambda from D3PM
     parser.add_argument('--selection-type', type=str, default='MaxHamming') # MaxHamming or random
 
