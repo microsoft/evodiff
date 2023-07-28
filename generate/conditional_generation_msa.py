@@ -38,7 +38,7 @@ def main():
     parser.add_argument('--end-idxs', type=int, action='append')
     parser.add_argument('--num-seqs', type=int, default=10,
                         help="Number of sequences generated per scaffold length")
-    parser.add_argument('--max-seq-len', type=int, default=512,
+    parser.add_argument('--max-seq-len', type=int, default=150,
                         help="Max seq len to splice from MSA")
     parser.add_argument('--n-sequences', type=int, default=64,
                         help="Number of seqs to subsample from MSA")
@@ -58,14 +58,17 @@ def main():
         checkpoint = MSA_OA_AR_RANDSUB()
         selection_type = 'random'
         mask_id = checkpoint[2].mask_id
+        pad_id = checkpoint[2].pad_id
     elif args.model_type == 'msa_oa_ar_maxsub':
         checkpoint = MSA_OA_AR_MAXSUB()
         selection_type = 'MaxHamming'
         mask_id = checkpoint[2].mask_id
+        pad_id = checkpoint[2].pad_id
     elif args.model_type == 'esm_msa_1b':
         checkpoint = ESM_MSA_1b()
         selection_type = 'MaxHamming'
         mask_id = checkpoint[2].mask_idx
+        pad_id = checkpoint[2].padding_idx
     else:
         raise Exception("Please select either msa_or_ar_randsub, msa_oa_oar_maxsub, or esm_msa_1b baseline. You selected:", args.model_type)
 
@@ -92,6 +95,10 @@ def main():
 
     data_top_dir = top_dir + 'data/'
 
+    # After cond gen, run omegafold  # TODO for debug only
+    print("Finished generation, starting omegafold")
+    run_omegafold(out_fpath, fasta_file="generated_samples_string.fasta")
+
     if args.cond_task == 'idr':
         #TODO Finish IDR
         sample, string, queries, sequences = generate_idr_msa(model, data_top_dir, tokenizer=tokenizer,
@@ -110,7 +117,7 @@ def main():
                                                                        max_seq_len=args.max_seq_len,
                                                                        n_sequences=args.n_sequences,
                                                                        selection_type=selection_type,
-                                                                       mask=mask_id)
+                                                                       mask=mask_id, pad=pad_id)
             #print("STRING", string)
             strings.append(string)
             start_idxs.append(new_start_idx)
@@ -211,7 +218,6 @@ def subsample_MSA(tokenized_msa, start_idxs, end_idxs, tokenizer, query_idx=0, m
 
     # Slice to model constraints
     sliced_msa_seq = tokenized_msa[:, slice_start: slice_end]
-
     # Remove query from array
     sliced_msa_seq = np.append(sliced_msa_seq[:query_idx], sliced_msa_seq[query_idx+1:], axis=0)
     # Query Sequence
@@ -223,7 +229,7 @@ def subsample_MSA(tokenized_msa, start_idxs, end_idxs, tokenizer, query_idx=0, m
         #msa_n_sequences = n_sequences
         if selection_type == 'random':
             print("Using random subsampling")
-            random_idx = np.random.choice(msa_num_seqs, size=n_sequences-1, replace=False)
+            random_idx = np.random.choice(msa_num_seqs-1, size=n_sequences-1, replace=False)
             anchor_seq = np.expand_dims(anchor_seq, axis=0)
             output = np.concatenate((anchor_seq, np.array(sliced_msa)[random_idx.astype(int)]), axis=0)
         elif selection_type == "MaxHamming":
@@ -253,7 +259,7 @@ def subsample_MSA(tokenized_msa, start_idxs, end_idxs, tokenizer, query_idx=0, m
                 distance_matrix = np.delete(distance_matrix, random_ind, axis=1)
     else:
         #msa_n_sequences = msa_num_seqs
-        output = np.full(shape=(n_sequences, max_seq_len), fill_value=tokenizer.pad_id)
+        output = np.full(shape=(n_sequences, max_seq_len), fill_value=tokenizer.gap_id) # Treat short seqs as being algined with large gaps
         output[0:1, :len(anchor_seq)] = anchor_seq
         output[1:msa_num_seqs, :len(anchor_seq)] = sliced_msa
         #output = np.concatenate((np.array(anchor_seq).reshape(1,-1), np.array(sliced_msa)), axis=0)
@@ -266,13 +272,15 @@ def subsample_MSA(tokenized_msa, start_idxs, end_idxs, tokenizer, query_idx=0, m
     # print(len(output), len(output[0]))
     return output, sliced_start_idxs, sliced_end_idxs, original_motif
 
-def get_masked_locations(query_sequence, sliced_start_idxs, sliced_end_idxs):
+def get_masked_locations(query_sequence, sliced_start_idxs, sliced_end_idxs, pad_id):
     "Return list of masked indices given a list of starting and ending indeces for motifs"
+    #input_mask = (query_sequence != pad_id)
     seq_len = len(query_sequence)
     all_index = np.arange(seq_len)
     list_motif = [list(range(sliced_start_idxs[i], sliced_end_idxs[i])) for i in range(len(sliced_start_idxs))]
     list_motif = [item for sublist in list_motif for item in sublist]
     list_masked = [x for x in all_index if x not in list_motif]
+    print(list_masked)
     return list_masked
 
 def mask_sequence(seq, mask_locations, mask_id):
@@ -303,7 +311,7 @@ def untokenize_msa(model_type, tokenized, tokenizer):
 
 def generate_scaffold_msa(model_type, model, PDB_ID, motif_start_idxs, motif_end_idxs, data_top_dir, tokenizer, query_only=True,
                       device='gpu', random_baseline=False,  max_seq_len=512, n_sequences=64, selection_type='random',
-                      mask=0):
+                      mask=0, pad=1):
     motif_end_idxs = [i + 1 for i in motif_end_idxs]  # inclusive of final residue
     if random_baseline:
         train_prob_dist = aa_reconstruction_parity_plot(data_top_dir+'../', 'reference/', 'placeholder.csv', gen_file=False)
@@ -312,18 +320,21 @@ def generate_scaffold_msa(model_type, model, PDB_ID, motif_start_idxs, motif_end
     sliced_msa, sliced_start_idxs, sliced_end_idxs, original_motif = subsample_MSA(tokenized_msa, motif_start_idxs, motif_end_idxs,
                                                                  Tokenizer(), query_idx=0, max_seq_len=max_seq_len,
                                                                  n_sequences=n_sequences, selection_type=selection_type)
+
+    print("INPUT MSA", sliced_msa[0])
+
     # Now tokenize using tokenizer of choice
     sliced_msa = tokenize_msa(model_type, sliced_msa, tokenizer)
     query_sequence = sliced_msa[0]  # ensure query is first seq -> not true for IDRs
 
     if model_type == 'esm_msa_1b':
         seq_len = len(query_sequence)-2
-        mask_locations = get_masked_locations(query_sequence[1:-1], sliced_start_idxs, sliced_end_idxs)
+        mask_locations = get_masked_locations(query_sequence[1:-1], sliced_start_idxs, sliced_end_idxs, pad_id=pad)
         mask_locations = [i + 1 for i in mask_locations]
         max_token = len(tokenizer)
     else:
         seq_len = len(query_sequence)
-        mask_locations = get_masked_locations(query_sequence, sliced_start_idxs, sliced_end_idxs)
+        mask_locations = get_masked_locations(query_sequence, sliced_start_idxs, sliced_end_idxs, pad_id=pad)
         max_token = tokenizer.K - 1
 
     masked_loc_y = mask_locations
@@ -371,7 +382,7 @@ def generate_scaffold_msa(model_type, model, PDB_ID, motif_start_idxs, motif_end
             p_sample = torch.multinomial(input=p_softmax, num_samples=1)
             p_sample = p_sample.squeeze()
             sample[:, random_x, random_y] = p_sample
-            #print(untokenize_msa(model_type, sample[0][0], tokenizer))
+            print(untokenize_msa(model_type, sample[0][0], tokenizer))
 
     untokenized = [untokenize_msa(model_type, sample[0][0], tokenizer)] # only return query sequence
     print(untokenized)
@@ -668,7 +679,7 @@ def subsample_IDR_MSA(row, filename, data_dir, tokenizer, max_seq_len=512, n_seq
                 distance_matrix = np.delete(distance_matrix, random_ind, axis=1)
     else:
         msa_n_sequences = msa_num_seqs
-        output = np.full(shape=(n_sequences, max_seq_len), fill_value=tokenizer.pad_id)
+        output = np.full(shape=(n_sequences, max_seq_len), fill_value=tokenizer.pad_id) # TREAT SMALL SEQS as having gaps here
         output[0:1, :len(anchor_seq)] = anchor_seq
         output[1:msa_num_seqs, :len(anchor_seq)] = sliced_msa
         #output = np.concatenate((np.array(anchor_seq).reshape(1,-1), np.array(sliced_msa)), axis=0)
