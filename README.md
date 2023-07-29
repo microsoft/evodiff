@@ -81,6 +81,7 @@ We also compute the self-consistency perplexity to evaluate the foldability of g
 * [ProteinMPNN](https://github.com/dauparas/ProteinMPNN)
 * [ESM-IF1](https://github.com/facebookresearch/esm/tree/main/esm/inverse_folding); see this [Jupyter notebook](https://colab.research.google.com/github/facebookresearch/esm/blob/main/examples/inverse_folding/notebook.ipynb) for setup details.
 * [PGP](https://github.com/hefeda/PGP)
+* [DISOPRED3](https://github.com/psipred/disopred)
 
 Please follow the setup instructions outlined by the authors of those tools.
 
