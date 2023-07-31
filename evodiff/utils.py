@@ -9,6 +9,7 @@ import csv
 import pandas as pd
 import subprocess
 import os
+import urllib
 
 def loadMatrix(path):
     """
@@ -371,9 +372,12 @@ def get_pairwise(msa, alphabet):
     return all_pairs
 
 def download_model(model_name):
-    #url = f"https://.. {model_name} .. " # TODO add links when uploaded to Zenodo
-    #state_dict = torch.hub.load_state_dict_from_url(url, progress=True, map_location="cpu")
-    state_dict = "zenodo/checkpoints/"+model_name+".tar"
+    url = f"https://zenodo.org/record/8045076/files/" + model_name + ".tar?download=1"
+    try:
+        state_dict = torch.hub.load_state_dict_from_url(url, progress=True, map_location=torch.device('cpu'))
+    
+    except urllib.error.HTTPError as e:
+        raise Exception(f"Could not load {url}, check if you specified a correct model name?")
     return state_dict
 
 def download_generated_sequences(model_name):

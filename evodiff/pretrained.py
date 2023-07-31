@@ -40,8 +40,8 @@ def load_sequence_checkpoint(model_name, config_path, diffusion_timesteps, token
                           tie_weights=tie_weights, final_ln=final_norm, slim=slim, activation=activation,
                           timesteps=diffusion_timesteps)
     state_dict = download_model(model_name)
-    sd = torch.load(state_dict, map_location=torch.device('cpu'))
-    msd = sd['model_state_dict']
+    # sd = torch.load(state_dict, map_location=torch.device('cpu'))
+    msd = state_dict['model_state_dict']
     msd = {k.split('module.')[1]: v for k, v in msd.items()}
     model.load_state_dict(msd)
 
@@ -63,8 +63,8 @@ def load_msa_checkpoint(model_name, config_path, diffusion_timesteps, tokenizer=
         model = MSATransformerTime(d_embed, d_hidden, n_layers, n_heads, timesteps=diffusion_timesteps, use_ckpt=True,
                                n_tokens=len(MSA_ALPHABET), padding_idx=padding_idx, mask_idx=masking_idx)
     state_dict = download_model(model_name)
-    sd = torch.load(state_dict, map_location=torch.device('cpu'))
-    msd = sd['model_state_dict']
+    # sd = torch.load(state_dict, map_location=torch.device('cpu'))
+    msd = state_dict['model_state_dict']
     msd = {k.split('module.')[1]: v for k, v in msd.items()}
     model.load_state_dict(msd)
     return model, tokenizer
