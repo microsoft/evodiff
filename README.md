@@ -24,9 +24,9 @@ We obtain sequences from the [Uniref50 dataset](https://www.ncbi.nlm.nih.gov/pmc
 ### Loading pretrained models
 To load a model:
 ```
-from evodiff.pretrained import OA_AR_640M
+from evodiff.pretrained import OA_AR_38M
 
-model, collater, tokenizer, scheme = OA_AR_640M()
+model, collater, tokenizer, scheme = OA_AR_38M()
 ```
 Available models are:
 * ``` D3PM_BLOSUM_640M() ```
