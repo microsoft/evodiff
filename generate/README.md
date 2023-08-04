@@ -1,3 +1,13 @@
+# IDR generation 
+From sequence model 
+```
+python generate/conditional_generation.py --model_type oa_ar_640M --cond-task idr 
+```
+From MSA model 
+```
+TODO
+```
+
 # Scaffolding Task
 Benchmark conditional generation runs from Table S9 https://www.nature.com/articles/s41586-023-06415-8
 
@@ -106,8 +116,15 @@ python generate/conditional_generation.py --cond-task scaffold --pdb 2kl8 --star
 ### PDB CODE: 7MRX 
 Domain: 25-46 (ITKSEAQALGWVASKGNLCDVA)
 ```
-python generate/conditional_generation.py --cond-task scaffold --pdb 7mrx --start-idx 22 --end-idx 43 --scaffold-min 50 --scaffold-max 100 --num-seqs 100 
+python generate/conditional_generation.py --cond-task scaffold --pdb 7mrx --start-idx 25 --end-idx 46 --scaffold-min 50 --scaffold-max 100 --num-seqs 100 --chain B 
 ```
+For MSAs: 
+```
+python generate/conditional_generation.py --cond-task scaffold --pdb 7mrx --start-idx 22 --end-idx 43 --num-seqs 100 
+```
+analysis needs diff indices b/c postprocessed-pdb file retains chain indexing  
+```
+python analysis/rmsd_analysis.py --model-type msa_oa_ar_maxsub --pdb 7mrx --start-idx 133 --end-idx 154 --num-seqs 100
 
 ### PDB CODE: 5TRV
 Domain 45-69 (EEAEKMWRKLMKFVDRVEVRRVKVD)
@@ -124,5 +141,5 @@ python generate/conditional_generation.py --cond-task scaffold --pdb 6e6r --star
 ### PDB CODE: 6EXZ
 Domain 28-42 (LHLETKLNAEYTFML)
 ```
-python generate/conditional_generation.py --cond-task scaffold --pdb 6exz --start-idx 25 --end-idx 39 --scaffold-min 50 --scaffold-max 100 --num-seqs 100
+    python generate/conditional_generation.py --cond-task scaffold --pdb 6exz --start-idx 25 --end-idx 39 --scaffold-min 50 --scaffold-max 100 --num-seqs 100
 ```

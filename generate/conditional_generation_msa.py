@@ -5,13 +5,13 @@ import urllib.request
 import torch
 import os
 import esm.inverse_folding
-from evodiff.utils import Tokenizer, run_omegafold, clean_pdb, run_tmscore
+from evodiff.utils import Tokenizer, run_omegafold, clean_pdb, run_tmscore, wrap_dr_bert, read_dr_bert_output
 import pathlib
 from sequence_models.utils import parse_fasta
 from tqdm import tqdm
 import pandas as pd
 import random
-from evodiff.plot import aa_reconstruction_parity_plot
+from evodiff.plot import aa_reconstruction_parity_plot, idr_parity_plot
 from scipy.spatial.distance import hamming, cdist
 
 def main():
@@ -20,7 +20,7 @@ def main():
     np.random.seed(0)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model-type', type=str, default='D3PM_BLOSUM_38M',
+    parser.add_argument('--model-type', type=str, default='msa_oa_ar_maxsub',
                         help='Choice of: msa_oa_ar_randsub, msa_oa_ar_maxsub, esm_msa_1b')
     parser.add_argument('--gpus', type=int, default=0)
     parser.add_argument('--cond-task', type=str, default='scaffold',
@@ -48,8 +48,9 @@ def main():
     parser.add_argument('--single-res-domain', action='store_true', help="if start-idx = end-idx make sure to use single-res-domain flag or else you will get errors")
     args = parser.parse_args()
 
-    args.start_idxs.sort()
-    args.end_idxs.sort()
+    if args.cond_task == 'scaffold':
+        args.start_idxs.sort()
+        args.end_idxs.sort()
 
     if args.random_baseline:
         args.model_type = 'msa_oa_ar_randsub' # placeholder
@@ -87,22 +88,48 @@ def main():
         top_dir = home
 
         if not args.random_baseline:
-            out_fpath = home + args.model_type + '/' + args.pdb +'/'
+            out_fpath = home + args.model_type + '/'
         else:
-            out_fpath = home + 'random-baseline/' + args.pdb +'/'
-        if not os.path.exists(out_fpath):
-            os.makedirs(out_fpath)
+            out_fpath = home + 'random-baseline/'
+        if args.cond_task == 'scaffold':
+            out_fpath += args.pdb + '/'
+        elif args.cond_task == 'idr':
+            out_fpath += 'idr/'
+
+    if not os.path.exists(out_fpath):
+        os.makedirs(out_fpath)
 
     data_top_dir = top_dir + 'data/'
 
-    # After cond gen, run omegafold  # TODO for debug only
-    print("Finished generation, starting omegafold")
-    run_omegafold(out_fpath, fasta_file="generated_samples_string.fasta")
-
     if args.cond_task == 'idr':
-        #TODO Finish IDR
-        sample, string, queries, sequences = generate_idr_msa(model, data_top_dir, tokenizer=tokenizer,
-                                                          penalty=args.penalty, batch_size=1, device=device)
+        index_file = pd.read_csv(data_top_dir + 'human_idr_alignments/human_idr_boundaries_gap.tsv', delimiter='\t')
+        print("INDEX FILE LEN", len(index_file))
+        strings = []
+        og_strings = []
+        new_idrs = []
+        og_idrs = []
+        start_idxs = []
+        end_idxs = []
+        for i in range(args.num_seqs):
+            r_index = random.randint(0,len(index_file)-1)
+            string, og_string, new_idr, og_idr, start, end = generate_idr_msa(model, tokenizer, n_sequences=args.n_sequences,
+                                                                  seq_length=args.max_seq_len, device=device,
+                                                                  index=r_index, data_top_dir=data_top_dir,
+                                                                  selection_type=selection_type,
+                                                                  out_path=out_fpath, query_only=args.query_only)
+            strings.append(string)
+            og_strings.append(og_string)
+            new_idrs.append(new_idr)
+            og_idrs.append(og_idr)
+            start_idxs.append(start)
+            end_idxs.append(end)
+        with open(out_fpath + 'original_samples_string.fasta', 'w') as f:
+            for i, _s in enumerate(og_strings):
+                f.write(">SEQUENCE_" + str(i) + "\n" + str(_s) + "\n")
+        save_df = pd.DataFrame(list(zip(new_idrs, og_idrs, start_idxs, end_idxs)),
+                               columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
+        save_df.to_csv(out_fpath + 'idr_df.csv', index=True)
+
     elif args.cond_task == 'scaffold':
         strings = []
         start_idxs = []
@@ -125,8 +152,8 @@ def main():
             scaffold_lengths.append(seq_len)
 
 
-    save_df = pd.DataFrame(list(zip(strings, start_idxs, end_idxs, scaffold_lengths)), columns=['seqs', 'start_idxs', 'end_idxs', 'scaffold_lengths'])
-    save_df.to_csv(out_fpath+'motif_df.csv', index=True)
+        save_df = pd.DataFrame(list(zip(strings, start_idxs, end_idxs, scaffold_lengths)), columns=['seqs', 'start_idxs', 'end_idxs', 'scaffold_lengths'])
+        save_df.to_csv(out_fpath+'motif_df.csv', index=True)
 
     with open(out_fpath + 'generated_samples_string.csv', 'w') as f:
         for _s in strings:
@@ -135,17 +162,25 @@ def main():
         for i, _s in enumerate(strings):
             f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
 
-    # After cond gen, run omegafold
-    print("Finished generation, starting omegafold")
-    run_omegafold(out_fpath, fasta_file="generated_samples_string.fasta")
+    if args.cond_task == 'idr':
+        wrap_dr_bert(out_fpath, generated_fasta_file='generated_samples_string.fasta',
+                     path_to_dr_bert=top_dir + '../DR-BERT/', out_file='gen_out.pkl')
+        wrap_dr_bert(out_fpath, generated_fasta_file='original_samples_string.fasta',
+                     path_to_dr_bert=top_dir + '../DR-BERT/', out_file='og_out.pkl')
+        mean_gen_score, mean_og_score = read_dr_bert_output(out_fpath, save_df)
+        idr_parity_plot(mean_gen_score, mean_og_score, out_fpath)
+    elif args.cond_task == 'scaffold':
+        # After cond gen, run omegafold
+        print("Finished generation, starting omegafold")
+        run_omegafold(out_fpath, fasta_file="generated_samples_string.fasta")
 
-    print("Cleaning PDBs")
-    # clean PDB for TMScore analysis
-    clean_pdb(os.path.join(out_fpath, 'pdb/'), data_top_dir, args.pdb)
+        print("Cleaning PDBs")
+        # clean PDB for TMScore analysis
+        clean_pdb(os.path.join(out_fpath, 'pdb/'), data_top_dir, args.pdb)
 
-    print("Getting TM scores")
-    # Get TMscores
-    run_tmscore(out_fpath, args.pdb, args.num_seqs, path_to_tmscore=top_dir+'TMscore', amlt=args.amlt)
+        print("Getting TM scores")
+        # Get TMscores
+        run_tmscore(out_fpath, args.pdb, args.num_seqs, path_to_tmscore=top_dir+'TMscore', amlt=args.amlt)
 
 
 def get_MSA(filename, tokenizer):
@@ -280,7 +315,7 @@ def get_masked_locations(query_sequence, sliced_start_idxs, sliced_end_idxs, pad
     list_motif = [list(range(sliced_start_idxs[i], sliced_end_idxs[i])) for i in range(len(sliced_start_idxs))]
     list_motif = [item for sublist in list_motif for item in sublist]
     list_masked = [x for x in all_index if x not in list_motif]
-    print(list_masked)
+    #print(list_masked)
     return list_masked
 
 def mask_sequence(seq, mask_locations, mask_id):
@@ -332,10 +367,13 @@ def generate_scaffold_msa(model_type, model, PDB_ID, motif_start_idxs, motif_end
         mask_locations = get_masked_locations(query_sequence[1:-1], sliced_start_idxs, sliced_end_idxs, pad_id=pad)
         mask_locations = [i + 1 for i in mask_locations]
         max_token = len(tokenizer)
+        x_token_location = tokenizer.get_idx('X')
     else:
         seq_len = len(query_sequence)
         mask_locations = get_masked_locations(query_sequence, sliced_start_idxs, sliced_end_idxs, pad_id=pad)
         max_token = tokenizer.K - 1
+        x_token_location = tokenizer.tokenize('X')
+    print("X TOKEN IDX", x_token_location)
 
     masked_loc_y = mask_locations
     # Mask out non-motif residues in query sequence of msa
@@ -364,6 +402,10 @@ def generate_scaffold_msa(model_type, model, PDB_ID, motif_start_idxs, motif_end
                     preds = model(sample)  # Output shape of preds is (BS=1, N=64, L, n_tokens=31)
                 p = preds[:, random_x, random_y, :]  # for first row don't let p_softmax predict gaps
                 p_softmax = torch.nn.functional.softmax(p, dim=1)
+                # # # Penalize X token
+                # penalty = torch.ones(p_softmax.shape).cuda()
+                # penalty[:, x_token_location] += 100
+                # p_softmax /= penalty
                 p_sample = torch.multinomial(input=p_softmax, num_samples=1)
                 p_sample = p_sample.squeeze()
                 sample[:, random_x, random_y] = p_sample
@@ -379,6 +421,10 @@ def generate_scaffold_msa(model_type, model, PDB_ID, motif_start_idxs, motif_end
                 preds = model(sample)  # Output shape of preds is (BS=1, N=64, L, n_tokens=31)
             p = preds[:, random_x, random_y, :max_token] # for first row don't let p_softmax predict gaps
             p_softmax = torch.nn.functional.softmax(p, dim=1)
+            # # Penalize X token
+            penalty = torch.ones(p_softmax.shape).cuda()
+            penalty[:, x_token_location] += 100
+            p_softmax /= penalty
             p_sample = torch.multinomial(input=p_softmax, num_samples=1)
             p_sample = p_sample.squeeze()
             sample[:, random_x, random_y] = p_sample
@@ -390,14 +436,19 @@ def generate_scaffold_msa(model_type, model, PDB_ID, motif_start_idxs, motif_end
     return untokenized, sliced_start_idxs, [i - 1 for i in sliced_end_idxs], seq_len  # return output and untokenized output, re-indexed motif starts and ends (ends-1 for rmsd analyis)
 
 
-def generate_idr_msa(model, tokenizer, n_sequences, seq_length, penalty_value=2, device='gpu', index=0,
-                 start_query=False, data_top_dir='../data', selection_type='MaxHamming', out_path='../ref/'):
-    src, start_idx, end_idx, original_idr, num_sequences = get_IDR_MSAs(index, data_top_dir, tokenizer, max_seq_len=seq_length,
-                                                         n_sequences=n_sequences, out_path=out_path,
-                                                         selection_type=selection_type)
+def generate_idr_msa(model, tokenizer, n_sequences=64, seq_length=512, device='gpu', index=0,
+                     data_top_dir='../data', selection_type='MaxHamming', out_path='../ref/', query_only=True):
+    src, start_idx, end_idx, original_msa, num_sequences = get_IDR_MSAs(index, data_top_dir, tokenizer,
+                                                                        max_seq_len=seq_length,
+                                                                        n_sequences=n_sequences, out_path=out_path,
+                                                                        selection_type=selection_type,
+                                                                        query_only=query_only)
     src = torch.tensor(src).unsqueeze(0) # Make batchsize 1
 
-    masked_loc_x = np.arange(num_sequences) # len of MSA ; num sequences
+    if query_only:
+        masked_loc_x = [0]
+    else:
+        masked_loc_x = np.arange(num_sequences) # len of MSA ; num sequences
     masked_loc_y = np.arange(start_idx, end_idx)
     all_ind = np.transpose([np.tile(masked_loc_x, len(masked_loc_y)), np.repeat(masked_loc_y, len(masked_loc_x))])
     np.random.shuffle(all_ind)
@@ -409,33 +460,38 @@ def generate_idr_msa(model, tokenizer, n_sequences, seq_length, penalty_value=2,
         for i in tqdm(all_ind):
             #print(i)
             random_x, random_y = i
-            print(sample.shape)
+            #print(sample.shape)
             preds = model(sample)  # Output shape of preds is (BS=1, N=64, L, n_tokens=31)
-            print("preds", preds.shape)
-            print(random_x, random_y)
+            #print("preds", preds.shape)
+            #print(random_x, random_y)
             p = preds[:, random_x, random_y, :]
             # if random_x == 0:  # for first row don't let p_softmax predict gaps
             #     p = preds[:, random_x, random_y, :tokenizer.K - 1]
             p_softmax = torch.nn.functional.softmax(p, dim=1)
             # Penalize gaps
-            penalty = torch.ones(p.shape).to(p.device)
-            penalty[:, -1] += penalty_value
+            #penalty = torch.ones(p.shape).to(p.device)
+            #penalty[:, -1] += penalty_value
             # print(p_softmax)
-            p_softmax /= penalty
+            #p_softmax /= penalty
             # print(p_softmax)
             p_sample = torch.multinomial(input=p_softmax, num_samples=1)
             p_sample = p_sample.squeeze()
             sample[:, random_x, random_y] = p_sample
-            print(tokenizer.untokenize(sample[0][0]))
-    print(sample.shape)
+            #print(tokenizer.untokenize(sample[0][0]))
+    #print(sample.shape)
     #print([tokenizer.untokenize(seq) for seq in sample[0]])
-    new_idr = [tokenizer.untokenize(seq[start_idx:end_idx]) for seq in sample[0]]
-    untokenized = [[tokenizer.untokenize(msa.flatten())] for msa in sample[0]]
+    new_idr = [tokenizer.untokenize(sample[0][0][start_idx:end_idx])]
+    untokenized_query_msa = [tokenizer.untokenize(sample[0][0])]
+    og_idr = [original_msa[0][start_idx:end_idx]]
 
-    #print(untokenized[0])
-    return sample, untokenized, original_idr, new_idr  # return output and untokenized output
+    # print("NEW_IDR", new_idr)
+    # print("UNTOKENIZED", untokenized_query_msa)
+    # print("OG IDR", og_idr)
+    # print("OG SEQ", original_msa[0])
+    # import pdb; pdb.set_trace()
+    return untokenized_query_msa, original_msa[0], new_idr, og_idr, start_idx, end_idx  # return gen_query, og_query, new_idrs, og_idrs
 
-def mask_seq(seq, new_start_idx, new_end_idx, i, num_unpadded_rows):
+def mask_idr(seq, new_start_idx, new_end_idx, i, num_unpadded_rows):
     if i < num_unpadded_rows:
         idr_range = new_end_idx - new_start_idx
         masked_seq = seq[0:new_start_idx] + '#' * idr_range + seq[new_end_idx:]
@@ -506,14 +562,14 @@ def preprocess_IDR_data(data_top_dir):
     print("AFTER FILTERING LONG GAP IDRS", len(index_file))
     index_file.to_csv(data_dir + 'human_idr_boundaries_gap.tsv', sep='\t')
 
-def get_IDR_MSAs(index, data_top_dir, tokenizer, max_seq_len=512, n_sequences=64, out_path='', selection_type='random'):
+def get_IDR_MSAs(index, data_top_dir, tokenizer, max_seq_len=512, n_sequences=64, out_path='', selection_type='random', query_only=True):
     # GET IDRS
     data_dir = data_top_dir + 'human_idr_alignments/'
     all_files = os.listdir(data_dir + 'human_protein_alignments')
     if not os.path.exists(data_dir + 'human_idr_boundaries_gap.tsv'):
         preprocess_IDR_data(data_top_dir)
     index_file = pd.read_csv(data_dir + 'human_idr_boundaries_gap.tsv', delimiter='\t')
-
+    print("USING INDEX", index)
     row = index_file.iloc[index]
     # Get MSA
     msa_file = [file for i, file in enumerate(all_files) if row['OMA_ID'] in file][0]
@@ -526,37 +582,40 @@ def get_IDR_MSAs(index, data_top_dir, tokenizer, max_seq_len=512, n_sequences=64
     # print("ENTIRE IDR", msa_data[0][new_start_idx:new_end_idx])
     # print("PRE MASK IDR", msa_data[0][new_start_idx:new_end_idx].replace("-",""))
     # MASK out IDR
-    masked_msa = [mask_seq(seq, new_start_idx, new_end_idx, i, num_sequences) for i, seq in enumerate(msa_data)]
+    masked_msa = msa_data.copy()
+    masked_msa[0] = mask_idr(msa_data[0],new_start_idx, new_end_idx, 0, num_sequences)
+    if not query_only:
+        masked_msa = [mask_idr(seq, new_start_idx, new_end_idx, i, num_sequences) for i, seq in enumerate(msa_data)]
     #print(len(masked_msa))
     #print(masked_msa)
     #import pdb; pdb.set_trace()
     #print("ENTIRE MASKED QUERY", masked_msa[0])
     # import pdb; pdb.set_trace()
-    original_msa_idr = msa_data
+    #original_msa_idr = msa_data
     tokenized_msa = [tokenizer.tokenizeMSA(seq) for seq in masked_msa]
     tokenized_msa = np.array([l.tolist() for l in tokenized_msa])
 
-    print(row)
-    #print("true IDR", row['IDR_SEQ'])
+    # print(row)
+    # #print("true IDR", row['IDR_SEQ'])
+    #
+    # with open(out_path + 'valid_msas.a3m', 'a') as f:
+    #     for i, msa in enumerate(original_msa_idr):
+    #         #print(i, msa)
+    #         if i == 0 :
+    #             f.write(">SEQUENCE_" + str(i) + "\n" + str(msa) + "\n")
+    #         else:
+    #             f.write(">tr \n" + str(msa) + "\n" )
+    #     f.close()
+    # with open(out_path + 'valid_idr.a3m', 'a') as f:
+    #     for i, msa in enumerate(original_msa_idr):
+    #         if i == 0 :
+    #             print("CAPTURED IDR", msa[new_start_idx:new_end_idx])
+    #             f.write(">SEQUENCE_" + str(i) + "\n" + str(msa[new_start_idx:new_end_idx]) + "\n")
+    #         else:
+    #             f.write(">tr \n" + str(msa[new_start_idx:new_end_idx]) + "\n" )
+    #     f.close()
 
-    with open(out_path + 'valid_msas.a3m', 'a') as f:
-        for i, msa in enumerate(original_msa_idr):
-            #print(i, msa)
-            if i == 0 :
-                f.write(">SEQUENCE_" + str(i) + "\n" + str(msa) + "\n")
-            else:
-                f.write(">tr \n" + str(msa) + "\n" )
-        f.close()
-    with open(out_path + 'valid_idr.a3m', 'a') as f:
-        for i, msa in enumerate(original_msa_idr):
-            if i == 0 :
-                print("CAPTURED IDR", msa[new_start_idx:new_end_idx])
-                f.write(">SEQUENCE_" + str(i) + "\n" + str(msa[new_start_idx:new_end_idx]) + "\n")
-            else:
-                f.write(">tr \n" + str(msa[new_start_idx:new_end_idx]) + "\n" )
-        f.close()
-
-    return tokenized_msa, new_start_idx, new_end_idx, original_msa_idr, num_sequences
+    return tokenized_msa, new_start_idx, new_end_idx, msa_data, num_sequences
 
 def subsample_IDR_MSA(row, filename, data_dir, tokenizer, max_seq_len=512, n_sequences=64, selection_type='random'):
     ## TODO CAN use a general subsample MSA here -> try to recode
@@ -679,7 +738,7 @@ def subsample_IDR_MSA(row, filename, data_dir, tokenizer, max_seq_len=512, n_seq
                 distance_matrix = np.delete(distance_matrix, random_ind, axis=1)
     else:
         msa_n_sequences = msa_num_seqs
-        output = np.full(shape=(n_sequences, max_seq_len), fill_value=tokenizer.pad_id) # TREAT SMALL SEQS as having gaps here
+        output = np.full(shape=(n_sequences, max_seq_len), fill_value=tokenizer.gap_id) # TREAT SMALL SEQS as having gaps here
         output[0:1, :len(anchor_seq)] = anchor_seq
         output[1:msa_num_seqs, :len(anchor_seq)] = sliced_msa
         #output = np.concatenate((np.array(anchor_seq).reshape(1,-1), np.array(sliced_msa)), axis=0)

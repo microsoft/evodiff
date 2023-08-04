@@ -5,20 +5,17 @@ import urllib.request
 import torch
 import os
 import esm.inverse_folding
-from evodiff.utils import Tokenizer, run_omegafold, clean_pdb, run_tmscore
+from evodiff.utils import Tokenizer, run_omegafold, clean_pdb, run_tmscore, wrap_dr_bert, read_dr_bert_output
 import pathlib
 from sequence_models.utils import parse_fasta
 from tqdm import tqdm
 import pandas as pd
 import random
-from evodiff.plot import aa_reconstruction_parity_plot
+from evodiff.plot import aa_reconstruction_parity_plot, idr_parity_plot
 
 
 def main():
     # set seeds
-    _ = torch.manual_seed(0)
-    np.random.seed(0)
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--model-type', type=str, default='oa_ar_640M',
                         help='Choice of: carp_38M carp_640M esm1b_650M \
@@ -45,13 +42,16 @@ def main():
                         help="Min scaffold len ")
     parser.add_argument('--scaffold-max', type=int, default=30,
                         help="Max scaffold len, will randomly choose a value between min/max")
+    parser.add_argument('--max-idr-length', type=int, default=256,
+                        help="Max IDR length to generate")
     parser.add_argument('--random-baseline', action='store_true')
     parser.add_argument('--amlt', action='store_true')
     parser.add_argument('--single-res-domain', action='store_true', help="if start-idx = end-idx make sure to use single-res-domain flag or else you will get errors")
     args = parser.parse_args()
 
-    args.start_idxs.sort()
-    args.end_idxs.sort()
+    if args.cond_task == 'scaffold':
+        args.start_idxs.sort()
+        args.end_idxs.sort()
 
     if args.random_baseline:
         args.model_type = 'oa_ar_640M' # placeholder
@@ -84,20 +84,34 @@ def main():
     else:
         home = str(pathlib.Path.home()) + '/Desktop/DMs/'
         top_dir = home
-
         if not args.random_baseline:
-            out_fpath = home + args.model_type + '/' + args.pdb +'/'
+            out_fpath = home + args.model_type + '/'
         else:
-            out_fpath = home + 'random-baseline/' + args.pdb +'/'
-        if not os.path.exists(out_fpath):
-            os.makedirs(out_fpath)
+            out_fpath = home + 'random-baseline/'
+            out_fpath = home + 'random-baseline/'
+        if args.cond_task == 'scaffold':
+            out_fpath += args.pdb + '/'
+        elif args.cond_task == 'idr':
+            out_fpath += 'idr/'
+
+    if not os.path.exists(out_fpath):
+        os.makedirs(out_fpath)
 
     data_top_dir = top_dir + 'data/'
 
     if args.cond_task == 'idr':
-        #TODO Finish IDR
-        sample, string, queries, sequences = generate_idr(model, data_top_dir, tokenizer=tokenizer,
-                                                          penalty=args.penalty, batch_size=1, device=device)
+        strings, og_strings, new_idrs, og_idrs, start_idxs, end_idxs = generate_idr(model, data_top_dir, tokenizer=tokenizer,
+                                                          device=device, max_idr_len=args.max_idr_length,
+                                                              num_seqs=args.num_seqs)
+        save_df = pd.DataFrame(list(zip(new_idrs, og_idrs, start_idxs, end_idxs)),
+                               columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
+        save_df.to_csv(out_fpath + 'idr_df.csv', index=True)
+
+        with open(out_fpath + 'original_samples_string.fasta', 'w') as f:
+            for i, _s in enumerate(og_strings):
+                f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
+
+
     elif args.cond_task == 'scaffold':
         strings = []
         start_idxs = []
@@ -125,8 +139,8 @@ def main():
             scaffold_lengths.append(scaffold_length)
 
 
-    save_df = pd.DataFrame(list(zip(strings, start_idxs, end_idxs, scaffold_lengths)), columns=['seqs', 'start_idxs', 'end_idxs', 'scaffold_lengths'])
-    save_df.to_csv(out_fpath+'motif_df.csv', index=True)
+        save_df = pd.DataFrame(list(zip(strings, start_idxs, end_idxs, scaffold_lengths)), columns=['seqs', 'start_idxs', 'end_idxs', 'scaffold_lengths'])
+        save_df.to_csv(out_fpath+'motif_df.csv', index=True)
 
     with open(out_fpath + 'generated_samples_string.csv', 'w') as f:
         for _s in strings:
@@ -135,19 +149,28 @@ def main():
         for i, _s in enumerate(strings):
             f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
 
-    # After cond gen, run omegafold
-    print("Finished generation, starting omegafold")
-    run_omegafold(out_fpath, fasta_file="generated_samples_string.fasta")
 
-    print("Cleaning PDBs")
-    # clean PDB for TMScore analysis
-    clean_pdb(os.path.join(out_fpath, 'pdb/'), data_top_dir, args.pdb)
+    if args.cond_task == 'idr':
+        # Run DR-BERT
+        wrap_dr_bert(out_fpath, generated_fasta_file='generated_samples_string.fasta', path_to_dr_bert=top_dir+'../DR-BERT/',out_file='gen_out.pkl')
+        wrap_dr_bert(out_fpath, generated_fasta_file='original_samples_string.fasta', path_to_dr_bert=top_dir+'../DR-BERT/', out_file='og_out.pkl')
+        mean_gen_score, mean_og_score = read_dr_bert_output(out_fpath, save_df)
+        idr_parity_plot(mean_gen_score, mean_og_score, out_fpath)
 
-    print("Getting TM scores")
-    # Get TMscores
-    run_tmscore(out_fpath, args.pdb, args.num_seqs, path_to_tmscore=top_dir+'TMscore', amlt=args.amlt)
+        # Reverse homology
+        # MitoFates (mitochondrial cleavage?)
+    elif args.cond_task == 'scaffold':
+        # After cond gen, run omegafold
+        print("Finished generation, starting omegafold")
+        run_omegafold(out_fpath, fasta_file="generated_samples_string.fasta")
 
+        print("Cleaning PDBs")
+        # clean PDB for TMScore analysis
+        clean_pdb(os.path.join(out_fpath, 'pdb/'), data_top_dir, args.pdb)
 
+        print("Getting TM scores")
+        # Get TMscores
+        run_tmscore(out_fpath, args.pdb, args.num_seqs, path_to_tmscore=top_dir+'TMscore', amlt=args.amlt)
 
 def download_pdb(PDB_ID, outfile):
     "return PDB file from database online"
@@ -316,25 +339,28 @@ def generate_autoreg_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, s
     return untokenized, new_start_idxs, new_end_idxs
 
 
-def generate_idr(model, data_top_dir, tokenizer=Tokenizer(), penalty=None, causal=False, batch_size=20, device='cuda'):
-    cutoff = 256 # TODO ADD FILTER, not done
-
+def generate_idr(model, data_top_dir, tokenizer=Tokenizer(), device='cuda', max_idr_len=256, num_seqs=100):
     all_aas = tokenizer.all_aas
-    tokenized_sequences, start_idxs, end_idxs, queries, sequences = get_IDR_sequences(data_top_dir, tokenizer)
+    tokenized_sequences, start_idxs, end_idxs, queries, sequences = get_IDR_sequences(data_top_dir, tokenizer, num_seqs=num_seqs)
     samples = []
     samples_idr = []
-    sequences_idr = []
+    originals = []
+    originals_idr = []
+    #sequences_idr = []
+    save_starts = []
+    save_ends = []
     for s, sample in enumerate(tokenized_sequences):
         loc = np.arange(start_idxs[s], end_idxs[s])
-        if len(loc) < cutoff:
-            print("QUERY", queries[s])
-            print("ORIGINAL IDR", sequences[s][start_idxs[s]:end_idxs[s]])
-            sequences_idr.append(sequences[s][start_idxs[s]:end_idxs[s]])
+        if len(loc) < max_idr_len: #
+            #print("QUERY", queries[s])
+            print(s, "ORIGINAL IDR", sequences[s][start_idxs[s]:end_idxs[s]])
+            print(len(sequences[s]), start_idxs[s], end_idxs[s])
+            #print("ORIGINAL SEQ", sequences[s])
+            #print("ORIGINAL SEQ", tokenizer.untokenize(sample))
+            #sequences_idr.append(sequences[s][start_idxs[s]:end_idxs[s]])
             sample = sample.to(torch.long)
             sample = sample.to(device)
-            seq_len = len(sample)
-            if causal == False:
-                np.random.shuffle(loc)
+            np.random.shuffle(loc)
             with torch.no_grad():
                 for i in tqdm(loc):
                     timestep = torch.tensor([0]) # placeholder but not called in model
@@ -343,25 +369,25 @@ def generate_idr(model, data_top_dir, tokenizer=Tokenizer(), penalty=None, causa
                     p = prediction[:, i, :len(all_aas)-6]
                     p = torch.nn.functional.softmax(p, dim=1)
                     p_sample = torch.multinomial(p, num_samples=1)
-                    # Repetition penalty
-                    if penalty is not None: # ignore if value is None
-                        for j in range(batch_size): # iterate over each obj in batch
-                            case1 = (i == 0 and sample[j, i+1] == p_sample[j]) # beginning of seq
-                            case2 = (i == seq_len-1 and sample[j, i-1] == p_sample[j]) # end of seq
-                            case3 = ((i < seq_len-1 and i > 0) and ((sample[j, i-1] == p_sample[j]) or (sample[j, i+1] == p_sample[j]))) # middle of seq
-                            if case1 or case2 or case3:
-                                p[j, int(p_sample[j])] /= penalty # reduce prob of that token by penalty value
-                                p_sample[j] = torch.multinomial(p[j], num_samples=1) # resample
                     sample[i] = p_sample.squeeze()
-            print("GENERATED IDR", tokenizer.untokenize(sample[start_idxs[s]:end_idxs[s]]))
+            print(s, "GENERATED IDR", tokenizer.untokenize(sample[start_idxs[s]:end_idxs[s]]))
+            #print("GENERATED SEQ", tokenizer.untokenize(sample))
             samples.append(sample)
             samples_idr.append(sample[start_idxs[s]:end_idxs[s]])
+            originals.append(sequences[s])
+            originals_idr.append(sequences[s][start_idxs[s]:end_idxs[s]])
+            save_starts.append(start_idxs[s])
+            save_ends.append(end_idxs[s])
         else:
+            print("Skipping idr, ", s, "(longer than", max_idr_len, "residues)")
             pass
-    untokenized_idr = [tokenizer.untokenize(s) for s in samples_idr]
-    return samples, untokenized_idr, queries, sequences_idr
+    untokenized_seqs = [[tokenizer.untokenize(s)] for s in samples]
+    untokenized_idrs = [tokenizer.untokenize(s) for s in samples_idr]
+    sequences_idrs = originals_idr # [s for s in enumerate(originals_idr)]
+    sequences = [[s] for s in originals]
+    return untokenized_seqs, sequences, untokenized_idrs, sequences_idrs, save_starts, save_ends # strings, og_strings, new_idrs, og_idrs
 
-def get_IDR_sequences(data_top_dir, tokenizer):
+def get_IDR_sequences(data_top_dir, tokenizer, num_seqs=100, max_seq_len=1022):
     sequences = []
     masked_sequences = []
     start_idxs = []
@@ -371,8 +397,15 @@ def get_IDR_sequences(data_top_dir, tokenizer):
     data_dir = data_top_dir + 'human_idr_alignments/'
     all_files = os.listdir(data_dir + 'human_protein_alignments')
     index_file = pd.read_csv(data_dir + 'human_idr_boundaries.tsv', delimiter='\t')
+    # Filter out IDRs > max_seq_len
+    index_file['MAX'] = index_file['END'] - index_file['START']
     print(len(index_file), "TOTAL IDRS")
-    for index, row in index_file[:50].iterrows(): # TODO only iterating over 100 right now
+    index_file = index_file[index_file['MAX'] <= max_seq_len/2].reset_index(drop=True)
+    print(len(index_file), "TOTAL IDRS AFTER FILTER")
+    #for index, row in index_file.iterrows(): # TODO only iterating over 100 right now
+    for _ in range(num_seqs):
+        rand_idx = random.randint(0, len(index_file))
+        row = index_file.loc[rand_idx]
         msa_file = [file for i, file in enumerate(all_files) if row['OMA_ID'] in file][0]
         msa_data, msa_names = parse_fasta(data_dir + 'human_protein_alignments/' + msa_file, return_names=True)
         query_idx = [i for i, name in enumerate(msa_names) if name == row['OMA_ID']][0]  # get query index
