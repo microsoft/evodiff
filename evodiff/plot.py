@@ -552,3 +552,18 @@ def plot_conditional_sim(sim, out_path='plots/'):
     plt.xlim(0, 100)
     plt.tight_layout()
     fig.savefig(out_path + '_similarity.png')
+
+def idr_parity_plot(mean_og_score, mean_gen_score, out_path):
+    fig, ax = plt.subplots(figsize=(3, 2.5))
+    r_squared = stats.pearsonr(mean_og_score, mean_gen_score).statistic
+    label = "$R$=%.2f" % (r_squared)
+    plt.axline([0, 0], [1, 1], c='k', linestyle='dotted', alpha=0.75)
+    ax.text(0.05, 0.95, label, transform=ax.transAxes, fontsize=14,
+            verticalalignment='top')
+    plt.scatter(mean_og_score, mean_gen_score, c='grey', edgecolors='k')
+    plt.xlabel("Per-Res Score True", fontweight='bold')
+    plt.ylabel("Per-Res Score Gen", fontweight='bold')
+    plt.tight_layout()
+    fig.savefig(os.path.join(out_path, 'idr_parity_scatter.svg'))
+    fig.savefig(os.path.join(out_path, 'idr_parity_scatter.png'))
+    plt.close()

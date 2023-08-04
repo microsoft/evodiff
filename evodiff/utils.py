@@ -372,7 +372,12 @@ def get_pairwise(msa, alphabet):
     return all_pairs
 
 def download_model(model_name):
-    url = f"https://zenodo.org/record/8045076/files/" + model_name + ".tar?download=1"
+    if model_name == 'carp-38M':
+        url = f"https://zenodo.org/record/6564798/files/carp_38M.pt?download=1"
+    elif model_name == 'carp-640M':
+        url = f"https://zenodo.org/record/6564798/files/carp_640M.pt?download=1"
+    else:
+        url = f"https://zenodo.org/record/8045076/files/" + model_name + ".tar?download=1"
     try:
         state_dict = torch.hub.load_state_dict_from_url(url, progress=True, map_location=torch.device('cpu'))
     
@@ -449,6 +454,51 @@ def run_tmscore(fpath, pdb, num_seqs, path_to_tmscore='TMscore', amlt=False):
         [f.write(score+'\n') for score in tm_scores]
     f.close()
 
+def wrap_dr_bert(out_fpath, generated_fasta_file='generated_samples_string.fasta', path_to_dr_bert='DR-BERT/',
+                 out_file='out.pkl'):
+    """
+    Wrapper for evaluating TM Scores
+    """
+    assert os.path.exists(out_fpath), "Can't find out path to generated_samples_string.fasta"
 
+    subprocess.call(['python', path_to_dr_bert+'get_scores_fasta.py', path_to_dr_bert+'DR-BERT-final/',
+                        out_fpath+generated_fasta_file, out_fpath+out_file])
+
+def read_dr_bert_output(out_fpath, ref_df):
+    gen_df = pd.read_pickle(out_fpath+'gen_out.pkl')
+    og_df = pd.read_pickle(out_fpath+'og_out.pkl')
+    mean_gen_score = []
+    mean_og_score = []
+
+    print(gen_df)
+    print(og_df)
+    for i in range(len(gen_df)):
+        s = ref_df['start_idxs'][i]
+        e = ref_df['end_idxs'][i]
+        #print(len(df['sequence'][i]), len(df['score'][i]))
+        # if np.isnan(gen_df.iloc[i]['score'][s:e].mean()).any() or np.isnan(og_df.iloc[i]['score'][s:e].mean()).any():
+        #     print(len(gen_df.loc[i]['score']))
+        #     print(len(gen_df.loc[i]['sequence']))
+        #     print(s,e)
+        #     print(len(og_df.loc[i]['score']))
+        #     print("GEN SEQUNECE", i, gen_df['sequence'][i][s:e])
+        #     print("GEN SEQUNECE", i, ref_df['gen_idrs'][i])
+        #     print("SCORE", gen_df['score'][i][s:e].mean())
+        #     print("SCORE", gen_df['score'][i][s:e])
+        #     print("OG SEQUENCE", i, og_df['sequence'][i][s:e])
+        #     print("OG SEQUNECE", i, ref_df['original_idrs'][i])
+        #     print("SCORE", og_df['score'][i][s:e].mean())
+        #     print("SCORE", og_df['score'][i][s:e])
+
+        if len(gen_df.loc[i]['sequence']) < 1022:
+            mean_gen_score.append(gen_df['score'][i][s:e].mean())
+            mean_og_score.append(og_df['score'][i][s:e].mean())
+            #[mean_gen_score.append(item) for item in gen_df['score'][i][s:e]]
+            #[mean_og_score.append(item) for item in og_df['score'][i][s:e]]
+        else:
+            print("Skipping long sequence")
+        #print(mean_gen_score, mean_og_score)
+
+    return mean_gen_score, mean_og_score
 
 
