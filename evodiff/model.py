@@ -174,6 +174,7 @@ class ByteNetLMTime(nn.Module):
         return self.decoder(e)
 
 
+
 class MSATransformerTime(nn.Module):
     """
     Based on implementation described by Rao et al. in "MSA Transformer"

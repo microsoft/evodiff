@@ -49,9 +49,11 @@ def main():
     if not args.amlt:
         home = str(pathlib.Path.home())
         if not args.random_baseline:
-            home += '/Desktop/DMs/' + args.model_type + '/' + args.pdb
+            #home += '/Desktop/DMs/' + args.model_type + '/' + args.pdb
+            home += '/Desktop/DMs/cond-gen-msa/cond-gen-msa/' + args.pdb + '-msa-' + args.model_type + '/'
         else:
-            home += '/Desktop/DMs/random-baseline/' + args.pdb
+            #home += '/Desktop/DMs/random-baseline/' + args.pdb
+            home += '/Desktop/DMs/cond-gen-msa/cond-gen-msa/' + args.pdb + '-random/'
     else:
         home = os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/'
 
@@ -128,7 +130,7 @@ def calc_rmsd(num_structures, reference_PDB, fpath='conda/gen/6exz', ref_motif_s
         for j in range(len(ref_motif_starts)):
             ref_selection += str(ref_motif_starts[j]+1) + ':' + str(ref_motif_ends[j]+1) + ' ' # +1 (PDB indexed at 1)
             u_selection += str(new_motif_starts[j]) + ':' + str(new_motif_ends[j]) + ' '
-
+        print("U SELECTION", u_selection)
         print("SEQUENCE", i)
         print("ref", ref.select_atoms(ref_selection).resnames)
         print("gen", u.select_atoms(u_selection).resnames)

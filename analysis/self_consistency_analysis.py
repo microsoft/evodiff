@@ -168,8 +168,12 @@ else:
 # TEST MUST GO FIRST FOR PLOTS TO REFERENCE CORRECTLY
 if length_model == 'large':
     runs = ['test-data-2/', 'd3pm/blosum-640M-0/', 'd3pm/random-640M-0/', 'd3pm/oaardm-640M/', 'd3pm/soar-640M/',
-        'hyper12/cnn-650M/', 'esm-1b/','esm2/', 'foldingdiff/', 'random-ref/']
-    labels = ['Test', 'D3PM Blosum', 'D3PM Uniform', 'OA-AR', 'LR-AR', 'CARP', 'ESM-1b', 'ESM2', 'FoldingDiff','Random']
+        'hyper12/cnn-650M/', 'esm-1b/','esm2/',
+            'rfdiff/',#'foldingdiff/',
+            'random-ref/']
+    labels = ['Test', 'D3PM Blosum', 'D3PM Uniform', 'OA-AR', 'LR-AR', 'CARP', 'ESM-1b', 'ESM2',
+              'RFDiffusion',#'FoldingDiff',
+              'Random']
     colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'mediumpurple', 'rebeccapurple',
               'darkslateblue', 'firebrick']
 elif length_model == 'small':
@@ -245,7 +249,7 @@ for i in range(len(labels)):
     ordered_perp = []
     ordered_plddt = []
     if sequences:
-        if runs[i] == 'esm2/' or runs[i] == 'foldingdiff/' or runs[i]=='d3pm/soar-640M/' or runs[i]=='arcnn/cnn-38M/'\
+        if runs[i] == 'esm2/' or runs[i] == 'foldingdiff/' or runs[i] == 'rfdiff/' or runs[i]=='d3pm/soar-640M/' or runs[i]=='arcnn/cnn-38M/'\
                 or runs[i] == 'sequence/oaardm/' or runs[i]=='d3pm/oaardm-640M/' or runs[i]=='test-data-2/':
             seq_lengths=[100]
         else:

@@ -121,7 +121,7 @@ def load_data(output_directory):
 folder = '../PGP/'
 
 # Decide what model to run
-save_name = 'small' # large or small
+save_name = 'large' # large or small
 
 # Large
 if save_name == 'large':
@@ -143,7 +143,7 @@ if save_name == 'large':
     oa.insert(0, "type", "oaardm")
     carp = load_data('../PGP/PGP_OUT_LARGE/carp/')
     carp.insert(0, "type", "carp")
-    folding = load_data('../PGP/PGP_OUT_LARGE/foldingdiff/')
+    folding = load_data('../PGP/PGP_OUT_LARGE/rfdiff/')#'../PGP/PGP_OUT_LARGE/foldingdiff/')
     folding.insert(0, "type", "folding")
     esm1b = load_data('../PGP/PGP_OUT_LARGE/esm-1b/')
     esm1b.insert(0, "type", "esm1b")
@@ -152,7 +152,9 @@ if save_name == 'large':
     #concatenate the dataframes
     data = pd.concat([valid, blosum, uniform, oa, so, carp, esm1b, esm2, folding, random, test]).reset_index(drop=True)
     runs = ['valid', 'blosum d3pm', 'random d3pm', 'oaardm', 'soardm', 'carp', 'esm1b', 'esm2', 'folding', 'ref', 'test']
-    labels =['Valid', 'Blosum D3PM', 'Uniform D3PM', 'OA-ARDM', 'LR-AR', 'CARP', 'ESM-1b', 'ESM2', 'FoldingDiff', 'Random', 'Test']
+    labels =['Valid', 'Blosum D3PM', 'Uniform D3PM', 'OA-ARDM', 'LR-AR', 'CARP', 'ESM-1b', 'ESM2',
+             'RFDiffusion', #'FoldingDiff',
+             'Random', 'Test']
 
 # Small
 elif save_name=='small':

@@ -88,7 +88,6 @@ def main():
             out_fpath = home + args.model_type + '/'
         else:
             out_fpath = home + 'random-baseline/'
-            out_fpath = home + 'random-baseline/'
         if args.cond_task == 'scaffold':
             out_fpath += args.pdb + '/'
         elif args.cond_task == 'idr':

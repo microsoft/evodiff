@@ -40,7 +40,9 @@ project_run='large' #'large' or 'small'
 # Calculate FID between test dataset sample and generated seqs
 if project_run=='large':
     project_dir = '../PGP/PGP_OUT_LARGE/'
-    runs = ['blosum', 'random', 'oaardm', 'soardm', 'carp', 'ref', 'valid', 'esm-1b', 'esm2', 'foldingdiff']
+    runs = ['blosum', 'random', 'oaardm', 'soardm', 'carp', 'ref', 'valid', 'esm-1b', 'esm2',
+            'rfdiff', #'foldingdiff'
+            ]
     c = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'lightcoral', 'firebrick', 'grey', 'mediumpurple', 'rebeccapurple', 'darkslateblue']
 elif project_run=='small':
     project_dir = '../PGP/PGP_OUT/'
