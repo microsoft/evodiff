@@ -6,15 +6,7 @@ In this work, we train and evaluate a series of discrete diffusion models for bo
 To download our code, 
 ```
 pip install evodiff
-pip install git+https://github.com/microsoft/protein-sequence-models.git # bleeding edge, current repo main branch
-```
-
-To set up a working environment, run:
-```
-cd evodiff
-conda env create -f environment.yml
-conda activate evodiff
-pip install -e .
+pip install git+https://github.com/microsoft/evodiff.git # bleeding edge, current repo main branch
 ```
 
 You will also need to install PyTorch. We tested our models on ` v2.0.1 `.
@@ -44,12 +36,9 @@ Available models are:
 
 ### Unconditional sequence generation
 For sequence generation run:
-``` python generate.py --model-type oa_ar_640m --final_norm --num-seqs 250 ```
+``` python evodiff/generate.py --model-type oa_ar_38M ```
 
-For MSA generation run:
-``` python generate-msa.py TODO: ADD MODEL TYPE --subsampling random --batch-size 1 ```
-
-### Conditional sequence generation from MSA
+### Conditional sequence generation
 There are two ways to conditionally generate an MSA. 
 
 The first is to generate the alignment from the query. To do so run:
