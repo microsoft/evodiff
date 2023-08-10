@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="evodiff",
-    version="0.1.1",
+    version="0.1.3",
     description="Python package for generation of protein sequences and evolutionary alignments via discrete diffusion models",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -17,9 +17,9 @@ setuptools.setup(
     ],
     install_requires=[
         "pandas",
+        "lmdb"
         "numpy",
-        "python-lmdb",
-        "git+https://github.com/microsoft/protein-sequence-models.git",
+        "sequence-models",
         "mlflow",
         "scikit-learn",
         "blosum",
