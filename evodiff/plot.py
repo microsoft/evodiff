@@ -277,57 +277,57 @@ def plot_tmscores(tmscore_path, out_path, y_min=0, y_max=30):
     fig.savefig(os.path.join(out_path, 'tmscores.svg'))
     fig.savefig(os.path.join(out_path, 'tmscores.png'))
 
-def plot_percent_similarity(out_fpath):
-    "Plot percent similarity between generated sequence and original query sequence "
-    df_gen = pd.read_csv(out_fpath + 'gen_msas_onlyquery.txt', delim_whitespace=True, header=None,
-                         names=['seq'])
-    df_valid = pd.read_csv(out_fpath + 'valid_msas_onlyquery.txt', delim_whitespace=True, header=None,
-                           names=['seq'])
-    # % similarity between original and new query
-    sim = []
-    for i in range(len(df_gen)):
-        s1 = list(itertools.chain.from_iterable(df_gen.iloc[i]['seq']))
-        s2 = list(itertools.chain.from_iterable(df_valid.iloc[i]['seq']))
-        sm = difflib.SequenceMatcher(None, s1, s2)
-        sim.append(sm.ratio())
-        # print(df_valid.iloc[i]['seq'].split())
+# def plot_percent_similarity(out_fpath):
+#     "Plot percent similarity between generated sequence and original query sequence "
+#     df_gen = pd.read_csv(out_fpath + 'gen_msas_onlyquery.txt', delim_whitespace=True, header=None,
+#                          names=['seq'])
+#     df_valid = pd.read_csv(out_fpath + 'valid_msas_onlyquery.txt', delim_whitespace=True, header=None,
+#                            names=['seq'])
+#     # % similarity between original and new query
+#     sim = []
+#     for i in range(len(df_gen)):
+#         s1 = list(itertools.chain.from_iterable(df_gen.iloc[i]['seq']))
+#         s2 = list(itertools.chain.from_iterable(df_valid.iloc[i]['seq']))
+#         sm = difflib.SequenceMatcher(None, s1, s2)
+#         sim.append(sm.ratio())
+#         # print(df_valid.iloc[i]['seq'].split())
+#
+#         fig, ax = plt.subplots(figsize=(3, 2.5))
+#         sns.histplot(sim, color='grey', bins=10)
+#         plt.xlabel('% Similarity')
+#         plt.xlim(0, 1)
+#         plt.tight_layout()
+#         fig.savefig(os.path.join(out_fpath, 'query_similarity.png'))
+#         fig.savefig(os.path.join(out_fpath, 'query_similarity.svg'))
 
-        fig, ax = plt.subplots(figsize=(3, 2.5))
-        sns.histplot(sim, color='grey', bins=10)
-        plt.xlabel('% Similarity')
-        plt.xlim(0, 1)
-        plt.tight_layout()
-        fig.savefig(os.path.join(out_fpath, 'query_similarity.png'))
-        fig.savefig(os.path.join(out_fpath, 'query_similarity.svg'))
-
-def plot_percent_similarity_entiremsa(out_fpath):
-    "Plot the % similarity between generated query sequences and each sequence in the MSA as well as the original query"
-    df_gen = pd.read_csv(out_fpath + 'gen_msas_onlyquery.txt', delim_whitespace=True, header=None,
-                         names=['seq'])
-    df_valid = pd.read_csv(out_fpath + 'valid_msas_onlyquery.txt', delim_whitespace=True, header=None,
-                           names=['seq'])
-    sim = []
-    sim_msa = []
-    for i in range(len(df_gen)):
-        s1 = list(itertools.chain.from_iterable(df_gen.iloc[i]['seq']))
-        s2 = list(itertools.chain.from_iterable(df_valid.iloc[i]['seq']))
-        sm = difflib.SequenceMatcher(None, s1, s2)
-        sim.append(sm.ratio() * 100)
-        msa_seqs = extract_seq_a3m(out_fpath + 'gen-' + str(i + 1) + '/generated_msas.a3m')
-        for seq in msa_seqs:
-            sm = difflib.SequenceMatcher(None, s1, list(itertools.chain.from_iterable(seq)))
-            sim_msa.append(sm.ratio() * 100)
-
-    fig, ax = plt.subplots(2, 1, figsize=(3, 2.5))
-    sns.histplot(sim_msa, color='grey', bins=20, ax=ax[0])
-    ax[0].set_xlabel('% Similarity to seq in MSA')
-    sns.histplot(sim, color='grey', bins=20, ax=ax[1])
-    ax[1].set_xlabel('% Similarity to original query')
-    ax[0].set_xlim(0, 100)
-    ax[1].set_xlim(0, 100)
-    plt.tight_layout()
-    fig.savefig(os.path.join(out_fpath, 'similairity_msa.svg'))
-    fig.savefig(os.path.join(out_fpath, 'similarity_msa.png'))
+# def plot_percent_similarity_entiremsa(out_fpath):
+#     "Plot the % similarity between generated query sequences and each sequence in the MSA as well as the original query"
+#     df_gen = pd.read_csv(out_fpath + 'gen_msas_onlyquery.txt', delim_whitespace=True, header=None,
+#                          names=['seq'])
+#     df_valid = pd.read_csv(out_fpath + 'valid_msas_onlyquery.txt', delim_whitespace=True, header=None,
+#                            names=['seq'])
+#     sim = []
+#     sim_msa = []
+#     for i in range(len(df_gen)):
+#         s1 = list(itertools.chain.from_iterable(df_gen.iloc[i]['seq']))
+#         s2 = list(itertools.chain.from_iterable(df_valid.iloc[i]['seq']))
+#         sm = difflib.SequenceMatcher(None, s1, s2)
+#         sim.append(sm.ratio() * 100)
+#         msa_seqs = extract_seq_a3m(out_fpath + 'gen-' + str(i + 1) + '/generated_msas.a3m')
+#         for seq in msa_seqs:
+#             sm = difflib.SequenceMatcher(None, s1, list(itertools.chain.from_iterable(seq)))
+#             sim_msa.append(sm.ratio() * 100)
+#
+#     fig, ax = plt.subplots(2, 1, figsize=(3, 2.5))
+#     sns.histplot(sim_msa, color='grey', bins=20, ax=ax[0])
+#     ax[0].set_xlabel('% Similarity to seq in MSA')
+#     sns.histplot(sim, color='grey', bins=20, ax=ax[1])
+#     ax[1].set_xlabel('% Similarity to original query')
+#     ax[0].set_xlim(0, 100)
+#     ax[1].set_xlim(0, 100)
+#     plt.tight_layout()
+#     fig.savefig(os.path.join(out_fpath, 'similairity_msa.svg'))
+#     fig.savefig(os.path.join(out_fpath, 'similarity_msa.png'))
 
 def plot_perp_group_masked(df, save_name, mask='mask'):
     "Plot perplexity computed from Masked models, binned by % of sequence masked "
@@ -402,6 +402,41 @@ def plot_ecdf_bylength(perp_groups, colors, labels, seq_lengths, metric='perp', 
     fig.savefig(os.path.join('plots/sc_'+metric+'_bylength_'+model+'.svg'))
     fig.savefig(os.path.join('plots/sc_'+metric+'_bylength_'+model+'.png'))
 
+def plot_sc_boxplot(perp_groups, colors, labels, metric='perp', model='ESM-IF', length_model='small', legend=False):
+    fig, ax = plt.subplots(1, 1, figsize=(3,3.5), sharey=True, sharex=True)
+    all_perp = []
+    all_names = []
+    all_colors = []
+    for i, perp_group in enumerate(perp_groups):
+        if labels[i] == 'Test' or labels[i] == 'OA-AR' or labels[i] == 'LR-AR' or labels[i] == 'D3PM Blosum' \
+                or labels[i] == 'D3PM Uniform' or labels[i] == 'ESM2': # or labels[i] =='Cond Max' or labels[i] == 'Cond Rand':
+            print(perp_group)
+            [all_perp.append(item) for item in list(chain.from_iterable(perp_group))]
+            #[print(type(item)) for item in list(chain.from_iterable(perp_group))]
+            [all_names.append(labels[i]) for _ in range(len(list(chain.from_iterable(perp_group))))]
+            all_colors.append(colors[i])
+
+    df = pd.DataFrame()
+    df['value'] = all_perp
+    df['names'] = all_names
+    print(df.head())
+    #print(type(df['value'][0]))
+    sns.boxplot(data=df, x="names", y="value", ax=ax, palette=all_colors)
+
+    ax.axhline(y=np.median(list(chain.from_iterable(perp_groups[0]))), c='k', ls='--', lw=0.75)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
+
+    if legend:
+        ax.legend()
+    if model == 'ESM-IF':
+        ax.set_ylim(0, 25)
+    elif model == 'MPNN':
+        ax.set_ylim(0, 6)
+    elif model == 'Omegafold':
+        ax.set_ylim(10, 100)
+    plt.tight_layout()
+    fig.savefig(os.path.join('plots/sc_' + metric + '_' + model + '_' + length_model + '.svg'))
+    fig.savefig(os.path.join('plots/sc_' + metric + '_' + model + '_' + length_model + '.png'))
 
 def plot_ecdf(perp_groups, colors, labels, metric='perp', model='ESM-IF', length_model='small', legend=False):
     "Plot cumulative density plot of plddt, or perp scores for each set of gen sequences. Uses the mean of test set \
@@ -436,13 +471,13 @@ def plot_ecdf(perp_groups, colors, labels, metric='perp', model='ESM-IF', length
 
 def plot_plddt_perp(ordered_plddt_group, ordered_perp_group, idx, colors, labels, perp_model='ESM-IF', length_model='small'):
     "Plot pLDDT vs Perplexity for each set of generated sequences against train data"
-    fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5), sharey=True, sharex=True)
+    fig, ax = plt.subplots(1, 1, figsize=(3, 2.5), sharey=True, sharex=True)
     plt.scatter(ordered_plddt_group[0], ordered_perp_group[0], c=colors[0], s=20, alpha=1, label=labels[0], edgecolors='grey')
-    plt.scatter(ordered_plddt_group[idx], ordered_perp_group[idx], c=colors[idx], s=20, alpha=1, label=labels[idx], edgecolors='grey')
-    print(np.nanmean(ordered_perp_group[0]), np.mean(ordered_plddt_group[0]))
-    ax.axhline(y=np.nanmean(ordered_perp_group[0]), c='k', ls='--', lw=0.75)
-    ax.axvline(x=np.mean(ordered_plddt_group[0]), c='k', ls='--', lw=0.75)
-    plt.ylim(0, 24)
+    plt.scatter(ordered_plddt_group[idx], ordered_perp_group[idx], c=colors[idx], s=20, alpha=1, label=labels[idx], edgecolors='k')
+    #print(np.nanmean(ordered_perp_group[0]), np.mean(ordered_plddt_group[0]))
+    ax.axhline(y=np.nanmedian(ordered_perp_group[0]), c='k', ls='--', lw=0.75)
+    ax.axvline(x=np.median(ordered_plddt_group[0]), c='k', ls='--', lw=0.75)
+    plt.ylim(0, 25)
     plt.xticks([25, 50, 75, 100])
     ax.set_ylabel(perp_model + ' Perplexity')
     ax.set_xlabel('pLDDT')
@@ -452,7 +487,7 @@ def plot_plddt_perp(ordered_plddt_group, ordered_perp_group, idx, colors, labels
 
 def ss_helix_strand(runs, data, labels, save_name):
     "2D Probability Density plots for DSSP 3-state predictions of % Helix and % Sheet"
-    fig, ax = plt.subplots(nrows=3, ncols=4, figsize=(10, 7.5), constrained_layout=True, sharex=False, sharey=False)
+    fig, ax = plt.subplots(nrows=3, ncols=4, figsize=(10, 7), constrained_layout=True, sharex=False, sharey=False)
     ax = ax.ravel()
     for i, run in enumerate(runs):
         helix = data[data['type'] == run]['helix_percent']
@@ -464,12 +499,12 @@ def ss_helix_strand(runs, data, labels, save_name):
 
         sns.kdeplot(x=helix, y=strand,
                     fill=True, thresh=0.001, levels=10,
-                    cmap='Greys', ax=ax[i], cbar=False, common_norm=True)
+                    cmap='Greys', ax=ax[i], cbar=True, common_norm=True)
         ax[i].set_xlabel('% Helix per Seq')
         ax[i].set_ylabel('% Strand per Seq')
         ax[i].set_xlim(-0.05, 1)
         ax[i].set_ylim(-0.05, 1)
-    plt.tight_layout()
+    #plt.tight_layout()
     fig.savefig(os.path.join('plots/helix_strand_' + save_name + '.svg'))
     fig.savefig(os.path.join('plots/helix_strand_' + save_name + '.png'))
 
@@ -500,11 +535,17 @@ def plot_embedding(train_emb, run_emb, colors, i, runs, project_run):
     fig.savefig(os.path.join('plots/fid_' + runs[i+1] + '_' + project_run + '.svg'))
     fig.savefig(os.path.join('plots/fid_' + runs[i+1] + '_' + project_run + '.png'))
 
+def clean_list(list):
+    cleanedList = [x for x in list if x ==x]
+    return cleanedList
 
 def plot_percent_similarity(all_df, colors, legend=False):
     fig, ax = plt.subplots(1, 1, figsize=(2.5, 2.5), sharey=True, sharex=True)
     #sns.set_palette(sns.color_palette("viridis", len(runs)))
     sns.ecdfplot(all_df, ax=ax, legend=legend, palette=colors)
+    #f = sns.boxplot([all_df['Valid MSA'].dropna(), all_df['Cond Max'].dropna(), all_df['Cond Rand'].dropna()],
+    #            ax=ax, palette=colors)
+    #f.set(xticklabels=['Valid MSA', 'Cond Max', 'Cond Rand'])
     ax.set_xlabel('% Similarity to Original MSA')
     ax.axvline(x=25, c='k', ls='--', lw=0.75)
     ax.set_title("% Sim")
@@ -554,7 +595,7 @@ def plot_conditional_sim(sim, out_path='plots/'):
     fig.savefig(out_path + '_similarity.png')
 
 def idr_parity_plot(mean_og_score, mean_gen_score, out_path):
-    fig, ax = plt.subplots(figsize=(3, 2.5))
+    fig, ax = plt.subplots(figsize=(6, 2.5))
     r_squared = stats.pearsonr(mean_og_score, mean_gen_score).statistic
     label = "$R$=%.2f" % (r_squared)
     plt.axline([0, 0], [1, 1], c='k', linestyle='dotted', alpha=0.75)
@@ -567,3 +608,66 @@ def idr_parity_plot(mean_og_score, mean_gen_score, out_path):
     fig.savefig(os.path.join(out_path, 'idr_parity_scatter.svg'))
     fig.savefig(os.path.join(out_path, 'idr_parity_scatter.png'))
     plt.close()
+
+def plot_idr(out_fpath, df, start, end, save_iter):
+    fig, ax = plt.subplots(figsize=(6,3))
+    plt.plot(df['resid'], df['score'], c='b')
+    plt.axhline(y=0.5, c='k', ls='--')
+    #plt.axvline(x=end, c='k', ls='--')
+    plt.axvspan(start, end, alpha=0.1, color='b')
+    plt.ylabel('score')
+    plt.xlabel('residue')
+    plt.tight_layout()
+    fig.savefig(out_fpath+'idr_'+str(save_iter)+'.svg')
+    fig.savefig(out_fpath+'idr_'+str(save_iter)+'.png')
+
+def plot_idr_drbert(out_fpath, prefix, df, start, end, save_iter):
+    fig, ax = plt.subplots(figsize=(6,3))
+    x = np.arange(0,len(df['score'][save_iter]))
+    plt.plot(x, df['score'][save_iter], c='b')
+    #plt.axhline(y=0.5, c='k', ls='--')
+    #plt.axvline(x=end, c='k', ls='--')
+    plt.axvspan(start, end, alpha=0.1, color='b')
+    plt.ylabel('score')
+    plt.xlabel('residue')
+    plt.ylim(0,1)
+    plt.tight_layout()
+    fig.savefig(out_fpath+'svg/'+prefix+str(save_iter)+'.svg')
+    #fig.savefig(out_fpath+prefix+str(save_iter)+'.png')
+
+
+def plot_idr_drbert_multiple(out_fpath, prefix, df, start, end, df2, start2, end2, save_iter):
+    fig, ax = plt.subplots(figsize=(4,1.5))
+    x = np.arange(0,len(df['score'][save_iter]))
+    x2 = np.arange(0,len(df2['score'][save_iter]))
+    plt.plot(x, df['score'][save_iter], c='#1E9AC7')
+    plt.plot(x2, df2['score'][save_iter], c='grey')
+    #plt.axhline(y=0.5, c='k', ls='--')
+    #plt.axvline(x=end, c='k', ls='--')
+    plt.axvspan(start, end, alpha=0.25, color='#1E9AC7')
+    #plt.axvspan(start2, end2, alpha=0.25, color='grey')
+    plt.ylabel('score')
+    plt.xlabel('residue')
+    plt.ylim(0,1)
+    plt.tight_layout()
+    fig.savefig(out_fpath+'svg/'+prefix+str(save_iter)+'.svg')
+    #fig.savefig(out_fpath+prefix+str(save_iter)+'.png')
+
+def idr_boxplot(gen_disorder_percent, gen_order_percent, out_fpath, save_name):
+    fig, ax = plt.subplots(figsize=(3,3))
+    f = sns.boxplot([gen_disorder_percent, gen_order_percent], ax=ax)
+    f.set(xticklabels=['Disorder', 'Non-Disordered'])
+    plt.ylim(0,1)
+    plt.tight_layout()
+    fig.savefig(out_fpath+save_name+'idr_box.svg')
+    fig.savefig(out_fpath+save_name+'idr_box.png')
+
+def idr_boxplot_all(df, out_fpath, save_name):
+    print(df)
+    fig, ax = plt.subplots(figsize=(3,3))
+    f = sns.boxplot(data=df, x="region", y="score", hue='type', ax=ax)
+    f.set(xticklabels=['Disorder', 'Non-Disordered'])
+    plt.ylim(0,1)
+    plt.tight_layout()
+    fig.savefig(out_fpath+save_name+'idr_box.svg')
+    fig.savefig(out_fpath+save_name+'idr_box.png')

@@ -55,7 +55,7 @@ def main():
     except:
         data_top_dir = 'data/'
 
-    num_seqs=20000
+    num_seqs=2000
 
     data = evodiff.data.get_valid_msas(data_top_dir, data_dir='openfold/', selection_type=selection_type, n_sequences=64, max_seq_len=512,
                                        out_path='../evodiff/ref/')
@@ -71,13 +71,17 @@ def main():
             #print(loss, tokens)
             losses.append(loss)
             n_tokens.append(tokens)
-            time_loss_data.append([t, loss, tokens])
+            if args.model_type == 'msa_oa_ar_randsub' or args.model_type == 'msa_oa_ar_maxsub':
+                time_loss_data.append([t, loss, tokens])
+            else:
+                time_loss_data.append([t.item(), loss, tokens])
         if i % 1000 == 0:
             ll = -sum(losses) / sum(n_tokens)
             perp = np.exp(-ll)
             print(i, "samples, perp:", np.mean(perp))
     print("Final test perp:", np.exp(sum(losses)/sum(n_tokens)))
     df = pd.DataFrame(time_loss_data, columns=['time', 'loss', 'tokens'])
+    df.to_csv('plots/perp_df_' + save_name + '.csv')
     if checkpoint[-1] == 'd3pm':
         plot_perp_group_d3pm(df, save_name)
     else:

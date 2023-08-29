@@ -17,7 +17,7 @@ def main():
     np.random.seed(0)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model-type', type=str, default='D3PM_BLOSUM_38M',
+    parser.add_argument('--model-type', type=str, default='d3pm_blosum_38M',
                         help='Choice of: carp_38M carp_640M esm1b_640M \
                               oa_ar_38M oa_ar_640M \
                               lr_ar_38M lr_ar_640M \
@@ -53,9 +53,9 @@ def main():
         print("Please select valid model")
 
     if save_name=='esm1b_650M':
-        max_len=1022 # For ESM max_len=1022 + start/stop tokens
+        max_len=1022 # For ESM max_len=1022 + start/stop tokens (1024)
     else:
-        max_len=2048
+        max_len=1022 # goes up to 2048, but keeping 1024 for comparisons
 
     # Def read seqs from fasta
     data = UniRefDataset('data/uniref50/', 'rtest', structure=False, max_len=max_len)
@@ -63,11 +63,13 @@ def main():
     losses = []
     n_tokens = []
     time_loss_data = []
-    for i in tqdm(range(60000)): #len(data))):
-        r_idx = np.random.choice(len(data))
+    for i in tqdm(range(10000)): #len(data))):
+        r_idx = i #np.random.choice(len(data)) # TODO fix when done debugging
         sequence = [data[r_idx]]
         t, loss, tokens = sum_nll_mask(sequence, checkpoint)
-        if len(loss) > 0:
+        #print("SEQ, LOSS", sequence, loss)
+        if checkpoint[-1] == 'causal-mask':
+        # if len(loss) > 0:
             for j in range(len(loss)):
                 if not np.isnan(loss[j]):  # esm-1b predicts nans at large % mask
                     losses.append(loss[j].item())
@@ -77,13 +79,14 @@ def main():
             if not np.isnan(loss): #esm-1b predicts nans at large % mask
                 losses.append(loss)
                 n_tokens.append(tokens)
-                time_loss_data.append([t, loss, tokens])
+                time_loss_data.append([t.item(), loss, tokens])
         if i % 100 == 0:
             ll = -sum(losses) / sum(n_tokens)
             perp = np.exp(-ll)
             #print(i, "samples, perp:", np.mean(perp))
     print("Final test perp:", np.exp(sum(losses)/sum(n_tokens)))
     df = pd.DataFrame(time_loss_data, columns=['time', 'loss', 'tokens'])
+    df.to_csv('plots/perp_df_'+save_name+'.csv')
     if checkpoint[-1] == 'd3pm':
         plot_perp_group_d3pm(df, save_name)
     else:

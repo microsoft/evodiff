@@ -77,7 +77,7 @@ def get_msa_depth_lengths(data_dir, all_files, save_depth_file, save_length_file
 
 def get_valid_msas(data_top_dir, data_dir='openfold/', selection_type='MaxHamming', n_sequences=64, max_seq_len=512,
                    out_path='../DMs/ref/'):
-    assert data_dir=='openfold', "get_valid_msas only works on OPENFOLD"
+    assert data_dir=='openfold/', "get_valid_msas only works on OPENFOLD"
     _ = torch.manual_seed(1) # same seeds used for training
     np.random.seed(1)
 

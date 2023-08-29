@@ -35,7 +35,7 @@ def calculate_fid(act1, act2):
     fid = ssdiff + trace(sigma1 + sigma2 - 2.0 * covmean)
     return fid
 
-project_run='large' #'large' or 'small'
+project_run='small' #'large' or 'small'
 
 # Calculate FID between test dataset sample and generated seqs
 if project_run=='large':

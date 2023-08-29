@@ -1,7 +1,7 @@
 # IDR generation 
 From sequence model 
 ```
-python generate/conditional_generation.py --model_type oa_ar_640M --cond-task idr 
+python generate/conditional_generation.py --model-type oa_ar_640M --cond-task idr 
 ```
 From MSA model 
 ```

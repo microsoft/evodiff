@@ -66,10 +66,10 @@ def batch_hamming(train_set, g):
     all_dist = [distance.hamming(t, g) for t in train_set]
     return all_dist
 
-project_dir = '../evodiff/'
+project_dir = ''
 train_fasta = project_dir + 'data/uniref50/' + 'consensus.fasta'
 # Calculate each dist to train
-runs = ['d3pm/oaardm-640M/']
+runs = ['d3pm/oaardm-640M-backup/']
 #runs = ['sequence/blosum-0-seq/', 'sequence/oaardm/',
 #runs = ['d3pm-final/random-0-seq/', 'arcnn/cnn-38M/', 'pretrain21/cnn-38M/', 'esm-1b/']
 
@@ -77,22 +77,22 @@ batch_size = 25 #10000
 
 # Compute Hamming between all natural sequences
 # Uncomment when done getting new data
-train_dists = []
-min_dist = 0.1
-num_lengths= 1
-train_seqs = parse_train(train_fasta)
-for i in range(num_lengths):
-    num_batches = math.ceil(len(train_seqs[i])/batch_size)
-    for batch in range(num_batches):
-        seq_arr=np.array([np.array(s) for s in train_seqs[i][batch*batch_size:(batch+1)*batch_size]])
-        print("batch", batch, "of", num_batches, "seq arr", seq_arr.shape)
-        all_dist = list(distance.pdist(np.array(seq_arr), metric='hamming'))
-        if min(all_dist) <= min_dist:
-            print(min(all_dist))
-            print([tokenizer.untokenize(seq) for seq in seq_arr])
-            min_dist = min(all_dist)
-            import pdb; pdb.set_trace()
-            print("minimum dis", min_dist)
+# train_dists = []
+# min_dist = 0.1
+# num_lengths= 1
+# train_seqs = parse_train(train_fasta)
+# for i in range(num_lengths):
+#     num_batches = math.ceil(len(train_seqs[i])/batch_size)
+#     for batch in range(num_batches):
+#         seq_arr=np.array([np.array(s) for s in train_seqs[i][batch*batch_size:(batch+1)*batch_size]])
+#         print("batch", batch, "of", num_batches, "seq arr", seq_arr.shape)
+#         all_dist = list(distance.pdist(np.array(seq_arr), metric='hamming'))
+#         if min(all_dist) <= min_dist:
+#             print(min(all_dist))
+#             print([tokenizer.untokenize(seq) for seq in seq_arr])
+#             min_dist = min(all_dist)
+#             import pdb; pdb.set_trace()
+#             print("minimum dis", min_dist)
 
 for run in runs:
     if run =='esm2':
@@ -119,7 +119,8 @@ for run in runs:
                     [train_gen_dists.append(dist) for dist in list_dist if dist <= 0.5]
         all_mins.append(min_train_gen_dists)
 
-    elif run == 'foldingdiff/' or run =='arcnn/cnn-38M/' or run=='d3pm/soar-640M/' or run=='sequence/oaardm/' or run=='d3pm/oaardm-640M/': #or run=='esm-1b/': have 1 weird sequence in esm-1b
+    elif run == 'foldingdiff/' or run =='arcnn/cnn-38M/' or run=='d3pm/soar-640M/' or run=='sequence/oaardm/' or run=='d3pm/oaardm-640M-backup/': #or run=='esm-1b/': have 1 weird sequence in esm-1b
+        all_mins = []
         print("Gathering seqs len for each sequence")
         # For autoreg and FoldingDiff data, find minimum hamming to each len in train of same length
         gen_fasta = project_dir + 'blobfuse/'+run+'generated_samples_string.fasta'
@@ -129,15 +130,19 @@ for run in runs:
         train_gen_dists = []
         min_train_gen_dists = 1
         curr_seq_len = 0
-        for seq in tqdm(seqs):
-            if len(seq) != curr_seq_len:
-                train_batch = parse_train_for_length(train_fasta, len(seq))
-                curr_seq_len = len(seq)
-            if len(train_batch)>0:
-                all_dist = batch_hamming(train_batch, seq)
-                if min(all_dist) <= min_train_gen_dists:
-                    min_train_gen_dists = min(all_dist)
-                    print("minimum dist", min_train_gen_dists)
+        include_list = [200, 380, 669, 945, 876] # lookup hamming for featured seqs
+        for seq_count, seq in enumerate(seqs):
+            if seq_count in include_list:
+                if len(seq) != curr_seq_len:
+                    train_batch = parse_train_for_length(train_fasta, len(seq))
+                    curr_seq_len = len(seq)
+                if len(train_batch)>0:
+                    all_dist = batch_hamming(train_batch, seq)
+                    if min(all_dist) <= min_train_gen_dists:
+                        min_train_gen_dists = min(all_dist)
+                        print("minimum dist", min_train_gen_dists)
+                all_mins.append(min_train_gen_dists)
+                print("seq", seq_count, min(all_dist))
 
     else: # For everything else we conditionally generated at 4 lengths so can just iterate over train data 1x
         train_seqs = parse_train(train_fasta)  # takes ~ 4 mim
@@ -162,3 +167,8 @@ for run in runs:
                         print("minimum dis", min_train_gen_dists)
                     #[train_gen_dists.append(dist) for dist in list_dist if dist <= 0.5]
         all_mins.append(min_train_gen_dists)
+
+    out_file = run + '_similarity.csv'
+    with open(out_file, 'w') as f:
+        [f.write(str(line) + "\n") for line in all_mins]
+    f.close()

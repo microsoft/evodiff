@@ -1,4 +1,5 @@
 import torch
+import evodiff
 import numpy as np
 from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS, GAP, START, STOP
 from evodiff.constants import BLOSUM_ALPHABET
@@ -427,7 +428,7 @@ def clean_pdb(fpath, data_top_dir, pdb):
     subprocess.call(["pdb_reres", os.path.join(fpath, pdb+'_clean.pdb')],
                                  stdout=reres_file)
 
-def run_tmscore(fpath, pdb, num_seqs, path_to_tmscore='TMscore', amlt=False):
+def run_tmscore(fpath, pdb, num_seqs, path_to_tmscore='TMscore', amlt=False, reres=False):
     """
     Wrapper for evaluating TM Scores
     """
@@ -435,19 +436,25 @@ def run_tmscore(fpath, pdb, num_seqs, path_to_tmscore='TMscore', amlt=False):
     assert os.path.exists(out_fpath), "Can't find out_fpath, did you run omegafold?"
     tm_scores = []
     for i in range(num_seqs):
+        #print("EVAL SEQ", i)
         temp_file = open(os.path.join(out_fpath, 'temp_tmscores.txt'), 'w')
         if amlt:
-            subprocess.call(['./'+path_to_tmscore, os.path.join(out_fpath, pdb + '_reres.pdb'),
-                            os.path.join(out_fpath,'SEQUENCE_'+str(i)+'.pdb')],
+            subprocess.call(['./'+path_to_tmscore, os.path.join(out_fpath, pdb + '_reference.pdb'),
+                            os.path.join(out_fpath,'SEQUENCE_'+str(i)+'.pdb'),  '-seq'],
                         stdout=temp_file)
         else:
-            subprocess.call([path_to_tmscore, os.path.join(out_fpath, pdb + '_reres.pdb'),
-                             os.path.join(out_fpath, 'SEQUENCE_' + str(i) + '.pdb')],
+            if reres:
+                ref_path = os.path.join(out_fpath, pdb + '_reres.pdb')
+            else:
+                ref_path = os.path.join(out_fpath, pdb + '_reference.pdb')
+            subprocess.call([path_to_tmscore, ref_path,
+                             os.path.join(out_fpath, 'SEQUENCE_' + str(i) + '.pdb'),  '-seq'],
                             stdout=temp_file)
         with open(os.path.join(out_fpath, 'temp_tmscores.txt')) as f:
             for line in f:
                 if len(line.split())>1 and "TM-score" == line.split()[0]:
                     tm_scores.append(line.split()[2])
+                    #print(line.split()[2])
         f.close()
     # Write all scores to file
     with open(os.path.join(out_fpath, 'tmscores.txt'), 'w') as f:
@@ -464,17 +471,18 @@ def wrap_dr_bert(out_fpath, generated_fasta_file='generated_samples_string.fasta
     subprocess.call(['python', path_to_dr_bert+'get_scores_fasta.py', path_to_dr_bert+'DR-BERT-final/',
                         out_fpath+generated_fasta_file, out_fpath+out_file])
 
-def read_dr_bert_output(out_fpath, ref_df):
-    gen_df = pd.read_pickle(out_fpath+'gen_out.pkl')
-    og_df = pd.read_pickle(out_fpath+'og_out.pkl')
-    mean_gen_score = []
-    mean_og_score = []
+def read_dr_bert_output(out_fpath, prefix, path_to_disorder_pickle, path_to_order_pickle, disorder_df, order_df):
+    drbert_disorder_out = pd.read_pickle(path_to_disorder_pickle)
+    drbert_order_out = pd.read_pickle(path_to_order_pickle)
+    #og_df = pd.read_pickle(out_fpath+'og_out.pkl')
+    mean_disorder_score = []
+    mean_order_score = []
 
-    print(gen_df)
-    print(og_df)
-    for i in range(len(gen_df)):
-        s = ref_df['start_idxs'][i]
-        e = ref_df['end_idxs'][i]
+    for i in range(len(disorder_df)):
+        s = disorder_df['start_idxs'][i]
+        e = disorder_df['end_idxs'][i]
+        order_s = order_df['start_idxs'][i]
+        order_e = order_df['end_idxs'][i]
         #print(len(df['sequence'][i]), len(df['score'][i]))
         # if np.isnan(gen_df.iloc[i]['score'][s:e].mean()).any() or np.isnan(og_df.iloc[i]['score'][s:e].mean()).any():
         #     print(len(gen_df.loc[i]['score']))
@@ -489,16 +497,61 @@ def read_dr_bert_output(out_fpath, ref_df):
         #     print("OG SEQUNECE", i, ref_df['original_idrs'][i])
         #     print("SCORE", og_df['score'][i][s:e].mean())
         #     print("SCORE", og_df['score'][i][s:e])
-
-        if len(gen_df.loc[i]['sequence']) < 1022:
-            mean_gen_score.append(gen_df['score'][i][s:e].mean())
-            mean_og_score.append(og_df['score'][i][s:e].mean())
-            #[mean_gen_score.append(item) for item in gen_df['score'][i][s:e]]
-            #[mean_og_score.append(item) for item in og_df['score'][i][s:e]]
-        else:
-            print("Skipping long sequence")
+        #if len(gen_df.loc[i]['sequence']) < 1022:
+        mean_disorder_score.append(drbert_disorder_out['score'][i][s:e].mean())
+        mean_order_score.append(drbert_order_out['score'][i][order_s:order_e].mean())
+        #[mean_gen_score.append(item) for item in gen_df['score'][i][s:e]]
+        #[mean_og_score.append(item) for item in og_df['score'][i][s:e]]
+        #print(drbert_disorder_out.head())
+        evodiff.plot.plot_idr_drbert_multiple(out_fpath + '/plots/', prefix+'_disorder_', drbert_disorder_out, s, e, drbert_order_out, order_s, order_e, i)
+        #evodiff.plot.plot_idr_drbert(out_fpath + '/plots/', prefix+'_disorder_', drbert_disorder_out, s, e, i)
+        #evodiff.plot.plot_idr_drbert(out_fpath + '/plots/', prefix+'_order_', drbert_order_out, order_s, order_e, i)
+        # else:
+        #     print("Skipping long sequence")
         #print(mean_gen_score, mean_og_score)
 
-    return mean_gen_score, mean_og_score
+    return mean_disorder_score, mean_order_score
+
+def wrap_disopred(fasta_file='gen_seq_0.fasta', path_to_disopred='BLAST+/run_disopred_plus.pl'):
+    """
+    Wrapper for running disopred
+    """
+    assert os.path.exists(fasta_file), "Can't find out path to .fasta"
+    subprocess.call([path_to_disopred, fasta_file])
+
+def eval_disopred_output(out_fpath, ref_df, prefix='', num_seqs=100):
+    "Eval output of gen and true sequences from disopred"
+    mean_gen_score = []
+    #mean_og_score = []
+    for i in range(num_seqs):
+        s = ref_df['start_idxs'][i]
+        e = ref_df['end_idxs'][i]
+
+        print(s,e)
+
+        gen_file = out_fpath + prefix+'gen_seq_' +str(i)+'.diso'
+        og_file = out_fpath + 'true_seq_'+str(i)+'.diso'
+        gen_df = pd.read_csv(gen_file, delim_whitespace=True, comment='#', names=['resid', 'residue', 'marker', 'score'])
+        og_df = pd.read_csv(og_file, delim_whitespace=True, comment='#', names=['resid', 'residue', 'marker', 'score'])
+
+        evodiff.plot.plot_idr(out_fpath+'/plots/'+prefix+'gen_seq_', gen_df, s, e, i)
+        evodiff.plot.plot_idr(out_fpath+'/plots/'+prefix+'true_seq_', og_df, s, e, i)
+
+        #print(len(gen_df))
+        #print(gen_df)
+        print("MEAN GEN SCORE", gen_df['score'][s:e].mean())
+        print("MEAN TRUE SCORE", og_df['score'][s:e].mean())
+        mean_gen_score.append(gen_df['score'][s:e].mean())
+        #mean_og_score.append(og_df['score'][s:e].mean())
+
+    return mean_gen_score #, mean_og_score
+
+
+
+
+
+
+
+
 
 

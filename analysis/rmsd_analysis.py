@@ -94,6 +94,7 @@ def main():
     structure = esm.inverse_folding.util.load_structure(home+'/pdb/'+ref_pdb, chain_ids)
     coords, native_seqs = esm.inverse_folding.multichain_util.extract_coords_from_complex(structure)
     sequence = native_seqs[chain_ids[0]]
+    print("NATIVE SEQ", sequence)
     original_fixed = sequence[args.start_idxs[0]:args.end_idxs[-1]]
     sim = []
     for i in range(len(motif_df)):
@@ -102,7 +103,10 @@ def main():
         gen_sequence = motif_df['seqs'].iloc[i][2:-2]
         gen_fixed = gen_sequence[new_motif_starts:new_motif_ends]
         sim.append(calc_sim(original_fixed, gen_fixed))
-
+    # Write all scores to file
+    with open(os.path.join(home + '/pdb/sim.txt'), 'w') as f:
+        [f.write(str(s) + '\n') for s in sim]
+    f.close()
     plot_conditional_sim(sim, out_path=home+'plots/')
 
 def calc_sim(seq1, seq2):
