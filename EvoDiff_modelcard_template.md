@@ -1,8 +1,3 @@
----
-# For reference on model card metadata, see the spec: https://github.com/huggingface/hub-docs/blob/main/modelcard.md?plain=1
-# Doc / guide: https://huggingface.co/docs/hub/model-cards
-{{ card_data }}
----
 
 # Model Card for EvoDiff
 
@@ -194,7 +189,7 @@ Our discrete diffusion models generate high-fidelity, diverse, and structurally-
 
 <!-- Carbon emissions can be estimated using the [Machine Learning Impact calculator](https://mlco2.github.io/impact#compute) presented in [Lacoste et al. (2019)](https://arxiv.org/abs/1910.09700). -->
 
-- **Hardware Type:** `38-V100s(32GB)` and `2x16-V100s(32GB)`
+- **Hardware Type:** `38-V100s(32GB)`
 - **Hours used:** 4,128 (14 days per sequence model, 10 days per MSA model)
 - **Cloud Provider:** Azure
 - **Compute Region:** East US
