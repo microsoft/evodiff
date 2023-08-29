@@ -577,7 +577,8 @@ def generate_scaffold_msa(model_type, model, PDB_ID, motif_start_idxs, motif_end
             p = preds[:, random_x, random_y, :max_token] # for first row don't let p_softmax predict gaps
             p_softmax = torch.nn.functional.softmax(p, dim=1)
             # # Penalize X token
-            penalty = torch.ones(p_softmax.shape).cuda()
+            penalty = torch.ones(p_softmax.shape)
+            penalty = penalty.to(device)
             penalty[:, x_token_location] += 100
             p_softmax /= penalty
             p_sample = torch.multinomial(input=p_softmax, num_samples=1)
