@@ -28,7 +28,7 @@ def main():
     try:
         data_top_dir = os.getenv('AMLT_DATA_DIR') + '/'
     except:
-        data_top_dir = 'data/'
+        data_top_dir = '../data/'
 
     if args.mask == 'autoreg':
         tokenizer = Tokenizer()
@@ -234,7 +234,7 @@ def sample_train_msa(train_msa_path, arg_mask='blosum', num_samples=2, selection
     from torch.utils.data import DataLoader
     train_msas = []
 
-    data_top_dir = '../DMs/data/'
+    data_top_dir = '../data/'
     if arg_mask == 'autoreg':
         tokenizer = Tokenizer()
         collater = MSAAbsorbingCollater(alphabet=MSA_ALPHABET)

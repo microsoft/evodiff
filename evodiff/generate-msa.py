@@ -75,7 +75,7 @@ def main():
         data_dir += config['dataset'] + '/'
         ptjob = True
     except:
-        data_top_dir = 'data/'
+        data_top_dir = '../data/'
         #print(data_top_dir)
         data_dir = data_top_dir
         data_dir += config['dataset'] + '/'

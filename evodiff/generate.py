@@ -132,7 +132,7 @@ def main():
                                                      device=device)
             elif scheme == 'd3pm':
                 i_sample, i_string = generate_d3pm(model, tokenizer, Q, Q_bar, timestep, seq_len, batch_size=1,
-                                                   penalty=args.penalty, device=device)
+                                                   device=device)
             string.append(i_string)
             sample.append(i_sample)
 
@@ -261,19 +261,21 @@ def generate_autoreg(model, tokenizer, samples=100, batch_size=1, max_seq_len=10
     return sample_out, untokenized_out
 
 
-def generate_d3pm(model, tokenizer, Q, Q_bar, timesteps, seq_len, batch_size=3):
+def generate_d3pm(model, tokenizer, Q, Q_bar, timesteps, seq_len, batch_size=3, device='cuda'):
     """
     Generate a random start string from uniform dist and convert to predictions
     """
     model.eval().cuda()
-    device = model.device()
+    #device = model.device()
 
     sample = torch.randint(0, tokenizer.K, (batch_size, seq_len))
     sample = sample.to(torch.long)
     sample = sample.to(device)
+    Q = Q.to(device)
+    Q_bar = Q_bar.to(device)
 
-    timesteps = np.linspace(timesteps-1,1,int((timesteps-1)/1), dtype=int) # iterate over reverse timesteps
-
+    timesteps = torch.linspace(timesteps-1,1,int((timesteps-1)/1), dtype=int) # iterate over reverse timesteps
+    timesteps = timesteps.to(device)
     with torch.no_grad():
         for t in tqdm(timesteps):
             timesteps = torch.tensor([t] * batch_size)

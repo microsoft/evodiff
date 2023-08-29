@@ -5,6 +5,7 @@ import urllib.request
 import torch
 import os
 import esm.inverse_folding
+import evodiff
 from evodiff.utils import Tokenizer, run_omegafold, clean_pdb, run_tmscore, wrap_dr_bert, read_dr_bert_output
 import pathlib
 from sequence_models.utils import parse_fasta
@@ -98,11 +99,17 @@ def main():
 
     if not os.path.exists(out_fpath):
         os.makedirs(out_fpath)
+    if not os.path.exists(out_fpath+'plots/'):
+        os.makedirs(out_fpath+'plots/')
+        os.makedirs(out_fpath+'plots/svg/')
 
     data_top_dir = top_dir + 'data/'
 
     if args.cond_task == 'idr':
-        index_file = pd.read_csv(data_top_dir + 'human_idr_alignments/human_idr_boundaries_gap.tsv', delimiter='\t')
+        if not os.path.exists(data_top_dir + 'human_idr_alignments/human_idr_boundaries_gap.tsv'):
+            print("PREPROCESSING DATA")
+            preprocess_IDR_data(data_top_dir)
+        index_file = pd.read_csv(data_top_dir + 'human_idr_alignments/human_idr_boundaries_gap.tsv', delimiter='\t', index_col=0)
         print("INDEX FILE LEN", len(index_file))
         strings = []
         og_strings = []
@@ -110,25 +117,129 @@ def main():
         og_idrs = []
         start_idxs = []
         end_idxs = []
+        og_start_idxs = []
+        og_end_idxs = []
+
+
+        b_strings = []
+        b_og_strings = []
+        b_new_idrs = []
+        b_og_idrs = []
+        b_start_idxs = []
+        b_end_idxs = []
+        og_b_start_idxs = []
+        og_b_end_idxs = []
+
+        r_strings = []
+        r_og_strings = []
+        r_new_idrs = []
+        r_og_idrs = []
+        r_start_idxs = []
+        r_end_idxs = []
+
+        r_b_strings = []
+        r_b_og_strings = []
+        r_b_new_idrs = []
+        r_b_og_idrs = []
+        r_b_start_idxs = []
+        r_b_end_idxs = []
+
+        oma_ids = []
+
         for i in range(args.num_seqs):
-            r_index = random.randint(0,len(index_file)-1)
-            string, og_string, new_idr, og_idr, start, end = generate_idr_msa(model, tokenizer, n_sequences=args.n_sequences,
-                                                                  seq_length=args.max_seq_len, device=device,
-                                                                  index=r_index, data_top_dir=data_top_dir,
-                                                                  selection_type=selection_type,
-                                                                  out_path=out_fpath, query_only=args.query_only)
+            src, start_idx, end_idx, original_msa, num_sequences, b_src, b_start_idx, b_end_idx, oma_id = get_IDR_MSAs(index_file, data_top_dir,
+                                                                                                               tokenizer,
+                                                                                                               max_seq_len=args.max_seq_len,
+                                                                                                               n_sequences=args.n_sequences,
+                                                                                                               selection_type=selection_type,
+                                                                                                               query_only=args.query_only)
+            string, og_string, new_idr, og_idr, start, end = generate_idr_msa(model, original_msa, src, num_sequences, start_idx,
+                                                                              end_idx, tokenizer, device=device,
+                                                                              query_only=args.query_only)
+            og_start, og_end = ungap_index_IDR(start, end, og_string)
+            print("before", start, end)
+            start, end = ungap_index_IDR(start, end, string[0])  # Reindex start/end for ungapped seq for dr_bert analysis
+            print("after", start, end)
+            print("after", og_start, og_end)
+
+            # print("GEN STRING", string[0].replace("-",""))
+            # print("GEN STRING LEN", len(string[0].replace("-","")))
+            # print("OG STRING", og_string.replace("-",""))
+            # print("OG STRING LEN", len(og_string.replace("-","")))
+            print(new_idr[0].replace("-",""))
+            print(string[0].replace("-","")[start:end])
+            #assert new_idr[0].replace("-","") == string[0].replace("-","")[start:end], "Generated IDR indexing wrong"
+            #assert og_idr[0].replace("-","") == og_string.replace("-","")[og_start:og_end], "Original IDR indexing wrong"
+            #import pdb; pdb.set_trace()
+            b_string, b_og_string, b_new_idr, b_og_idr, b_start, b_end = generate_idr_msa(model, original_msa, b_src, num_sequences, b_start_idx,
+                                                                             b_end_idx, tokenizer, device=device,
+                                                                             query_only=args.query_only)
+            og_b_start, og_b_end = ungap_index_IDR(b_start, b_end, b_og_string)
+            b_start, b_end = ungap_index_IDR(b_start, b_end, b_string[0])
+
+            r_string, r_og_string, r_new_idr, r_og_idr, r_start, r_end = generate_idr_msa(model, original_msa, src, num_sequences, start_idx,
+                                                                              end_idx, tokenizer, device=device,
+                                                                              query_only=args.query_only, random_baseline=True,
+                                                                            data_top_dir=data_top_dir)
+            r_start, r_end = ungap_index_IDR(r_start, r_end, r_string[0])
+            r_b_string, r_b_og_string, r_b_new_idr, r_b_og_idr, r_b_start, r_b_end = generate_idr_msa(model, original_msa, b_src, num_sequences,
+                                                                                          b_start_idx,
+                                                                                          b_end_idx, tokenizer,
+                                                                                          device=device,
+                                                                                          query_only=args.query_only, random_baseline=True,
+                                                                            data_top_dir=data_top_dir)
+            r_b_start, r_b_end = ungap_index_IDR(r_b_start, r_b_end-1, r_b_string[0])
+
+            oma_ids.append(oma_id)
+
             strings.append(string)
             og_strings.append(og_string)
             new_idrs.append(new_idr)
             og_idrs.append(og_idr)
             start_idxs.append(start)
             end_idxs.append(end)
+            og_start_idxs.append(og_start)
+            og_end_idxs.append(og_end)
+
+            b_strings.append(b_string)
+            b_og_strings.append(b_og_string)
+            b_new_idrs.append(b_new_idr)
+            b_og_idrs.append(b_og_idr)
+            b_start_idxs.append(b_start)
+            b_end_idxs.append(b_end)
+            og_b_start_idxs.append(og_b_start)
+            og_b_end_idxs.append(og_b_end)
+
+            r_strings.append(r_string)
+            r_og_strings.append(r_og_string)
+            r_new_idrs.append(r_new_idr)
+            r_og_idrs.append(r_og_idr)
+            r_start_idxs.append(r_start)
+            r_end_idxs.append(r_end)
+
+            r_b_strings.append(r_b_string)
+            r_b_og_strings.append(r_b_og_string)
+            r_b_new_idrs.append(r_b_new_idr)
+            r_b_og_idrs.append(r_b_og_idr)
+            r_b_start_idxs.append(r_b_start)
+            r_b_end_idxs.append(r_b_end)
+
         with open(out_fpath + 'original_samples_string.fasta', 'w') as f:
             for i, _s in enumerate(og_strings):
                 f.write(">SEQUENCE_" + str(i) + "\n" + str(_s) + "\n")
         save_df = pd.DataFrame(list(zip(new_idrs, og_idrs, start_idxs, end_idxs)),
                                columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
         save_df.to_csv(out_fpath + 'idr_df.csv', index=True)
+        og_save_df = pd.DataFrame(list(zip(og_idrs, og_idrs, og_start_idxs, og_end_idxs)),
+                               columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
+        og_save_df.to_csv(out_fpath + 'og_idr_df.csv', index=True)
+        b_save_df = pd.DataFrame(list(zip(b_new_idrs, b_og_idrs, b_start_idxs, b_end_idxs)),
+                               columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
+        b_save_df.to_csv(out_fpath + 'og_baseline_idr_df.csv', index=True)
+        og_b_save_df = pd.DataFrame(list(zip(new_idrs, og_idrs, og_b_start_idxs, og_b_end_idxs)),
+                                  columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
+        og_b_save_df.to_csv(out_fpath + 'idr_df.csv', index=True)
+
 
     elif args.cond_task == 'scaffold':
         strings = []
@@ -155,20 +266,64 @@ def main():
         save_df = pd.DataFrame(list(zip(strings, start_idxs, end_idxs, scaffold_lengths)), columns=['seqs', 'start_idxs', 'end_idxs', 'scaffold_lengths'])
         save_df.to_csv(out_fpath+'motif_df.csv', index=True)
 
+    # Write OMA_ID to file for reference
+    with open(out_fpath + 'queried_ids.csv', 'w') as f:
+        [f.write(o_id + "\n") for o_id in oma_ids]
+    f.close()
+
     with open(out_fpath + 'generated_samples_string.csv', 'w') as f:
         for _s in strings:
             f.write(_s[0]+"\n")
+    f.close()
+
     with open(out_fpath + 'generated_samples_string.fasta', 'w') as f:
         for i, _s in enumerate(strings):
             f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
+    f.close()
 
     if args.cond_task == 'idr':
-        wrap_dr_bert(out_fpath, generated_fasta_file='generated_samples_string.fasta',
-                     path_to_dr_bert=top_dir + '../DR-BERT/', out_file='gen_out.pkl')
-        wrap_dr_bert(out_fpath, generated_fasta_file='original_samples_string.fasta',
-                     path_to_dr_bert=top_dir + '../DR-BERT/', out_file='og_out.pkl')
-        mean_gen_score, mean_og_score = read_dr_bert_output(out_fpath, save_df)
-        idr_parity_plot(mean_gen_score, mean_og_score, out_fpath)
+        with open(out_fpath + 'baseline_samples_string.fasta', 'w') as f:
+            for i, _s in enumerate(b_strings):
+                f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
+        f.close()
+        with open(out_fpath + 'random_baseline_samples_string.fasta', 'w') as f:
+            for i, _s in enumerate(r_b_strings):
+                f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
+        f.close()
+        with open(out_fpath + 'random_generated_samples_string.fasta', 'w') as f:
+            for i, _s in enumerate(r_strings):
+                f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
+        f.close()
+
+        wrap_dr_bert(out_fpath, generated_fasta_file='generated_samples_string.fasta', path_to_dr_bert=top_dir + '../DR-BERT/', out_file='gen_out.pkl')
+        wrap_dr_bert(out_fpath, generated_fasta_file='original_samples_string.fasta', path_to_dr_bert=top_dir + '../DR-BERT/', out_file='og_out.pkl')
+        wrap_dr_bert(out_fpath, generated_fasta_file='baseline_samples_string.fasta', path_to_dr_bert=top_dir + '../DR-BERT/', out_file='b_out.pkl')
+        wrap_dr_bert(out_fpath, generated_fasta_file='random_baseline_samples_string.fasta', path_to_dr_bert=top_dir + '../DR-BERT/', out_file='r_b_out.pkl')
+        wrap_dr_bert(out_fpath, generated_fasta_file='random_generated_samples_string.fasta', path_to_dr_bert=top_dir + '../DR-BERT/', out_file='r_gen_out.pkl')
+
+        true_disorder_score, true_order_score = evodiff.utils.read_dr_bert_output(out_fpath, 'true', out_fpath + 'og_out.pkl', out_fpath + 'og_out.pkl', og_save_df, og_b_save_df)
+        gen_disorder_score, gen_order_score = evodiff.utils.read_dr_bert_output(out_fpath, 'gen', out_fpath + 'gen_out.pkl', out_fpath + 'b_out.pkl', save_df, b_save_df)
+        random_disorder_score, random_order_score = evodiff.utils.read_dr_bert_output(out_fpath, 'random', out_fpath + 'r_gen_out.pkl', out_fpath + 'r_b_out.pkl', save_df, b_save_df)
+
+        plot_df = pd.DataFrame({'score': true_disorder_score, 'region': ["disorder"]*len(true_disorder_score), 'type': ["true"]*len(true_disorder_score)})
+        #print(plot_df)
+        plot_df = plot_df.append(pd.DataFrame({'score': true_order_score, 'region': ["order"]*len(true_order_score), 'type': ["true"]*len(true_order_score)}), ignore_index=True)
+        #print(plot_df)
+        plot_df = plot_df.append(pd.DataFrame({'score': gen_disorder_score, 'region': ["disorder"]*len(gen_disorder_score), 'type': ["gen"]*len(gen_disorder_score)}), ignore_index=True)
+        plot_df = plot_df.append(pd.DataFrame({'score': gen_order_score, 'region': ["order"]*len(gen_order_score), 'type': ["gen"]*len(gen_order_score)}), ignore_index=True)
+        plot_df = plot_df.append(pd.DataFrame(
+            {'score': random_disorder_score, 'region': ["disorder"] * len(random_disorder_score),
+             'type': ["random"] * len(random_disorder_score)}), ignore_index=True)
+        plot_df = plot_df.append(
+            pd.DataFrame({'score': random_order_score, 'region': ["order"] * len(random_order_score),
+                          'type': ["random"] * len(random_order_score)}), ignore_index=True)
+
+        plot_df.to_csv(out_fpath + 'drbert_scores_df.csv', index=True)
+
+        evodiff.plot.idr_boxplot_all(plot_df, out_fpath+'plots/', save_name='combined_')
+        evodiff.plot.idr_boxplot(true_disorder_score, true_order_score, out_fpath + 'plots/', save_name='true_')
+        evodiff.plot.idr_boxplot(gen_disorder_score, gen_order_score, out_fpath + 'plots/', save_name='gen_')
+        evodiff.plot.idr_boxplot(random_disorder_score, random_order_score, out_fpath + 'plots/', save_name='random_')
     elif args.cond_task == 'scaffold':
         # After cond gen, run omegafold
         print("Finished generation, starting omegafold")
@@ -436,15 +591,10 @@ def generate_scaffold_msa(model_type, model, PDB_ID, motif_start_idxs, motif_end
     return untokenized, sliced_start_idxs, [i - 1 for i in sliced_end_idxs], seq_len  # return output and untokenized output, re-indexed motif starts and ends (ends-1 for rmsd analyis)
 
 
-def generate_idr_msa(model, tokenizer, n_sequences=64, seq_length=512, device='gpu', index=0,
-                     data_top_dir='../data', selection_type='MaxHamming', out_path='../ref/', query_only=True):
-    src, start_idx, end_idx, original_msa, num_sequences = get_IDR_MSAs(index, data_top_dir, tokenizer,
-                                                                        max_seq_len=seq_length,
-                                                                        n_sequences=n_sequences, out_path=out_path,
-                                                                        selection_type=selection_type,
-                                                                        query_only=query_only)
+def generate_idr_msa(model, original_msa, src, num_sequences, start_idx, end_idx, tokenizer, device='gpu', query_only=True, random_baseline=False, data_top_dir='data/'):
     src = torch.tensor(src).unsqueeze(0) # Make batchsize 1
-
+    if random_baseline:
+        train_prob_dist = aa_reconstruction_parity_plot(data_top_dir+'../', 'reference/', 'placeholder.csv', gen_file=False)
     if query_only:
         masked_loc_x = [0]
     else:
@@ -460,24 +610,27 @@ def generate_idr_msa(model, tokenizer, n_sequences=64, seq_length=512, device='g
         for i in tqdm(all_ind):
             #print(i)
             random_x, random_y = i
-            #print(sample.shape)
-            preds = model(sample)  # Output shape of preds is (BS=1, N=64, L, n_tokens=31)
-            #print("preds", preds.shape)
-            #print(random_x, random_y)
-            p = preds[:, random_x, random_y, :]
-            # if random_x == 0:  # for first row don't let p_softmax predict gaps
-            #     p = preds[:, random_x, random_y, :tokenizer.K - 1]
-            p_softmax = torch.nn.functional.softmax(p, dim=1)
-            # Penalize gaps
-            #penalty = torch.ones(p.shape).to(p.device)
-            #penalty[:, -1] += penalty_value
-            # print(p_softmax)
-            #p_softmax /= penalty
-            # print(p_softmax)
-            p_sample = torch.multinomial(input=p_softmax, num_samples=1)
-            p_sample = p_sample.squeeze()
+            if random_baseline:
+                p_sample = torch.multinomial(torch.tensor(train_prob_dist), num_samples=1)
+            else:
+                #print(sample.shape)
+                preds = model(sample)  # Output shape of preds is (BS=1, N=64, L, n_tokens=31)
+                #print("preds", preds.shape)
+                #print(random_x, random_y)
+                p = preds[:, random_x, random_y, :]
+                # if random_x == 0:  # for first row don't let p_softmax predict gaps
+                #     p = preds[:, random_x, random_y, :tokenizer.K - 1]
+                p_softmax = torch.nn.functional.softmax(p, dim=1)
+                # Penalize gaps
+                #penalty = torch.ones(p.shape).to(p.device)
+                #penalty[:, -1] += penalty_value
+                # print(p_softmax)
+                #p_softmax /= penalty
+                # print(p_softmax)
+                p_sample = torch.multinomial(input=p_softmax, num_samples=1)
+                p_sample = p_sample.squeeze()
             sample[:, random_x, random_y] = p_sample
-            #print(tokenizer.untokenize(sample[0][0]))
+            #print(tokenizer.untokenize(sample[0][0][start_idx:end_idx]))
     #print(sample.shape)
     #print([tokenizer.untokenize(seq) for seq in sample[0]])
     new_idr = [tokenizer.untokenize(sample[0][0][start_idx:end_idx])]
@@ -500,6 +653,9 @@ def mask_idr(seq, new_start_idx, new_end_idx, i, num_unpadded_rows):
     return masked_seq
 
 def reindex_IDR(start_idx, end_idx, query_seq, gapped_query_seq):
+    """
+    From a start and end idx corresponding to an ungapped sequence, get the start and end idx for a gapped sequence
+    """
     old_idx = list(np.arange(1, len(query_seq) + 1))  # This starts at 1 and is inclusive
     gap_count = 0
     offset = []  # This tracks how many gaps between letters
@@ -516,10 +672,37 @@ def reindex_IDR(start_idx, end_idx, query_seq, gapped_query_seq):
     old_end = old_idx.index(end_idx)
 
     # Add gaps to old index to get new start/end index
-    new_start = offset[old_start] + start_idx
+    new_start = offset[old_start] + start_idx # original idx starts at 1
     new_end = offset[old_end] + end_idx
 
     return new_start, new_end  # new range of IDR (inclusive)
+
+def ungap_index_IDR(start_gapped, end_gapped, gapped_query_seq):
+    """
+    From a start and end idx corresponding to an gapped sequence, get the start and end idx for an ungapped sequence
+    """
+    gap_count = 0
+    offset = []  # This tracks how many gaps between letters
+    for aa in list(gapped_query_seq):
+        if aa == '-':
+            offset.append(gap_count)
+            gap_count += 1
+        else:
+            offset.append(gap_count)
+    #print(len(offset), len(gapped_query_seq))
+    assert len(offset) == len(gapped_query_seq)
+
+    # Add gaps to old index to get new start/end index
+    # if offset[start_gapped] == 0 or offset[end_gapped] == 0:
+    print(gapped_query_seq)
+    print(offset)
+    print("minus", offset[start_gapped])
+    print("minus", offset[end_gapped-1])
+    #import pdb; pdb.set_trace()
+    start_ungapped = start_gapped - offset[start_gapped]
+    end_ungapped = end_gapped - offset[end_gapped-1]
+
+    return start_ungapped, end_ungapped  # new range of IDR (inclusive)
 
 def preprocess_IDR_data(data_top_dir):
     data_dir = data_top_dir + 'human_idr_alignments/'
@@ -527,11 +710,11 @@ def preprocess_IDR_data(data_top_dir):
     index_file = pd.read_csv(data_dir + 'human_idr_boundaries.tsv', delimiter='\t')
 
     # Filter out IDRs > 250 residues in length
-    index_file['LENGTHS'] = list(index_file['END'] - index_file['START'])
-    print("BEFORE FILTERING OUT LONG IDRS", len(index_file))
-    index_file = index_file[index_file['LENGTHS'] <= 250]
-    print("AFTER FILTERING LONG IDRS", len(index_file))
-    # print(index_file.head())
+    # index_file['LENGTHS'] = list(index_file['END'] - index_file['START'])
+    print("BEFORE", len(index_file))
+    # index_file = index_file[index_file['LENGTHS'] <= 250]
+    # print("AFTER FILTERING LONG IDRS", len(index_file))
+    # # print(index_file.head())
     # import pdb; pdb.set_trace()
     # print(len(index_file), "TOTAL IDRS")
     # REFILTER FOR GAPPED MSAs
@@ -558,66 +741,60 @@ def preprocess_IDR_data(data_top_dir):
     index_file['GAP START'] = new_starts
     index_file['GAP END'] = new_ends
     index_file['GAP LENGTHS'] = list(index_file['GAP END'] - index_file['GAP START'])
-    index_file = index_file[index_file['GAP LENGTHS'] <= 250]
-    print("AFTER FILTERING LONG GAP IDRS", len(index_file))
+    #index_file = index_file[index_file['GAP LENGTHS'] <= 250]
+    print("AFTER", len(index_file))
     index_file.to_csv(data_dir + 'human_idr_boundaries_gap.tsv', sep='\t')
 
-def get_IDR_MSAs(index, data_top_dir, tokenizer, max_seq_len=512, n_sequences=64, out_path='', selection_type='random', query_only=True):
+def get_IDR_MSAs(index_file, data_top_dir, tokenizer, max_seq_len=512, n_sequences=64, selection_type='random', query_only=True):
     # GET IDRS
-    data_dir = data_top_dir + 'human_idr_alignments/'
-    all_files = os.listdir(data_dir + 'human_protein_alignments')
-    if not os.path.exists(data_dir + 'human_idr_boundaries_gap.tsv'):
-        preprocess_IDR_data(data_top_dir)
-    index_file = pd.read_csv(data_dir + 'human_idr_boundaries_gap.tsv', delimiter='\t')
-    print("USING INDEX", index)
-    row = index_file.iloc[index]
-    # Get MSA
-    msa_file = [file for i, file in enumerate(all_files) if row['OMA_ID'] in file][0]
-    msa_data, new_start_idx, new_end_idx, num_sequences = subsample_IDR_MSA(row, msa_file, data_dir, tokenizer, max_seq_len=max_seq_len, n_sequences=n_sequences,
-                                 selection_type=selection_type)
-    # new_start_idx = row['GAP START']
-    # new_end_idx = row['GAP END']
-    #print("new index?", new_start_idx, new_end_idx)
-    # print("ENTIRE QUERY", msa_data[0])
-    # print("ENTIRE IDR", msa_data[0][new_start_idx:new_end_idx])
-    # print("PRE MASK IDR", msa_data[0][new_start_idx:new_end_idx].replace("-",""))
+    # index = random.randint(0, len(index_file) - 1)
+    #
+    # data_dir = data_top_dir + 'human_idr_alignments/'
+    # all_files = os.listdir(data_dir + 'human_protein_alignments')
+    # if not os.path.exists(data_dir + 'human_idr_boundaries_gap.tsv'):
+    #     preprocess_IDR_data(data_top_dir)
+    # print("USING INDEX", index)
+    # row = index_file.iloc[index]
+    # # Get MSA
+    # msa_file = [file for i, file in enumerate(all_files) if row['OMA_ID'] in file][0]
+    msa_data, new_start_idx, new_end_idx, num_sequences, b_start_idx, b_end_idx, oma_id = subsample_IDR_MSA(index_file, tokenizer, max_seq_len=max_seq_len, n_sequences=n_sequences,
+                                 selection_type=selection_type, data_top_dir=data_top_dir)
+    print(len(msa_data[0]))
     # MASK out IDR
     masked_msa = msa_data.copy()
-    masked_msa[0] = mask_idr(msa_data[0],new_start_idx, new_end_idx, 0, num_sequences)
+    masked_msa[0] = mask_idr(msa_data[0], new_start_idx, new_end_idx, 0, num_sequences)
+    print(len(masked_msa[0]))
     if not query_only:
         masked_msa = [mask_idr(seq, new_start_idx, new_end_idx, i, num_sequences) for i, seq in enumerate(msa_data)]
-    #print(len(masked_msa))
-    #print(masked_msa)
-    #import pdb; pdb.set_trace()
-    #print("ENTIRE MASKED QUERY", masked_msa[0])
-    # import pdb; pdb.set_trace()
-    #original_msa_idr = msa_data
+
+    # MASK out non-IDR baseline
+    b_masked_msa = msa_data.copy()
+    b_masked_msa[0] = mask_idr(msa_data[0], b_start_idx, b_end_idx, 0, num_sequences)
+    print(len(b_masked_msa[0]))
+    print(b_masked_msa[0])
+    if not query_only:
+        b_masked_msa = [mask_idr(seq, b_start_idx, b_end_idx, i, num_sequences) for i, seq in enumerate(msa_data)]
+
     tokenized_msa = [tokenizer.tokenizeMSA(seq) for seq in masked_msa]
     tokenized_msa = np.array([l.tolist() for l in tokenized_msa])
+    b_tokenized_msa = [tokenizer.tokenizeMSA(seq) for seq in b_masked_msa]
+    print("sEQUENCE")
+    print("LENGTH", len(b_tokenized_msa))
+    print("FIRST SEQ LEN", len(b_tokenized_msa[0]))
+    print([len(l) for l in b_tokenized_msa if len(l) != len(b_tokenized_msa[0])])
+    b_tokenized_msa = np.array([l.tolist() for l in b_tokenized_msa])
 
-    # print(row)
-    # #print("true IDR", row['IDR_SEQ'])
-    #
-    # with open(out_path + 'valid_msas.a3m', 'a') as f:
-    #     for i, msa in enumerate(original_msa_idr):
-    #         #print(i, msa)
-    #         if i == 0 :
-    #             f.write(">SEQUENCE_" + str(i) + "\n" + str(msa) + "\n")
-    #         else:
-    #             f.write(">tr \n" + str(msa) + "\n" )
-    #     f.close()
-    # with open(out_path + 'valid_idr.a3m', 'a') as f:
-    #     for i, msa in enumerate(original_msa_idr):
-    #         if i == 0 :
-    #             print("CAPTURED IDR", msa[new_start_idx:new_end_idx])
-    #             f.write(">SEQUENCE_" + str(i) + "\n" + str(msa[new_start_idx:new_end_idx]) + "\n")
-    #         else:
-    #             f.write(">tr \n" + str(msa[new_start_idx:new_end_idx]) + "\n" )
-    #     f.close()
+    return tokenized_msa, new_start_idx, new_end_idx, msa_data, num_sequences, b_tokenized_msa, b_start_idx, b_end_idx, oma_id
 
-    return tokenized_msa, new_start_idx, new_end_idx, msa_data, num_sequences
+import itertools
+def intervals_extract(iterable):
+    iterable = sorted(set(iterable))
+    for key, group in itertools.groupby(enumerate(iterable),
+                                        lambda t: t[1] - t[0]):
+        group = list(group)
+        yield [group[0][1], group[-1][1]]
 
-def subsample_IDR_MSA(row, filename, data_dir, tokenizer, max_seq_len=512, n_sequences=64, selection_type='random'):
+def subsample_IDR_MSA(index_file, tokenizer, max_seq_len=512, n_sequences=64, selection_type='random', data_top_dir='data/'):
     ## TODO CAN use a general subsample MSA here -> try to recode
     """
     Inputs
@@ -635,69 +812,139 @@ def subsample_IDR_MSA(row, filename, data_dir, tokenizer, max_seq_len=512, n_seq
     sliced_idr_end_idx: new IDR end index of MSA
     msa_n_sequences: number of sequences in msa (will be less than or = n_sequences)
     """
-    parsed_msa, msa_names = parse_fasta(data_dir + 'human_protein_alignments/' + filename, return_names=True)
-    # Get query
-    query_idx = [i for i, name in enumerate(msa_names) if name == row['OMA_ID']][0]  # get query index
+    data_dir = data_top_dir + 'human_idr_alignments/'
+    all_files = os.listdir(data_dir + 'human_protein_alignments')
+    count = 0
 
-    new_start_idx = row['GAP START']
-    new_end_idx = row['GAP END']
+    for i in range(len(index_file)):
+        while count < 1:
+            index = random.randint(0, len(index_file) - 1) #2 #13160 #
+            row = index_file.loc[index]
+            # Get MSA
+            msa_file = [file for i, file in enumerate(all_files) if row['OMA_ID'] in file][0]
+            parsed_msa, msa_names = parse_fasta(data_dir + 'human_protein_alignments/' + msa_file, return_names=True)
+            # Get query
+            query_idx = [i for i, name in enumerate(msa_names) if name == row['OMA_ID']][0]  # get query index
 
-    aligned_msa = [[char for char in seq if (char.isupper() or char == '-') and not char == '.'] for seq in parsed_msa]
-    aligned_msa = [''.join(seq) for seq in aligned_msa]
+            new_start_idx = row['GAP START']
+            new_end_idx = row['GAP END']
 
-    tokenized_msa = [tokenizer.tokenizeMSA(seq) for seq in aligned_msa]
-    tokenized_msa = np.array([l.tolist() for l in tokenized_msa])
-    #print("TRUE IDR", row['IDR_SEQ'])
-    #print("QUERY SEQUENCE", tokenizer.untokenize(tokenized_msa[query_idx]))
-    #print("CAPTURED IDR", tokenizer.untokenize(tokenized_msa[query_idx, new_start_idx:new_end_idx]))
-    #print("CAPTURED IDR", tokenizer.untokenize(tokenized_msa[query_idx, new_start_idx:new_end_idx]).replace("-",""))
-    #import pdb; pdb.set_trace()
+            aligned_msa = [[char for char in seq if (char.isupper() or char == '-') and not char == '.'] for seq in
+                           parsed_msa]
+            aligned_msa = [''.join(seq) for seq in aligned_msa]
 
-    msa_seq_len = len(tokenized_msa[0])
-    if msa_seq_len > max_seq_len:
-        # If seq len larger than max, center IDR
-        idr_len = new_end_idx - new_start_idx
-        buffer = int((max_seq_len - idr_len)/2)
-        if new_start_idx - buffer < 0: # if IDR at beginning of seq
-            print("BEGINNING")
-            slice_start = 0
-            slice_end = max_seq_len
-            sliced_idr_start_idx = new_start_idx
-            sliced_idr_end_idx = new_end_idx
-        elif new_end_idx + buffer > msa_seq_len: # if IDR at end of seq
-            print("END")
-            slice_start = msa_seq_len - max_seq_len
-            slice_end = msa_seq_len
-            sliced_idr_end_idx = max_seq_len - (msa_seq_len - new_end_idx)
-            sliced_idr_start_idx = sliced_idr_end_idx - idr_len
-        else: # center IDR
-            print("CENTER")
-            slice_start = new_start_idx - buffer
-            slice_end = new_end_idx + buffer
-            sliced_idr_start_idx = buffer
-            sliced_idr_end_idx = buffer + idr_len
-        print("SLICING INDEX", slice_start, slice_end)
-        print("IDR INDEX", new_start_idx, new_end_idx)
-        print("IDR INDEX, adjust slice", sliced_idr_start_idx, sliced_idr_end_idx)
-        #seq_len = max_seq_len
-    else:
-        slice_start = 0
-        slice_end = msa_seq_len
-        sliced_idr_start_idx = new_start_idx
-        sliced_idr_end_idx = new_end_idx
+            tokenized_msa = [tokenizer.tokenizeMSA(seq) for seq in aligned_msa]
+            tokenized_msa = np.array([l.tolist() for l in tokenized_msa])
+
+            msa_seq_len = len(tokenized_msa[0])
+            idr_len = new_end_idx - new_start_idx #len(row['IDR_SEQ']) #
+            idr_len_nogaps = len(row['IDR_SEQ']) #new_end_idx - new_start_idx
+
+            #TESTING
+            # These two lines should be the same thing
+            # print("TRUE IDR", row['IDR_SEQ'])
+            # print(tokenizer.untokenize(tokenized_msa[query_idx, new_start_idx:new_end_idx]).replace("-", ""))
+            # print(idr_len)
+            # print(idr_len_nogaps)
+            # import pdb; pdb.set_trace()
+
+            # Get non-idr ranges
+            query_rows = index_file[index_file["OMA_ID"] == row['OMA_ID']]
+            idr_ranges = []
+            for i in range(len(query_rows)):
+                idr_range = np.arange(query_rows.iloc[i]['GAP START'], query_rows.iloc[i]['GAP END'])
+                idr_ranges.extend(idr_range)
+            # print(idr_ranges)
+            seq_indices = np.arange(0, msa_seq_len)
+            non_idr_indices = [s for s in seq_indices if s not in idr_ranges]
+            non_idr_ranges = list(intervals_extract(non_idr_indices))
+            # print(non_idr_ranges)
+            non_idr_ranges = [r for r in non_idr_ranges if r[1] - r[0] > idr_len_nogaps]
+
+            # Subsample MSA of max_seq_len around IDR indices, inclusive of non-IDR baseline region
+            if msa_seq_len > max_seq_len and idr_len < (max_seq_len / 2) and len(non_idr_ranges) > 0:
+                # If seq len larger than max, idr is less than half the sequence, and there are non-idr ranges in sequence center IDR
+                buffer = int((max_seq_len - idr_len) / 2)
+                if new_start_idx - buffer < 0:  # if IDR at beginning of seq
+                    print("BEGINNING")
+                    slice_start = 0
+                    slice_end = max_seq_len
+                    sliced_idr_start_idx = new_start_idx
+                    sliced_idr_end_idx = new_end_idx
+                    b_start_idx = sliced_idr_end_idx + 1
+                    if b_start_idx + idr_len_nogaps >= max_seq_len: # Reduce baseline length if longer than max len
+                        b_end_idx = max_seq_len
+                    else:
+                        b_end_idx = b_start_idx + idr_len_nogaps
+                elif new_end_idx + buffer > msa_seq_len:  # if IDR at end of seq
+                    print("END")
+                    slice_start = msa_seq_len - max_seq_len
+                    slice_end = msa_seq_len
+                    sliced_idr_end_idx = max_seq_len - (msa_seq_len-new_end_idx)
+                    sliced_idr_start_idx = sliced_idr_end_idx - idr_len
+                    b_end_idx = sliced_idr_start_idx - 1
+                    b_start_idx = b_end_idx - idr_len_nogaps
+                    if b_start_idx - idr_len_nogaps < 0 : # Reduce baseline length if longer than max len
+                        b_start_idx = 0
+                    else:
+                        b_end_idx = b_start_idx + idr_len_nogaps
+                else:  # center IDR
+                    print("CENTER")
+                    slice_start = new_start_idx - buffer
+                    slice_end = new_end_idx + buffer
+                    sliced_idr_start_idx = buffer
+                    sliced_idr_end_idx = sliced_idr_start_idx + idr_len
+                    b_start_idx = sliced_idr_end_idx + 1
+                    if b_start_idx + idr_len_nogaps >= max_seq_len: # Reduce baseline length if longer than max len
+                        b_end_idx = max_seq_len
+                    else:
+                        b_end_idx = b_start_idx + idr_len_nogaps
+                print("SLICING INDEX", slice_start, slice_end)
+                print("BASELINE INDEX", b_start_idx, b_end_idx)
+                if slice_end-slice_start < max_seq_len: # If slicing sequence length 511 in center, correct length
+                    slice_end += max_seq_len-(slice_end-slice_start)
+                    print("ADJUST SLICING INDEX", slice_start, slice_end)
+                print("IDR INDEX, adjust slice", sliced_idr_start_idx, sliced_idr_end_idx)
+                # seq_len = max_seq_len
+                count += 1
+            elif msa_seq_len < max_seq_len and idr_len < msa_seq_len / 2 and len(non_idr_ranges) > 0:
+                print("SHORT SEQ")
+                slice_start = 0
+                slice_end = msa_seq_len
+                sliced_idr_start_idx = new_start_idx
+                sliced_idr_end_idx = new_end_idx
+                b_start_idx = non_idr_ranges[0][0]
+                b_end_idx = b_start_idx + idr_len_nogaps
+                count += 1
+            else:
+                print("SKIPPING MSA")
+        else:
+            break
+
+        if b_start_idx in idr_ranges or b_end_idx in idr_ranges:
+            print("BASELINE INDICES ARE IN IDR RANGES")
+            import pdb; pdb.set_trace()
 
     # Slice to model constraints
     sliced_msa_seq = tokenized_msa[:, slice_start: slice_end]
+    print("SLICED MSA_SEQ", len(sliced_msa_seq[0]), len(sliced_msa_seq[1]))
     #print(slice_start, slice_end)
     #print(tokenized_msa, sliced_msa_seq)
     # Remove query from array
     sliced_msa_seq = np.append(sliced_msa_seq[:query_idx], sliced_msa_seq[query_idx+1:], axis=0)
     # Query Sequence
     anchor_seq = tokenized_msa[query_idx, slice_start:slice_end]  # This is the query sequence
-    #print("ANCHOR SEQ", tokenizer.untokenize(anchor_seq))
+    print("ANCHOR SEQ", len(tokenizer.untokenize(anchor_seq)),  tokenizer.untokenize(anchor_seq))
+    # TODO: what is going on here?
     print("VERIFY INDEXING IS CORRECT, THE FOLLOWING SHOULD MATCH")
-    print("TRUE IDR", row['IDR_SEQ'])
-    print("INDX IDR", tokenizer.untokenize(anchor_seq[sliced_idr_start_idx:sliced_idr_end_idx]).replace("-",""))
+    print("SAMPLING INDEX", index)
+    # print("IDR LEN", idr_len)
+    # print("IDR LEN NO GAPS", idr_len_nogaps)
+    print("TRUE IDR:", row['IDR_SEQ'])
+    # print("LEN, START, END", len(anchor_seq), sliced_idr_start_idx, sliced_idr_end_idx )
+    print("INDX IDR:", tokenizer.untokenize(anchor_seq[sliced_idr_start_idx:sliced_idr_end_idx]).replace("-", ""))
+    print("BASELINE SEQ", tokenizer.untokenize(anchor_seq[b_start_idx:b_end_idx]).replace("-", ""))
+    #print("LENGTHS", idr_len_nogaps, len(tokenizer.untokenize(anchor_seq[b_start_idx:b_end_idx])))
     #import pdb; pdb.set_trace()
     sliced_msa = [seq for seq in sliced_msa_seq if (list(set(seq)) != [tokenizer.gap_id])]
     msa_num_seqs = len(sliced_msa) + 1 # +1 accounts for query
@@ -737,15 +984,16 @@ def subsample_IDR_MSA(row, filename, data_dir, tokenizer, max_seq_len=512, n_seq
                 msa_subset = np.delete(msa_subset, random_ind, axis=0)
                 distance_matrix = np.delete(distance_matrix, random_ind, axis=1)
     else:
+        print("N_SEQ < MSA SEQUENCES")
         msa_n_sequences = msa_num_seqs
-        output = np.full(shape=(n_sequences, max_seq_len), fill_value=tokenizer.gap_id) # TREAT SMALL SEQS as having gaps here
+        output = np.full(shape=(n_sequences, max_seq_len), fill_value=tokenizer.pad_id)
         output[0:1, :len(anchor_seq)] = anchor_seq
         output[1:msa_num_seqs, :len(anchor_seq)] = sliced_msa
         #output = np.concatenate((np.array(anchor_seq).reshape(1,-1), np.array(sliced_msa)), axis=0)
 
     output = [tokenizer.untokenize(seq) for seq in output]
-    # print(len(output), len(output[0]))
-    return output, sliced_idr_start_idx, sliced_idr_end_idx, msa_n_sequences
+    #print("FINAL LENS", len(output[0]))
+    return output, sliced_idr_start_idx, sliced_idr_end_idx, msa_n_sequences, b_start_idx, b_end_idx, row['OMA_ID']
 
 if __name__ == '__main__':
     main()
