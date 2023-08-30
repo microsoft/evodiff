@@ -91,7 +91,7 @@ Note: if you want to download a `D3PM` model, you will first need to download [d
 
 ## Provided notebook with examples
 
-We provide a [notebook](https://github.com/microsoft/evodiff/tree/main/examples/evodiff.ipynb) with installation guidance. It also includes examples on how to generate a smaller number of sequences and MSAs using our models. We recommend following this notebook if you would like to use our models to generate proteins.
+We provide a notebook with installation guidance that can be found in [examples/evodiff.ipynb](https://github.com/microsoft/evodiff/tree/main/examples/evodiff.ipynb). It also includes examples on how to generate a smaller number of sequences and MSAs using our models. We recommend following this notebook if you would like to use our models to generate proteins.
 
 ----
 
