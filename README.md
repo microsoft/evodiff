@@ -79,6 +79,7 @@ Available models are:
 * ``` MSA_D3PM_OA_AR_RANDSUB() ```
 * ``` MSA_D3PM_OA_AR_MAXSUB() ```
 
+NOTE: if you want to download a `D3PM` model, you will first need to download [data/blosum62-special-MSA.mat](https://github.com/microsoft/evodiff/blob/main/data/blosum62-special-MSA.mat).
 ----
 
 # Usage

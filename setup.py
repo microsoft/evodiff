@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="evodiff",
-    version="0.2.0",
+    version="0.2.3",
     description="Python package for generation of protein sequences and evolutionary alignments via discrete diffusion models",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -17,7 +17,7 @@ setuptools.setup(
     ],
     install_requires=[
         "pandas",
-        "lmdb"
+        "lmdb",
         "numpy",
         "sequence-models",
         "mlflow",
