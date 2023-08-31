@@ -203,7 +203,14 @@ def ESM1b_650M():
     scheme='esm-mask'
     return model, collater, alphabet, scheme
 
-def MSA_D3PM_BLOSUM_RANDSUB():
+def ESM2_650M():
+    "Wrapper for ESM model"
+    model, alphabet = esm.pretrained.esm2_t33_650M_UR50D()
+    collater = ESMOAMaskCollater(alphabet=alphabet)
+    scheme='esm-mask'
+    return model, collater, alphabet, scheme
+
+def MSA_D3PM_BLOSUM_RANDSUB(return_all=False):
     dt = 500
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
@@ -214,9 +221,12 @@ def MSA_D3PM_BLOSUM_RANDSUB():
                                                 diffusion_timesteps=dt,
                                                 tokenizer=tokenizer)
     scheme = 'd3pm'
-    return model, collater, tokenizer, scheme
+    if return_all:
+        return model, collater, tokenizer, scheme, dt, Q_prod, Q_t
+    else:
+        return model, collater, tokenizer, scheme
 
-def MSA_D3PM_BLOSUM_MAXSUB():
+def MSA_D3PM_BLOSUM_MAXSUB(return_all=False):
     dt = 500
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
@@ -227,9 +237,12 @@ def MSA_D3PM_BLOSUM_MAXSUB():
                                                 diffusion_timesteps=dt,
                                                 tokenizer=tokenizer)
     scheme = 'd3pm'
-    return model, collater, tokenizer, scheme
+    if return_all:
+        return model, collater, tokenizer, scheme, dt, Q_prod, Q_t
+    else:
+        return model, collater, tokenizer, scheme
 
-def MSA_D3PM_UNIFORM_RANDSUB():
+def MSA_D3PM_UNIFORM_RANDSUB(return_all=False):
     dt = 500
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
@@ -240,9 +253,12 @@ def MSA_D3PM_UNIFORM_RANDSUB():
                                                 diffusion_timesteps=dt,
                                                 tokenizer=tokenizer)
     scheme = 'd3pm'
-    return model, collater, tokenizer, scheme
+    if return_all:
+        return model, collater, tokenizer, scheme, dt, Q_prod, Q_t
+    else:
+        return model, collater, tokenizer, scheme
 
-def MSA_D3PM_UNIFORM_MAXSUB():
+def MSA_D3PM_UNIFORM_MAXSUB(return_all=False):
     dt = 500
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
@@ -253,7 +269,10 @@ def MSA_D3PM_UNIFORM_MAXSUB():
                                                 diffusion_timesteps=dt,
                                                 tokenizer=tokenizer)
     scheme = 'd3pm'
-    return model, collater, tokenizer, scheme
+    if return_all:
+        return model, collater, tokenizer, scheme, dt, Q_prod, Q_t
+    else:
+        return model, collater, tokenizer, scheme
 
 
 def MSA_OA_AR_RANDSUB():
@@ -284,3 +303,4 @@ def ESM_MSA_1b():
     collater = ESMOAMaskCollaterMSA(alphabet=alphabet)
     scheme='esm-mask'
     return model, collater, alphabet, scheme
+
