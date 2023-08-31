@@ -1,6 +1,6 @@
 import numpy as np
 from evodiff.pretrained import CARP_38M, CARP_640M, D3PM_BLOSUM_38M, D3PM_BLOSUM_640M, D3PM_UNIFORM_38M, D3PM_UNIFORM_640M,\
-                           OA_AR_640M, OA_AR_38M, LR_AR_38M, LR_AR_640M, ESM1b_650M
+                           OA_AR_640M, OA_AR_38M, LR_AR_38M, LR_AR_640M, ESM1b_650M, ESM2_650M
 from torch.nn import CrossEntropyLoss
 from evodiff.losses import OAMaskedCrossEntropyLoss
 from sequence_models.losses import MaskedCrossEntropyLoss
@@ -29,6 +29,8 @@ def main():
 
     if args.model_type=='esm1b_650M':
         checkpoint = ESM1b_650M()
+    elif args.model_type=='esm2_650M':
+        checkpoint = ESM2_650M()
     elif args.model_type=='carp_38M':
         checkpoint = CARP_38M()
     elif args.model_type=='carp_640M':
@@ -52,7 +54,7 @@ def main():
     else:
         print("Please select valid model")
 
-    if save_name=='esm1b_650M':
+    if save_name=='esm1b_650M' or save_name=='esm2_650M':
         max_len=1022 # For ESM max_len=1022 + start/stop tokens (1024)
     else:
         max_len=1022 # goes up to 2048, but keeping 1024 for comparisons
@@ -63,9 +65,10 @@ def main():
     losses = []
     n_tokens = []
     time_loss_data = []
-    for i in tqdm(range(10000)): #len(data))):
-        r_idx = i #np.random.choice(len(data)) # TODO fix when done debugging
+    for i in tqdm(range(24000)): #len(data))):
+        r_idx = np.random.choice(len(data)) # TODO fix when done debugging
         sequence = [data[r_idx]]
+        print(sequence)
         t, loss, tokens = sum_nll_mask(sequence, checkpoint)
         #print("SEQ, LOSS", sequence, loss)
         if checkpoint[-1] == 'causal-mask':
@@ -79,7 +82,10 @@ def main():
             if not np.isnan(loss): #esm-1b predicts nans at large % mask
                 losses.append(loss)
                 n_tokens.append(tokens)
-                time_loss_data.append([t.item(), loss, tokens])
+                if save_name=='esm1b_650M' or save_name=='esm2_650M':
+                    time_loss_data.append([t, loss, tokens])
+                else:
+                    time_loss_data.append([t.item(), loss, tokens])
         if i % 100 == 0:
             ll = -sum(losses) / sum(n_tokens)
             perp = np.exp(-ll)
@@ -141,7 +147,9 @@ def sum_nll_mask(sequence, checkpoint):
             t_out = [(i+1)/n_tokens for i in range(n_tokens)]
         else:
             loss_func = OAMaskedCrossEntropyLoss(reweight=False)
-            ce_loss, nll_loss = loss_func(outputs[:, :, :26], tgt, mask, timestep, input_mask) # returns a sum
+            #print(outputs)
+            ce_loss, nll_loss = loss_func(outputs[:, :, :], tgt, mask, timestep, input_mask) # returns a sum
+            #print(nll_loss)
             nll_loss = nll_loss.item()
             tokens = mask.sum().item()
             t_out = tokens / int(len(tgt.squeeze()))
