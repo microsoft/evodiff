@@ -75,8 +75,8 @@ def D3PM_BLOSUM_640M(return_all=False):
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=True)
     Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=dt)
     collater = D3PMCollater(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
-    #file_path = pkg_resources.resource_filename('config', 'config640M.json')
-    file_path = 'config/config640M.json'
+    file_path = pkg_resources.resource_filename('config', 'config640M.json')
+    # file_path = 'config/config640M.json'
     model, tokenizer = load_sequence_checkpoint("d3pm-blosum-640M", file_path,
                                                       diffusion_timesteps=dt,
                                                       tokenizer=tokenizer)
@@ -106,8 +106,8 @@ def D3PM_UNIFORM_640M(return_all=False):
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=True)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
     collater = D3PMCollater(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
-    #file_path = pkg_resources.resource_filename('config', 'config640M.json')
-    file_path = 'config/config640M.json'
+    file_path = pkg_resources.resource_filename('config', 'config640M.json')
+    # file_path = 'config/config640M.json'
     model, tokenizer = load_sequence_checkpoint("d3pm-uniform-640M", file_path, diffusion_timesteps=dt,
                                             tokenizer=tokenizer)
     scheme = 'd3pm'
@@ -135,8 +135,8 @@ def D3PM_UNIFORM_38M(return_all=False):
 def OA_AR_640M():
     tokenizer = Tokenizer()
     collater = OAMaskCollater(tokenizer=tokenizer)
-    #file_path = pkg_resources.resource_filename('config', 'config640M.json')
-    file_path = 'config/config640M.json'
+    file_path = pkg_resources.resource_filename('config', 'config640M.json')
+    # file_path = 'config/config640M.json'
     model, tokenizer = load_sequence_checkpoint("oaar-640M", file_path, diffusion_timesteps=None, \
                          tokenizer=tokenizer)
     scheme = 'mask'
@@ -157,8 +157,8 @@ def LR_AR_640M():
     n_tokens = len(PROTEIN_ALPHABET)
     tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD)
     collater = LMCollater(PROTEIN_ALPHABET)
-    #file_path = pkg_resources.resource_filename('config', 'config640M.json')
-    file_path = 'config/config640M.json'
+    file_path = pkg_resources.resource_filename('config', 'config640M.json')
+    # file_path = 'config/config640M.json'
     model, tokenizer = load_sequence_checkpoint("lrar-640M", file_path, diffusion_timesteps=None, \
                                 tokenizer=tokenizer, causal=True, n_tokens=n_tokens)
     scheme='causal-mask'
@@ -189,8 +189,8 @@ def CARP_640M():
     n_tokens = len(PROTEIN_ALPHABET)
     tokenizer = Tokenizer(protein_alphabet=PROTEIN_ALPHABET, all_aas=ALL_AAS, pad=PAD)
     collater = OAMaskCollater(tokenizer=tokenizer)
-    #file_path = pkg_resources.resource_filename('config', 'config640M.json')
-    file_path = 'config/config640M.json'
+    file_path = pkg_resources.resource_filename('config', 'config640M.json')
+    # file_path = 'config/config640M.json'
     model, tokenizer = load_sequence_checkpoint("carp-640M", file_path, diffusion_timesteps=None, \
                                 tokenizer=tokenizer, causal=False, n_tokens=n_tokens)
     scheme='mask'
@@ -215,8 +215,8 @@ def MSA_D3PM_BLOSUM_RANDSUB(return_all=False):
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
     collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
-    #file_path = pkg_resources.resource_filename('config', 'configMSA.json')
-    file_path = 'config/configMSA.json'
+    file_path = pkg_resources.resource_filename('config', 'configMSA.json')
+    # file_path = 'config/configMSA.json'
     model, tokenizer = load_msa_checkpoint("msa-d3pm-blosum-randsub", file_path,
                                                 diffusion_timesteps=dt,
                                                 tokenizer=tokenizer)
@@ -231,8 +231,8 @@ def MSA_D3PM_BLOSUM_MAXSUB(return_all=False):
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
     collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
-    #file_path = pkg_resources.resource_filename('config', 'configMSA.json')
-    file_path = 'config/configMSA.json'
+    file_path = pkg_resources.resource_filename('config', 'configMSA.json')
+    # file_path = 'config/configMSA.json'
     model, tokenizer = load_msa_checkpoint("msa-d3pm-blosum-maxsub", file_path,
                                                 diffusion_timesteps=dt,
                                                 tokenizer=tokenizer)
@@ -247,8 +247,8 @@ def MSA_D3PM_UNIFORM_RANDSUB(return_all=False):
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
     collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
-    #file_path = pkg_resources.resource_filename('config', 'configMSA.json')
-    file_path = 'config/configMSA.json'
+    file_path = pkg_resources.resource_filename('config', 'configMSA.json')
+    # file_path = 'config/configMSA.json'
     model, tokenizer = load_msa_checkpoint("msa-d3pm-uniform-randsub", file_path,
                                                 diffusion_timesteps=dt,
                                                 tokenizer=tokenizer)
@@ -263,8 +263,8 @@ def MSA_D3PM_UNIFORM_MAXSUB(return_all=False):
     tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
     collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
-    #file_path = pkg_resources.resource_filename('config', 'configMSA.json')
-    file_path = 'config/configMSA.json'
+    file_path = pkg_resources.resource_filename('config', 'configMSA.json')
+    # file_path = 'config/configMSA.json'
     model, tokenizer = load_msa_checkpoint("msa-d3pm-uniform-maxsub", file_path,
                                                 diffusion_timesteps=dt,
                                                 tokenizer=tokenizer)
@@ -278,8 +278,8 @@ def MSA_D3PM_UNIFORM_MAXSUB(return_all=False):
 def MSA_OA_AR_RANDSUB():
     tokenizer = Tokenizer()
     collater = MSAAbsorbingCollater(alphabet=MSA_ALPHABET)
-    #file_path = pkg_resources.resource_filename('config', 'configMSA.json')
-    file_path = 'config/configMSA.json'
+    file_path = pkg_resources.resource_filename('config', 'configMSA.json')
+    # file_path = 'config/configMSA.json'
     model, tokenizer = load_msa_checkpoint("msa-oaar-randsub", file_path,
                                            diffusion_timesteps=None,
                                            tokenizer=tokenizer)
@@ -289,8 +289,8 @@ def MSA_OA_AR_RANDSUB():
 def MSA_OA_AR_MAXSUB():
     tokenizer = Tokenizer()
     collater = MSAAbsorbingCollater(alphabet=MSA_ALPHABET)
-    #file_path = pkg_resources.resource_filename('config', 'configMSA.json')
-    file_path = 'config/configMSA.json'
+    file_path = pkg_resources.resource_filename('config', 'configMSA.json')
+    # file_path = 'config/configMSA.json'
     model, tokenizer = load_msa_checkpoint("msa-oaar-maxsub", file_path,
                                            diffusion_timesteps=None,
                                            tokenizer=tokenizer)
