@@ -376,36 +376,5 @@ def get_valid_data(data_top_dir, num_seqs, arg_mask, data_dir='openfold/', selec
     return valid_msas, query_msas, tokenizer
 
 
-def reindex_IDR(start_idx, end_idx, query_seq, gapped_query_seq):
-    old_idx = list(np.arange(1, len(query_seq) + 1))  # This starts at 1 and is inclusive
-    gap_count = 0
-    offset = []  # This tracks how many gaps between letters
-    for aa in list(gapped_query_seq):
-        if aa == '-':
-            gap_count += 1
-        else:
-            offset.append(gap_count)
-
-    assert len(offset) == len(old_idx)
-
-    # Gen index in list corresponding to start_index
-    old_start = old_idx.index(start_idx)
-    old_end = old_idx.index(end_idx)
-
-    # Add gaps to old index to get new start/end index
-    new_start = offset[old_start] + start_idx
-    new_end = offset[old_end] + end_idx
-
-    return new_start, new_end  # new range of IDR (inclusive)
-
-def mask_seq(seq, new_start_idx, new_end_idx, i, num_unpadded_rows):
-    if i < num_unpadded_rows:
-        idr_range = new_end_idx - new_start_idx
-        masked_seq = seq[0:new_start_idx] + '#' * idr_range + seq[new_end_idx:]
-    else:
-        masked_seq = seq
-    return masked_seq
-
-
 if __name__ == '__main__':
     main()
