@@ -21,31 +21,32 @@ def main():
                         help='Choice of: msa_d3pm_uniform_randsub, msa_d3pm_uniform_maxsub,\
                          msa_d3pm_blosum_randsub, msa_d3pm_blosum_maxsub,\
                          msa_oa_ar_randsub, msa_oa_ar_maxsub, esm_msa_1b')
+    parser.add_argument('--subsampling', type=str, default='random') # or MaxHamming
     args = parser.parse_args()
 
     save_name = args.model_type
 
     if args.model_type=='msa_d3pm_uniform_randsub':
         checkpoint = MSA_D3PM_UNIFORM_RANDSUB()
-        selection_type='random'
+        #selection_type='random'
     elif args.model_type=='msa_d3pm_uniform_maxsub':
         checkpoint = MSA_D3PM_UNIFORM_MAXSUB()
-        selection_type='MaxHamming'
+        #selection_type='MaxHamming'
     elif args.model_type=='msa_d3pm_blosum_randsub':
         checkpoint = MSA_D3PM_BLOSUM_RANDSUB()
-        selection_type = 'random'
+        #selection_type = 'random'
     elif args.model_type=='msa_d3pm_blosum_maxsub':
         checkpoint = MSA_D3PM_BLOSUM_MAXSUB()
-        selection_type='MaxHamming'
+        #selection_type='MaxHamming'
     elif args.model_type=='msa_oa_ar_randsub':
         checkpoint = MSA_OA_AR_RANDSUB()
-        selection_type='random'
+        #selection_type='random'
     elif args.model_type=='msa_oa_ar_maxsub':
         checkpoint = MSA_OA_AR_MAXSUB()
-        selection_type = 'MaxHamming'
+        #selection_type = 'MaxHamming'
     elif args.model_type=='esm_msa_1b':
         checkpoint = ESM_MSA_1b()
-        selection_type = 'MaxHamming'
+        #selection_type = 'MaxHamming'
     else:
         print("Please select valid model, i don't understand:", args.model_type)
     #print(checkpoint)
@@ -57,7 +58,7 @@ def main():
 
     num_seqs=2000
 
-    data = evodiff.data.get_valid_msas(data_top_dir, data_dir='openfold/', selection_type=selection_type, n_sequences=64, max_seq_len=512,
+    data = evodiff.data.get_valid_msas(data_top_dir, data_dir='openfold/', selection_type=args.subsampling, n_sequences=64, max_seq_len=512,
                                        out_path='../evodiff/ref/')
 
     losses = []
@@ -71,7 +72,7 @@ def main():
             #print(loss, tokens)
             losses.append(loss)
             n_tokens.append(tokens)
-            if args.model_type == 'msa_oa_ar_randsub' or args.model_type == 'msa_oa_ar_maxsub':
+            if args.model_type == 'msa_oa_ar_randsub' or args.model_type == 'msa_oa_ar_maxsub' or args.model_type =='esm_msa_1b':
                 time_loss_data.append([t, loss, tokens])
             else:
                 time_loss_data.append([t.item(), loss, tokens])
