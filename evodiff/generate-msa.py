@@ -1,5 +1,6 @@
 import argparse
 import json
+import evodiff
 import os
 import numpy as np
 import torch
@@ -30,29 +31,24 @@ home = str(pathlib.Path.home())
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('config_fpath')
-    parser.add_argument('out_fpath', type=str, nargs='?',
-                        default=os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/')
+    #parser.add_argument('config_fpath')
+    #parser.add_argument('out_fpath', type=str, nargs='?',
+    #                    default=os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/')
     parser.add_argument('-g', '--gpus', default=1, type=int,
                         help='number of gpus per node')
     parser.add_argument('-off', '--offset', default=0, type=int,
                         help='Number of GPU devices to skip.')
-    parser.add_argument('-sd', '--state_dict', default=None)
-    parser.add_argument('--dropout', type=float, default=0.0)
-    parser.add_argument('--tie_weights', action='store_true')
-    parser.add_argument('--final_norm', action='store_true')
-    parser.add_argument('--mask', type=str, default='autoreg')
-    parser.add_argument('--batch-size', type=int, default=20) # batch-size (on amlt use 1)
+    parser.add_argument('--model-type', type=str, default='msa_oa_ar_maxsub')
+    parser.add_argument('--dataset', type=str, default='openfold')
+    parser.add_argument('--batch-size', type=int, default=1) # batch-size (on amlt use 1)
     parser.add_argument('--n-sequences', type=int, default=64)
     parser.add_argument('--seq-length', type=int, default=512)
     parser.add_argument('--penalty-value', type=float, default=0) # Default no penalty /=1 on gap generation
     parser.add_argument('--subsampling', type=str, default='MaxHamming')
     parser.add_argument('--delete-prev', action='store_true')  # Will delete previous generated sequences that start with generated* in main folder
     parser.add_argument('--start-query', action='store_true') # if starting from query -> gen msa
-    parser.add_argument('--start-msa', action='store_true') # if starting from msa, gen-> query
-    parser.add_argument('--idr', action='store_true') # if doing idr generation
+    parser.add_argument('--start-msa', action='store_true') # if starting from msa -> gen query
     parser.add_argument('--amlt', action='store_true') # if running on amlt
-    parser.add_argument('--run', type=int, default=0) # for conditional generation of idrs to query data
     args = parser.parse_args()
 
     #_ = torch.manual_seed(0)
@@ -60,36 +56,89 @@ def main():
 
     torch.cuda.set_device(args.gpus + args.offset)
     device = torch.device('cuda:' + str(args.gpus + args.offset))
-    #device = torch.device("cpu")
-    with open(args.config_fpath, 'r') as f:
-        config = json.load(f)
 
-    d_embed = config['d_embed']
-    d_hidden = config['d_hidden']
-    n_layers = config['n_layers']
-    n_heads = config['n_heads']
+    d3pm = False
+    if args.model_type == 'msa_oa_ar_randsub':
+        checkpoint = evodiff.pretrained.MSA_OA_AR_RANDSUB()
+        #selection_type = 'random'
+        mask_id = checkpoint[2].mask_id
+        pad_id = checkpoint[2].pad_id
+    elif args.model_type == 'msa_oa_ar_maxsub':
+        checkpoint = evodiff.pretrained.MSA_OA_AR_MAXSUB()
+        #selection_type = 'MaxHamming'
+        mask_id = checkpoint[2].mask_id
+        pad_id = checkpoint[2].pad_id
+    elif args.model_type == 'esm_msa_1b':
+        checkpoint = evodiff.pretrained.ESM_MSA_1b()
+        #selection_type = 'MaxHamming'
+        mask_id = checkpoint[2].mask_idx
+        pad_id = checkpoint[2].padding_idx
+    elif args.model_type == 'msa_d3pm_blosum_maxsub':
+        checkpoint = evodiff.pretrained.MSA_D3PM_BLOSUM_MAXSUB()
+        d3pm=True
+        mask_id = checkpoint[2].mask_id
+        pad_id = checkpoint[2].pad_id
+    elif args.model_type == 'msa_d3pm_blosum_randsub':
+        checkpoint = evodiff.pretrained.MSA_D3PM_BLOSUM_RANDSUB()
+        d3pm = True
+        mask_id = checkpoint[2].mask_id
+        pad_id = checkpoint[2].pad_id
+    elif args.model_type == 'msa_d3pm_uniform_maxsub':
+        checkpoint = evodiff.pretrained.MSA_D3PM_UNIFORM_MAXSUB()
+        d3pm = True
+        mask_id = checkpoint[2].mask_id
+        pad_id = checkpoint[2].pad_id
+    elif args.model_type == 'msa_d3pm_uniform_randsub':
+        checkpoint = evodiff.pretrained.MSA_D3PM_UNIFORM_RANDSUB()
+        d3pm=True
+        mask_id = checkpoint[2].mask_id
+        pad_id = checkpoint[2].pad_id
+    else:
+        raise Exception("Please select either msa_or_ar_randsub, msa_oa_oar_maxsub, msa_d3pm_blosum_maxsub, "
+                        "msa_d3pm_blosum_randsub, msa_d3pm_uniform_maxsub, msa_d3pm_uniform_randsub,"
+                        "or esm_msa_1b baseline. You selected:", args.model_type)
 
     try:
         data_top_dir = os.getenv('AMLT_DATA_DIR') + '/data/data/data/' # TODO i messed up my amulet storage - this works for now
         data_dir = data_top_dir
-        data_dir += config['dataset'] + '/'
+        data_dir += args.dataset + '/'
         ptjob = True
     except:
-        data_top_dir = '../data/'
+        data_top_dir = 'data/'
         #print(data_top_dir)
         data_dir = data_top_dir
-        data_dir += config['dataset'] + '/'
+        data_dir += args.dataset + '/'
         ptjob = False
 
-    project_dir = home + '/Desktop/DMs/'
+    if d3pm:
+        model, collater, tokenizer, scheme, timestep, Q_bar, Q = checkpoint
+        Q_bar = Q_bar.to(device)
+        Q = Q.to(device)
+    else:
+        model, collater, tokenizer, scheme = checkpoint
+
+    model = model.eval().to(device)
+
+    #project_dir = home + '/Desktop/DMs/'
 
     if args.start_query and args.start_msa:
         raise Exception("Can only choose either start-query or start-msa NOT both, to generate from scratch omit flags")
 
+    if args.amlt:
+        home = os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/'
+        out_fpath = home
+    else:
+        home = str(pathlib.Path.home()) + '/Desktop/DMs/'
+        top_dir = home
+        out_fpath = home + args.model_type + '/'
+
+    if not os.path.exists(out_fpath):
+        os.makedirs(out_fpath)
+
     if args.delete_prev:
-        filelist = glob.glob(args.out_fpath+'generated*')
-        filelist += glob.glob(args.out_fpath+'msas/*generated*')
-        filelist += glob.glob(args.out_fpath+'valid*')
+        filelist = glob.glob(out_fpath+'generated*')
+        filelist += glob.glob(out_fpath+'msas/*generated*')
+        filelist += glob.glob(out_fpath+'valid*')
         for file in filelist:
             os.remove(file)
             print("Deleting", file)
@@ -97,120 +146,34 @@ def main():
         print("Penalizing GAPS by factor of", 1+args.penalty_value)
     else:
         print("Not penalizing GAPS")
-    if args.mask == 'autoreg':
-        tokenizer = Tokenizer()
-        diffusion_timesteps = None # Not input to model
-    elif args.mask == 'blosum' or args.mask == 'random':
-        diffusion_timesteps = config['diffusion_timesteps']
-        tokenizer = Tokenizer(path_to_blosum=data_top_dir+"blosum62-special-MSA.mat")
-        if args.mask == 'random':
-            Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=diffusion_timesteps)
-        if args.mask == 'blosum':
-            Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=diffusion_timesteps)
-        Q_prod = Q_prod.to(device)
-        Q_t = Q_t.to(device)
-    else:
-        print("mask must be: 'autoreg', 'blosum', or 'random'")
 
-    padding_idx = tokenizer.pad_id  # PROTEIN_ALPHABET.index(PAD)
-    masking_idx = tokenizer.mask_id
-    if args.mask == 'autoreg':
-        model = MSATransformer(d_embed, d_hidden, n_layers, n_heads, use_ckpt=True, n_tokens=len(MSA_ALPHABET),
-                               padding_idx=MSA_ALPHABET.index(MSA_PAD), mask_idx=MSA_ALPHABET.index(MASK)).cuda()
-    else:
-        model = MSATransformerTime(d_embed, d_hidden, n_layers, n_heads, timesteps=diffusion_timesteps, use_ckpt=True,
-                                   n_tokens=len(MSA_ALPHABET), padding_idx=padding_idx, mask_idx=masking_idx).cuda()
+    if scheme == 'mask':
+        sample, _string = generate_msa(model, tokenizer, args.batch_size, args.n_sequences, args.seq_length,
+                                      penalty_value=args.penalty_value, device=device, start_query=args.start_query,
+                                       start_msa=args.start_msa,
+                                      data_top_dir=data_top_dir, selection_type=args.subsampling, out_path=out_fpath)
+    elif scheme == 'd3pm':
+        sample, _string = generate_msa_d3pm(model, args.batch_size, args.n_sequences, args.seq_length,
+                                           Q_bar=Q_bar, Q=Q, tokenizer=Tokenizer(), data_top_dir=data_top_dir,
+                                           selection_type=args.subsampling, out_path=out_fpath,
+                                           max_timesteps=timestep, start_query=args.start_query,
+                                           no_step=False, penalty_value=args.penalty_value, device=device)
 
-    model = model.to(device)
 
-    # Restore the model weights for the last checkpoint after training
-    if args.amlt: # For generating on SINGULARITY
-        print(os.getenv('AMLT_DATA_DIR'))
-        print(args.out_fpath)
-        args.out_fpath = os.getenv('AMLT_DATA_DIR') + '/checkpoints/' + args.out_fpath # checkpoints are located on amlt storage data/checkpoints/ + job_name (e.g. job_name = diff/oaardm_msa_maxham)
-        print(args.out_fpath)
-    outputs = os.listdir(args.out_fpath)
-    if len(outputs) > 0:
-       last_epoch = 0
-       for output in outputs:
-           if 'checkpoint' in output:
-               print(output)
-               epoch = int(output.split('checkpoint')[-1][:-4])
-               if epoch > last_epoch:
-                   args.state_dict = args.out_fpath + output
-                   last_epoch = epoch
-
-    print('Using checkpoint', last_epoch)
-    print('Loading weights from ' + args.state_dict + '...')
-    sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
-    msd = sd['model_state_dict']
-    msd = {k.split('module.')[1]: v for k, v in msd.items()}
-    model.load_state_dict(msd)
-
-    if args.amlt:
-        args.out_fpath = os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/'
-
-    if args.idr:
-        sample, _string, original_idr, new_idr = generate_idr(model, tokenizer, args.n_sequences, args.seq_length,
-                                      index=args.run, penalty_value=args.penalty_value, device=device, start_query=args.start_query,
-                                      data_top_dir=data_top_dir, selection_type=args.subsampling, out_path=args.out_fpath)
-
-        # if not os.path.exists(args.out_fpath + 'idrs/'):
-        #     os.makedirs(args.out_fpath + 'idrs/')
-        for count, msa in enumerate(_string):
-            fasta_string = ""
-            with open(args.out_fpath + 'generated_msas.a3m', 'a') as f:
-                for seq in range(args.n_sequences):
-                    seq_num = seq * args.seq_length
-                    next_seq_num = (seq+1) * args.seq_length
-                    seq_string = str(msa[0][seq_num:next_seq_num]).replace('!', '')  # remove PADs
-                    if seq_num == 0 :
-                        f.write(">SEQUENCE_0" + "\n" + str(seq_string) + "\n")
-                    else:
-                        f.write(">tr \n" + str(seq_string) + "\n" )
-                f.write(fasta_string)
-                f.close()
-    else:
-        if args.mask == 'autoreg':
-            sample, _string = generate_msa(model, tokenizer, args.batch_size, args.n_sequences, args.seq_length,
-                                          penalty_value=args.penalty_value, device=device, start_query=args.start_query,
-                                           start_msa=args.start_msa,
-                                          data_top_dir=data_top_dir, selection_type=args.subsampling, out_path=args.out_fpath)
-        elif args.mask == 'blosum' or args.mask=='random':
-            sample, _string = generate_msa_d3pm(model, args.batch_size, args.n_sequences, args.seq_length,
-                                               Q_bar=Q_prod, Q=Q_t, tokenizer=Tokenizer(), data_top_dir=data_top_dir,
-                                               selection_type=args.subsampling, out_path=args.out_fpath,
-                                               max_timesteps=diffusion_timesteps, start_query=args.start_query,
-                                               no_step=False, penalty_value=args.penalty_value, device=device)
-
-        # Save strings to a3m; save each MSA to new file
-        # if not os.path.exists(args.out_fpath + 'msas/'):
-        #     os.makedirs(args.out_fpath + 'msas/')
-        for count, msa in enumerate(_string):
-            fasta_string = ""
-            #count_str = "".join(np.random.choice([*string.ascii_uppercase], size=3, replace=True)) # randomly assign new name
-            with open(args.out_fpath + 'generated_msas.a3m', 'a') as f:
-                for seq in range(args.n_sequences):
-                    seq_num = seq * args.seq_length
-                    next_seq_num = (seq+1) * args.seq_length
-                    seq_string = str(msa[0][seq_num:next_seq_num]).replace('!', '')  # remove PADs
-                    if seq_num == 0 :
-                        f.write(">MSA_0" + "\n" + str(seq_string) + "\n")
-                    else:
-                        f.write(">tr \n" + str(seq_string) + "\n" )
-                f.write(fasta_string)
-                f.close()
-
-        # cat all files to one file
-        # msafilelist = glob.glob(args.out_fpath + 'msas/*generated*')
-        # with open(args.out_fpath+'generated_msas.a3m', 'a') as f:
-        #     for fname in msafilelist:
-        #         with open(fname) as infile:
-        #             for line in infile:
-        #                 f.write(line)
-
-        # Save tokenized seqs to npz file
-        np.save(args.out_fpath+'generated_msas', np.array(sample.cpu()))
+    for count, msa in enumerate(_string):
+        fasta_string = ""
+        with open(out_fpath + 'generated_msas.a3m', 'a') as f:
+            for seq in range(args.n_sequences):
+                seq_num = seq * args.seq_length
+                next_seq_num = (seq+1) * args.seq_length
+                seq_string = str(msa[0][seq_num:next_seq_num]).replace('!', '')  # remove PADs
+                if seq_num == 0 :
+                    f.write(">MSA_0" + "\n" + str(seq_string) + "\n")
+                else:
+                    f.write(">tr \n" + str(seq_string) + "\n" )
+            f.write(fasta_string)
+            f.close()
+        np.save(out_fpath+'generated_msas', np.array(sample.cpu()))
 
 
 def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, penalty_value=2, device='gpu',
@@ -225,15 +188,10 @@ def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, penalty_
                                        out_path=out_path)
         # First row is query sequence
         for i in range(batch_size):
-            #print(len(query_sequences))
-            #import pdb; pdb.set_trace()
             seq_len = len(query_sequences[i])
             print("PAD ID", tokenizer.pad_id)
             src[i][0][:seq_len] = query_sequences[i]
             padding = torch.full((n_sequences, seq_length-seq_len), fill_value=tokenizer.pad_id)
-            # print(query_sequences[i].shape)
-            # print(padding.shape)
-            # import pdb; pdb.set_trace()
             src[i,:,seq_len:] = padding
             x_indices = np.arange(1,n_sequences)
             y_indices = np.arange(seq_len)
@@ -259,7 +217,6 @@ def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, penalty_
     np.random.shuffle(all_ind)
 
     with torch.no_grad():
-        #all_ind = all_ind[:10] for debugging TODO delte
         for i in tqdm(all_ind):
             random_x, random_y = i
             preds = model(sample)  # Output shape of preds is (BS=1, N=64, L, n_tokens=31)
@@ -270,73 +227,18 @@ def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, penalty_
             # Penalize gaps
             penalty = torch.ones(p.shape).to(p.device)
             penalty[:, -1] += penalty_value
-            #print(p_softmax)
             p_softmax /= penalty
-            #print(p_softmax)
             p_sample = torch.multinomial(input=p_softmax, num_samples=1)
             p_sample = p_sample.squeeze()
-            # for b in range(batch_size): # Iterate over batches and only replace correct res in query (ignore padding)
-            #     if start_query and random_x not in x_indices[b] or random_y not in y_indices[b]:
-            #         pass
-            #     else:
-            #        sample[b, random_x, random_y] = p_sample
             sample[:, random_x, random_y] = p_sample
-            print("time", random_x, random_y, "sample", tokenizer.untokenize(sample[0].flatten()))
     untokenized = [[tokenizer.untokenize(msa.flatten())] for msa in sample]
     return sample, untokenized # return output and untokenized output
-
-
-# def generate_idr(model, tokenizer, n_sequences, seq_length, penalty_value=2, device='gpu', index=0,
-#                  start_query=False, data_top_dir='../data', selection_type='MaxHamming', out_path='../ref/'):
-#     src, start_idx, end_idx, original_idr, num_sequences = get_IDR_MSAs(index, data_top_dir, tokenizer, max_seq_len=seq_length,
-#                                                          n_sequences=n_sequences, out_path=out_path,
-#                                                          selection_type=selection_type)
-#     src = torch.tensor(src).unsqueeze(0) # Make batchsize 1
-#
-#     masked_loc_x = np.arange(num_sequences) # len of MSA ; num sequences
-#     masked_loc_y = np.arange(start_idx, end_idx)
-#     all_ind = np.transpose([np.tile(masked_loc_x, len(masked_loc_y)), np.repeat(masked_loc_y, len(masked_loc_x))])
-#     np.random.shuffle(all_ind)
-#
-#     sample = src.clone()
-#     sample = sample.to(device)
-#
-#     with torch.no_grad():
-#         for i in tqdm(all_ind):
-#             #print(i)
-#             random_x, random_y = i
-#             print(sample.shape)
-#             preds = model(sample)  # Output shape of preds is (BS=1, N=64, L, n_tokens=31)
-#             print("preds", preds.shape)
-#             print(random_x, random_y)
-#             p = preds[:, random_x, random_y, :]
-#             # if random_x == 0:  # for first row don't let p_softmax predict gaps
-#             #     p = preds[:, random_x, random_y, :tokenizer.K - 1]
-#             p_softmax = torch.nn.functional.softmax(p, dim=1)
-#             # Penalize gaps
-#             penalty = torch.ones(p.shape).to(p.device)
-#             penalty[:, -1] += penalty_value
-#             # print(p_softmax)
-#             p_softmax /= penalty
-#             # print(p_softmax)
-#             p_sample = torch.multinomial(input=p_softmax, num_samples=1)
-#             p_sample = p_sample.squeeze()
-#             sample[:, random_x, random_y] = p_sample
-#             print(tokenizer.untokenize(sample[0][0]))
-#     print(sample.shape)
-#     #print([tokenizer.untokenize(seq) for seq in sample[0]])
-#     new_idr = [tokenizer.untokenize(seq[start_idx:end_idx]) for seq in sample[0]]
-#     untokenized = [[tokenizer.untokenize(msa.flatten())] for msa in sample[0]]
-#
-#     #print(untokenized[0])
-#     return sample, untokenized, original_idr, new_idr  # return output and untokenized output
 
 
 def generate_msa_d3pm(model, batch_size, n_sequences, seq_length, Q_bar=None, Q=None, tokenizer=Tokenizer(),
                       start_query=False, data_top_dir='../data', selection_type='MaxHamming', out_path='../ref/',
                       max_timesteps=500, no_step=False, penalty_value=0, device='gpu'):
     sample = torch.randint(0, tokenizer.K, (batch_size, n_sequences, seq_length))
-    #sample[:, 0, :] = torch.randint(0, tokenizer.K-1, (batch_size, 1, seq_length)) # resample query seq with no gaps
     if start_query:
         x_indices = []
         y_indices = []
@@ -355,8 +257,6 @@ def generate_msa_d3pm(model, batch_size, n_sequences, seq_length, Q_bar=None, Q=
     sample = sample.to(torch.long)
     sample = sample.to(device)
     [print("input query seq", tokenizer.untokenize(sample[i].flatten()[:seq_length])) for i in range(batch_size)]
-    #import pdb; pdb.set_trace()
-    print(sample.shape)
     if no_step:
         timesteps = np.linspace(max_timesteps-1, max_timesteps-1, 1, dtype=int)
     else:
@@ -370,46 +270,29 @@ def generate_msa_d3pm(model, batch_size, n_sequences, seq_length, Q_bar=None, Q=
             p = prediction[:, :, :, :tokenizer.K]  # p_theta_tilde (x_0_tilde | x_t)
             p = torch.nn.functional.softmax(p, dim=-1)  # softmax over categorical probs
             p = p.to(torch.float64)
-            if no_step: # This one-step model ignores step-wise generation, will do better as lambda is larger
-                x_tminus1 = sample.clone()
-                for i in range(len(p)):
-                    p_current = p[i].flatten(start_dim=0, end_dim=1)
-                    x_tminus1[i] = torch.multinomial(p_current, num_samples=1).squeeze().reshape(n_sequences, seq_length)
-            else:
-                x_tminus1 = sample.clone()
-                for i, s in enumerate(sample): # iterate over batches
-                    # Calculate p_theta_marg from p_theta_tilde
-                    # FIRST UNPAD sample in batch
-                    if start_query:
-                        s = s[:, :len(y_indices[i])]
-                        p_current = p[i, :, :len(y_indices[i])].flatten(start_dim=0, end_dim=1)
-                    else:
-                        p_current = p[i].flatten(start_dim=0, end_dim=1)
-                    x_t_b = torch.stack([tokenizer.one_hot(s_i) for s_i in s])
-                    x_t_b = x_t_b.flatten(start_dim=0, end_dim=1)
-                    #p_current = p[i].flatten(start_dim=0, end_dim=1)
-                    A = torch.mm(x_t_b, torch.t(Q[t]))  # [P x K]
-                    Q_expand = Q_bar[t-1].unsqueeze(0).expand(A.shape[0], tokenizer.K, tokenizer.K)  # [ P x K x K]
-                    B_pred = torch.mul(p_current.unsqueeze(2), Q_expand)
-                    q_t = torch.mul(A.unsqueeze(1), B_pred)  # [ P x K x K ]
-                    p_theta_marg = torch.bmm(torch.transpose(q_t, 1,2),  p_current.unsqueeze(2)).squeeze()  # this marginalizes over dim=2
-                    p_theta_marg = p_theta_marg / p_theta_marg.sum(axis=1, keepdim=True)
-                    #print('before', p_theta_marg[:seq_length])
-                    # Penalize gaps
-                    #print(p_theta_marg.shape)
-                    #import pdb; pdb.set_trace()
-                    penalty = torch.ones(p_theta_marg.shape).to(p_theta_marg.device)
-                    penalty[:, -1] += penalty_value
-                    p_theta_marg /= penalty
-                    x_tminus1_temp = torch.multinomial(p_theta_marg[:, :], num_samples=1).squeeze()
-                    x_tminus1_temp[:seq_length] = torch.multinomial(p_theta_marg[:seq_length,:-1], num_samples=1).squeeze() # NO GAPS in query
-                    # On final timestep pick next best from GAP prediction for query sequence
-                    # if t == 1:
-                    #     x_tminus1_temp[:seq_length] = torch.multinomial(p_theta_marg[:seq_length, :tokenizer.K-1], num_samples=1).squeeze()
+            x_tminus1 = sample.clone()
+            for i, s in enumerate(sample): # iterate over batches
+                # Calculate p_theta_marg from p_theta_tilde
+                # FIRST UNPAD sample in batch
                 if start_query:
-                    print(x_tminus1_temp.shape)
-                    print(x_tminus1_temp)
-                    print(x_tminus1.shape)
+                    s = s[:, :len(y_indices[i])]
+                    p_current = p[i, :, :len(y_indices[i])].flatten(start_dim=0, end_dim=1)
+                else:
+                    p_current = p[i].flatten(start_dim=0, end_dim=1)
+                x_t_b = torch.stack([tokenizer.one_hot(s_i) for s_i in s])
+                x_t_b = x_t_b.flatten(start_dim=0, end_dim=1)
+                A = torch.mm(x_t_b, torch.t(Q[t]))  # [P x K]
+                Q_expand = Q_bar[t-1].unsqueeze(0).expand(A.shape[0], tokenizer.K, tokenizer.K)  # [ P x K x K]
+                B_pred = torch.mul(p_current.unsqueeze(2), Q_expand)
+                q_t = torch.mul(A.unsqueeze(1), B_pred)  # [ P x K x K ]
+                p_theta_marg = torch.bmm(torch.transpose(q_t, 1,2),  p_current.unsqueeze(2)).squeeze()  # this marginalizes over dim=2
+                p_theta_marg = p_theta_marg / p_theta_marg.sum(axis=1, keepdim=True)
+                penalty = torch.ones(p_theta_marg.shape).to(p_theta_marg.device)
+                penalty[:, -1] += penalty_value
+                p_theta_marg /= penalty
+                x_tminus1_temp = torch.multinomial(p_theta_marg[:, :], num_samples=1).squeeze()
+                x_tminus1_temp[:seq_length] = torch.multinomial(p_theta_marg[:seq_length,:-1], num_samples=1).squeeze() # NO GAPS in query
+                if start_query:
                     x_tminus1[i, 1:, :len(y_indices[i])] = x_tminus1_temp.reshape(-1, len(y_indices[i]))[1:, :]
                 else:
                     x_tminus1[i] = x_tminus1_temp.reshape(n_sequences, seq_length)
@@ -420,15 +303,11 @@ def generate_msa_d3pm(model, batch_size, n_sequences, seq_length, Q_bar=None, Q=
                   print("time",t, tokenizer.untokenize(sample[0].flatten()[seq_length:seq_length*5]))
                   #print("time",t, tokenizer.untokenize(sample[1].flatten()[:seq_length*2]))
     untokenized = [[tokenizer.untokenize(sample[i].flatten())] for i in range(batch_size)]
-    # print(len(untokenized[0]))
-    # print(len(untokenized[0][0]))
-    # print("final seq", untokenized[0][0][:seq_length*2])
     return sample, untokenized
 
 
 def get_valid_data(data_top_dir, num_seqs, arg_mask, data_dir='openfold/', selection_type='MaxHamming', n_sequences=64, max_seq_len=512,
                    out_path='../DMs/ref/'):
-    #start_valid = '_valid'
     valid_msas = []
     query_msas = []
     seq_lens = []
@@ -465,7 +344,6 @@ def get_valid_data(data_top_dir, num_seqs, arg_mask, data_dir='openfold/', selec
                         num_workers=8)
 
     count = 0
-    #num_seqs = len(val_ind)
     print("NUM SEQS", num_seqs)
     for batch in tqdm(loader):
         if arg_mask == 'blosum' or arg_mask == 'random':
@@ -494,7 +372,6 @@ def get_valid_data(data_top_dir, num_seqs, arg_mask, data_dir='openfold/', selec
                     f.write(">tr \n" + str(msa[0][seq_num:next_seq_num]) + "\n" )
         f.write(fasta_string)
         f.close()
-    #np.save(out_path + arg_mask + selection_type + start_valid + '_tokenized_openfold_train_msas', np.array(train_msas))
 
     return valid_msas, query_msas, tokenizer
 
