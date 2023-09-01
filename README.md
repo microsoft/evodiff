@@ -203,22 +203,30 @@ To explicitly leverage evolutionary information, we design and train EvoDiff-MSA
 To unconditionally generate an entire MSA, run the following script:
 
 ``` 
-python evodiff/generate-msa.py --config_fpath config/configMSA.json --batch-size 2 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming
+python evodiff/generate-msa.py --model-type msa_oa_ar_maxsub --batch-size 2 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming
 ```
 
-The flag --config_fpath represents the config file, which can be found in the config folder. The available config files for MSA generation are [configMSA.json](https://github.com/microsoft/evodiff/blob/main/config/configMSA.json) and [configMSA-600M.json](https://github.com/microsoft/evodiff/blob/main/config/configMSA-600M.json). Please view the file for more information on flags. You can specify a desired number of sequences per MSA, sequence length, batch size, and more.
+The default model type is `msa_oa_ar_maxsub` , and the other available model types are:
+* ` msa_oa_ar_randsub `
+* ` esm_msa_1b `
+* ` msa_d3pm_blosum_maxsub `
+* ` msa_d3pm_blosum_randsub `
+* ` msa_d3pm_uniform_maxsub `
+* ` msa_d3pm_uniform_randsub `
+
+You can also specify a desired number of sequences per MSA, sequence length, batch size, and more.
 
 Importantly, when generating an MSA there are a few options to specify the method of generation:
 1) --start-query flag: start with the query and generate the alignment
 
 ```
-python evodiff/generate-msa.py --config_fpath config/configMSA.json --batch-size 2 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming --start-query
+python evodiff/generate-msa.py --model-type msa_oa_ar_maxsub --batch-size 2 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming --start-query
  ```
 
 2) --start-msa flag: start with the alignment and generate the query
 
 ``` 
-python evodiff/generate-msa.py --config_fpath config/configMSA.json --batch-size 2 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming --start-msa
+python evodiff/generate-msa.py --model-type msa_oa_ar_maxsub --batch-size 2 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming --start-msa
 ```
 
 3) no flag: generates the entire MSA unconditionally
