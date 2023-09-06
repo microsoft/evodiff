@@ -1,9 +1,9 @@
 # EvoDiff
 
 ### Description
-In this work, we exploit sequence as the universal design space for proteins to develop a general-purpose deep learning framework for controllable protein generation. We introduce a diffusion modeling framework, EvoDiff, that combines evolutionary-scale data with the distinct conditioning capabilities of diffusion models to achieve controllable protein design in sequence space alone. EvoDiff generates high-fidelity, diverse, and structurally-plausible proteins that fully cover natural sequence and functional space. By operating in the universal protein design space, EvoDiff can generate disordered regions and scaffold functional structural motifs without any explicit structural information. We envision that EvoDiff will expand capabilities in protein engineering beyond the structure-function paradigm towards programmable, sequence-first design.
+In this work, we introduce a general-purpose diffusion framework, EvoDiff, that combines evolutionary-scale data with the distinct conditioning capabilities of diffusion models for controllable protein generation in sequence space. EvoDiff generates high-fidelity, diverse, and structurally-plausible proteins that cover natural sequence and functional space. Critically, EvoDiff can generate proteins inaccessible to structure-based models, such as those with disordered regions, while maintaining the ability to design scaffolds for functional structural motifs, demonstrating the universality of our sequence-based formulation. We envision that EvoDiff will expand capabilities in protein engineering beyond the structure-function paradigm toward programmable, sequence-first design.
 
-We evaluate our sequence and MSA models – EvoDiff-Seq and EvoDiff-MSA, respectively – across a range of generation tasks to demonstrate their power for controllable protein design.
+We evaluate our sequence and MSA models – EvoDiff-Seq and EvoDiff-MSA, respectively – across a range of generation tasks to demonstrate their power for controllable protein design. Below, we provide documentation for running our models.
 
 ----
 
