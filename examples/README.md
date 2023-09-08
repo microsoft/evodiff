@@ -49,17 +49,7 @@ analysis indices to account for chain:
 python analysis/rmsd_analysis.py --pdb 3ixt --start-idx 424 --end-idx 447 --scaffold-min 50 --scaffold-max 100 --num-seqs 1 --chain P
 ```
 
-[//]: # (### PDB CODE: 5TPN &#40;Site 0&#41; -> &#40;4JHW Baker reference&#41;)
-
-[//]: # (Domain: 63-69 &#40;NIKKIKC&#41;, 196-212 &#40;KNYIDKQLLPIVNKQSC&#41;)
-
-[//]: # (```)
-
-[//]: # (python generate/conditional_generation.py --cond-task scaffold --pdb 5tpn --start-idx 36 --end-idx 42 --start-idx 141 --end-idx 157 --scaffold-min 50 --scaffold-max 100 --num-seqs 100 )
-
-[//]: # (```)
-
-# PDB CODE: 4JHW
+### PDB CODE: 4JHW
 Domain: Chain F 63-69(NIKENKC), 196-212(KQSCSISNIETVIEFQ), 
 ```
 python generate/conditional_generation.py --cond-task scaffold --pdb 4jhw --start-idx 37 --end-idx 43 --start-idx 144 --end-idx 159 --scaffold-min 50 --scaffold-max 100 --num-seqs 1 --chain F
@@ -70,15 +60,6 @@ python analysis/rmsd_analysis.py --pdb 4jhw --start-idx 474 --end-idx 480 --star
 -num-seqs 1 --chain F
 ```
 
-[//]: # (### PDB CODE: 5TPN &#40;Site IV&#41; -> &#40;4ZYP Baker reference&#41;)
-
-[//]: # (Domain: 422-436 &#40;CTASNKNRGIIKTFS&#41;)
-
-[//]: # (```)
-
-[//]: # (python generate/conditional_generation.py --cond-task scaffold --pdb 5tpn --start-idx 367 --end-idx 381 --scaffold-min 50 -scaffold-max 100 --num-seqs 100)
-
-[//]: # (```)
 ### PDB CODE: 4ZYP 
 Domain 422-436(CTASNKNRGIIKTFS)
 ```
@@ -107,20 +88,7 @@ Domains: 93-97 (FHFHW), 118-120 (LHL), 198-200 (TTP)
 python generate/conditional_generation.py --model-type oa_ar_640M --cond-task scaffold --pdb 5yui --start-idxs 89 --end-idxs 93 --start-idxs 114 --end-idxs 116 --start-idxs 194 --end-idxs 196  --num-seqs 100 --scaffold-min 50 --scaffold-max 100
 ```
 
-[//]: # (### PDB CODE: 7P19 -> &#40;6VW1&#41;)
-
-[//]: # (Domain: 24-42 &#40;QAKTFLDKFNHEAEDLFYQ&#41;, 64-82 &#40;NAGDKWSAFLKEQSTLAQM&#41; )
-
-[//]: # ()
-[//]: # (WARNING: 7P19 has a residue "BLYS" that complicates generaton/analysis - pre-clean downloaded PDB &#40;delete BLYS residue&#41; before running)
-
-[//]: # (```)
-
-[//]: # (python generate/conditional_generation.py --cond-task scaffold --pdb 7p19 --start-idx 5 --end-idx 23 --start-idx 45 --end-idx 63 --scaffold-min 50 --scaffold-max 100 --num-seqs 100)
-
-[//]: # (```
-
-# PDB CODE: 6VW1
+### PDB CODE: 6VW1
 Domains: 24-42(QAKTFLDKFNHEAEDLFYQ), 64-82(NAGDKWSAFLKEQSTLAQM)
 ```
 python generate/conditional_generation.py --cond-task scaffold --pdb 6vw1 --start-idx 5 --end-idx 23 --start-idx 45 --end-idx 63 --scaffold-min 50 --scaffold-max 100 --num-seqs 100)
