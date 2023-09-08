@@ -42,13 +42,14 @@ def main():
                         help="Number of sequences generated per scaffold length")
     parser.add_argument('--chain', type=str, default='A',
                         help="chain in PDB")
-    parser.add_argument('--scaffold-min', type=int, default=1,
+    parser.add_argument('--scaffold-min', type=int, default=100,
                         help="Min scaffold len ")
-    parser.add_argument('--scaffold-max', type=int, default=30,
+    parser.add_argument('--scaffold-max', type=int, default=150,
                         help="Max scaffold len, will randomly choose a value between min/max")
     parser.add_argument('--max-seq-length', type=int, default=1022,
                         help="Max sequence length to sample from IDR set")
-    parser.add_argument('--random-baseline', action='store_true')
+    parser.add_argument('--random-baseline', action='store_true') # either random-baseline or scrambled baseline NOT BOTH
+    parser.add_argument('--scrambled-baseline', action='store_true')
     parser.add_argument('--amlt', action='store_true')
     parser.add_argument('--single-res-domain', action='store_true', help="if start-idx = end-idx make sure to use single-res-domain flag or else you will get errors")
     args = parser.parse_args()
@@ -110,25 +111,38 @@ def main():
     if args.cond_task == 'idr':
         tokenized_sequences, start_idxs, end_idxs, queries, sequences, b_tokenized, b_starts, b_ends, query_ids =\
             get_IDR_sequences(data_top_dir, tokenizer, num_seqs=args.num_seqs, max_seq_len=args.max_seq_length)
-        # Run IDR generation (IDR inpainting)
-        strings, og_strings, new_idrs, og_idrs, start_idxs, end_idxs = inpaint(model, tokenized_sequences, start_idxs,
-                                                                               end_idxs, sequences, tokenizer=tokenizer,
-                                                                               device=device)
-        r_strings, r_og_strings, r_new_idrs, r_og_idrs, r_start_idxs, r_end_idxs = inpaint(model, tokenized_sequences, start_idxs,
+        if args.scrambled_baseline:
+            r_strings, r_og_strings, r_new_idrs, r_og_idrs, r_start_idxs, r_end_idxs = scramble_input(sequences, start_idxs, end_idxs)
+            r_b_strings, r_b_og_strings, r_b_new_idrs, r_b_og_idrs, r_b_start_idxs, r_b_end_idxs = scramble_input(sequences, b_starts, b_ends)
+        else:
+            r_strings, r_og_strings, r_new_idrs, r_og_idrs, r_start_idxs, r_end_idxs = inpaint(model, tokenized_sequences, start_idxs,
                                                                                end_idxs, sequences, tokenizer=tokenizer,
                                                                                device=device, random_baseline=True, data_top_dir=data_top_dir)
+            r_b_strings, r_b_og_strings, r_b_new_idrs, r_b_og_idrs, r_b_start_idxs, r_b_end_idxs = inpaint(model,
+                                                                                                           b_tokenized,
+                                                                                                           b_starts,
+                                                                                                           b_ends,
+                                                                                                           sequences,
+                                                                                                           tokenizer=tokenizer,
+                                                                                                           device=device,
+                                                                                                           random_baseline=True,
+                                                                                                           data_top_dir=data_top_dir)
+        # Run IDR generation (IDR inpainting)
+        strings, og_strings, new_idrs, og_idrs, start_idxs, end_idxs = inpaint(model, tokenized_sequences,
+                                                                               start_idxs,
+                                                                               end_idxs, sequences,
+                                                                               tokenizer=tokenizer,
+                                                                               device=device)
         # Run baseline generation (structured inpainting)
         b_strings, b_og_strings, b_new_idrs, b_og_idrs, b_start_idxs, b_end_idxs = inpaint(model, b_tokenized, b_starts,
                                                                                           b_ends, sequences,
                                                                                           tokenizer=tokenizer,
                                                                                           device=device)
-        r_b_strings, r_b_og_strings, r_b_new_idrs, r_b_og_idrs, r_b_start_idxs, r_b_end_idxs = inpaint(model, b_tokenized, b_starts,
-                                                                                           b_ends, sequences,
-                                                                                           tokenizer=tokenizer,
-                                                                                           device=device, random_baseline=True, data_top_dir=data_top_dir)
         save_df = pd.DataFrame(list(zip(new_idrs, og_idrs, start_idxs, end_idxs)),
                                columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
         save_df.to_csv(out_fpath + 'idr_df.csv', index=True)
+        print("before save", new_idrs, og_idrs, start_idxs, end_idxs)
+        print("before save", r_new_idrs, r_og_idrs, r_start_idxs, r_end_idxs)
         r_save_df = pd.DataFrame(list(zip(r_new_idrs, r_og_idrs, r_start_idxs, r_end_idxs)),
                                columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
         r_save_df.to_csv(out_fpath + 'r_idr_df.csv', index=True)
@@ -233,18 +247,18 @@ def main():
 
         plot_df = pd.DataFrame({'score': true_disorder_score, 'region': ["disorder"] * len(true_disorder_score),
                                 'type': ["true"] * len(true_disorder_score)})
-        plot_df = plot_df.append(pd.DataFrame({'score': true_order_score, 'region': ["order"] * len(true_order_score),
-                                               'type': ["true"] * len(true_order_score)}), ignore_index=True)
-        plot_df = plot_df.append(pd.DataFrame(
+        plot_df = pd.concat([plot_df, pd.DataFrame({'score': true_order_score, 'region': ["order"] * len(true_order_score),
+                                               'type': ["true"] * len(true_order_score)})], ignore_index=True)
+        plot_df = pd.concat([plot_df, pd.DataFrame(
             {'score': gen_disorder_score, 'region': ["disorder"] * len(gen_disorder_score),
-             'type': ["gen"] * len(gen_disorder_score)}), ignore_index=True)
-        plot_df = plot_df.append(pd.DataFrame({'score': gen_order_score, 'region': ["order"] * len(gen_order_score),
-                                               'type': ["gen"] * len(gen_order_score)}), ignore_index=True)
-        plot_df = plot_df.append(pd.DataFrame(
+             'type': ["gen"] * len(gen_disorder_score)})], ignore_index=True)
+        plot_df = pd.concat([plot_df, pd.DataFrame({'score': gen_order_score, 'region': ["order"] * len(gen_order_score),
+                                               'type': ["gen"] * len(gen_order_score)})], ignore_index=True)
+        plot_df = pd.concat([plot_df, pd.DataFrame(
             {'score': random_disorder_score, 'region': ["disorder"] * len(random_disorder_score),
-             'type': ["random"] * len(random_disorder_score)}), ignore_index=True)
-        plot_df = plot_df.append(pd.DataFrame({'score': random_order_score, 'region': ["order"] * len(random_order_score),
-                                               'type': ["random"] * len(random_order_score)}), ignore_index=True)
+             'type': ["random"] * len(random_disorder_score)})], ignore_index=True)
+        plot_df = pd.concat([plot_df, pd.DataFrame({'score': random_order_score, 'region': ["order"] * len(random_order_score),
+                                               'type': ["random"] * len(random_order_score)})], ignore_index=True)
         plot_df.to_csv(out_fpath + 'drbert_scores_df.csv', index=True)
         evodiff.plot.idr_boxplot_all(plot_df, out_fpath + 'plots/', save_name='combined_')
 
@@ -280,7 +294,7 @@ def main():
 
         print("Getting TM scores")
         # Get TMscores
-        run_tmscore(out_fpath, args.pdb, args.num_seqs, path_to_tmscore=top_dir+'TMscore', amlt=args.amlt)
+        run_tmscore(out_fpath, args.pdb, args.num_seqs, path_to_tmscore=top_dir+'TMscore', amlt=args.amlt, reres=True)
 
 def download_pdb(PDB_ID, outfile):
     "return PDB file from database online"
@@ -447,6 +461,29 @@ def generate_autoreg_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, s
     untokenized = [tokenizer.untokenize(s) for s in sample[:,1:-1]]
 
     return untokenized, new_start_idxs, new_end_idxs
+
+def scramble_input(sequences, start_idxs, end_idxs):
+    scrambled_idrs = []
+    original_idrs = []
+    scrambled_seqs = []
+    for s, sequence in enumerate(sequences):
+        original_idr = sequence[start_idxs[s]:end_idxs[s]]
+        original_idrs.append(original_idr)
+
+        scrambled_idr = list(original_idr)
+        np.random.shuffle(scrambled_idr)
+        scrambled_idr = ''.join(scrambled_idr)
+        print("original_idr", original_idr)
+        print("scrambled_idr", scrambled_idr)
+        scrambled_idrs.append(scrambled_idr)
+
+        scrambled_sequence = sequence[:start_idxs[s]] + scrambled_idr + sequence[end_idxs[s]:]
+        #print("full sequence", scrambled_sequence)
+        assert len(scrambled_sequence) == len(sequence), "SCRAMBLED seq different length"
+        scrambled_seqs.append([scrambled_sequence])
+
+    sequences = [[s] for s in sequences]
+    return scrambled_seqs, sequences, scrambled_idrs, original_idrs, start_idxs, end_idxs
 
 
 def inpaint(model, tokenized_sequences, start_idxs, end_idxs, sequences, tokenizer=Tokenizer(), device='cuda', random_baseline=False, data_top_dir='/'):
