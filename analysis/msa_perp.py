@@ -28,29 +28,20 @@ def main():
 
     if args.model_type=='msa_d3pm_uniform_randsub':
         checkpoint = MSA_D3PM_UNIFORM_RANDSUB()
-        #selection_type='random'
     elif args.model_type=='msa_d3pm_uniform_maxsub':
         checkpoint = MSA_D3PM_UNIFORM_MAXSUB()
-        #selection_type='MaxHamming'
     elif args.model_type=='msa_d3pm_blosum_randsub':
         checkpoint = MSA_D3PM_BLOSUM_RANDSUB()
-        #selection_type = 'random'
     elif args.model_type=='msa_d3pm_blosum_maxsub':
         checkpoint = MSA_D3PM_BLOSUM_MAXSUB()
-        #selection_type='MaxHamming'
     elif args.model_type=='msa_oa_ar_randsub':
         checkpoint = MSA_OA_AR_RANDSUB()
-        #selection_type='random'
     elif args.model_type=='msa_oa_ar_maxsub':
         checkpoint = MSA_OA_AR_MAXSUB()
-        #selection_type = 'MaxHamming'
     elif args.model_type=='esm_msa_1b':
         checkpoint = ESM_MSA_1b()
-        #selection_type = 'MaxHamming'
     else:
         print("Please select valid model, i don't understand:", args.model_type)
-    #print(checkpoint)
-    # Def read seqs from fasta
     try:
         data_top_dir = os.getenv('AMLT_DATA_DIR') + '/data/data/data/'
     except:
@@ -69,7 +60,6 @@ def main():
         sequence = [data[r_idx]]
         t, loss, tokens = sum_nll_mask(sequence, checkpoint)
         if not np.isnan(loss): #esm-1b predicts nans at large % mask
-            #print(loss, tokens)
             losses.append(loss)
             n_tokens.append(tokens)
             if args.model_type == 'msa_oa_ar_randsub' or args.model_type == 'msa_oa_ar_maxsub' or args.model_type =='esm_msa_1b':
@@ -111,7 +101,6 @@ def sum_nll_mask(sequence, checkpoint):
     src = src.cuda()     # Comment all variable.cuda() lines if using CPU
     tgt = tgt.cuda()
     with torch.no_grad():
-        #print(timestep)
         if scheme == 'd3pm':
             outputs = model(src, timestep) # outputs are x_tilde_0 (predicted tgt)
         elif scheme == 'esm-mask':
@@ -123,9 +112,7 @@ def sum_nll_mask(sequence, checkpoint):
     # Get loss (NLL ~= CE)
     if scheme == 'd3pm':
         loss_func = D3PMCELoss(reduction='sum',tokenizer=tokenizer, sequences=False)
-        #print(outputs.shape, tgt.shape)
         nll_loss = loss_func(outputs, tgt, input_mask)
-        #print(nll_loss)
         t_out=timestep
         tokens_msa = tgt.squeeze().shape
         tokens = tokens_msa[0]*tokens_msa[1]
@@ -134,12 +121,9 @@ def sum_nll_mask(sequence, checkpoint):
             loss_func = MaskedCrossEntropyLossMSA(ignore_index=tokenizer.padding_idx, reweight=False)
         else:
             loss_func = MaskedCrossEntropyLossMSA(ignore_index=tokenizer.pad_id, reweight=False)
-        #print(outputs.shape, tgt.shape, mask.shape)
         ce_loss, nll_loss = loss_func(outputs, tgt, mask, input_mask) # returns a sum
-        #print(nll_loss, mask.sum())
         tokens = mask.sum().item()
         t_out = tokens / int(tgt.squeeze().shape[0]*tgt.squeeze().shape[1])
-        #print(t_out)
     return t_out, nll_loss.item(), tokens # return timestep sampled (or % masked), sum of losses, and sum of tokens
 
 if __name__ == '__main__':
