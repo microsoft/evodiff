@@ -11,6 +11,7 @@ from Bio.PDB import PDBParser, Selection
 import esm.inverse_folding
 import pathlib
 
+# Get RMSD between original motif and generated motif
 
 def main():
     # set seeds
@@ -49,11 +50,9 @@ def main():
     if not args.amlt:
         home = str(pathlib.Path.home())
         if not args.random_baseline:
-            #home += '/Desktop/DMs/' + args.model_type + '/' + args.pdb
-            home += '/Desktop/DMs/cond-gen-msa/cond-gen-msa/' + args.pdb + '-msa-' + args.model_type + '/'
+            home += '/Desktop/DMs/' + args.model_type + '/' + args.pdb
         else:
-            #home += '/Desktop/DMs/random-baseline/' + args.pdb
-            home += '/Desktop/DMs/cond-gen-msa/cond-gen-msa/' + args.pdb + '-random/'
+            home += '/Desktop/DMs/random-baseline/' + args.pdb
     else:
         home = os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/'
 
@@ -74,7 +73,7 @@ def main():
     motif_df['scores_fixed'] = ci_fixed
     motif_df_sorted = motif_df.sort_values('scores_fixed', ascending=False)
     print(motif_df_sorted[['seqs','scores','scores_sampled','scores_fixed','rmsd']])
-    candidates = motif_df_sorted[motif_df_sorted['rmsd'] <= 1.5]
+    candidates = motif_df_sorted[(motif_df_sorted['rmsd'] <= 1) & (motif_df_sorted['scores'] >= 70)]
     print(candidates[['seqs','scores','scores_sampled','scores_fixed','rmsd']])
     print("Success:", len(candidates))
     with open(home + '/successes.csv', 'w') as f:
@@ -117,9 +116,7 @@ def calc_sim(seq1, seq2):
 def calc_rmsd(num_structures, reference_PDB, fpath='conda/gen/6exz', ref_motif_starts=[30], ref_motif_ends=[44]):
     "Calculate RMSD between reference structure and generated structure over the defined motif regions"
 
-    # Import information about generated motifs
-    motif_df = pd.read_csv(fpath+'/motif_df.csv', index_col=0)
-    #sub_motif_lens = [ref_motif_ends[j] - ref_motif_starts[j] for j in range(len(ref_motif_starts))]
+    motif_df = pd.read_csv(fpath+'/motif_df.csv', index_col=0, nrows=num_structures)
     rmsds = []
     for i in range(num_structures): # This needs to be in numerical order to match new_starts file
         ref = mda.Universe(fpath+'/pdb/'+reference_PDB)
@@ -138,9 +135,7 @@ def calc_rmsd(num_structures, reference_PDB, fpath='conda/gen/6exz', ref_motif_s
         print("SEQUENCE", i)
         print("ref", ref.select_atoms(ref_selection).resnames)
         print("gen", u.select_atoms(u_selection).resnames)
-        # print("ASSERT")
-        # print(len(ref.select_atoms(ref_selection).resnames))
-        # print(len(u.select_atoms(u_selection).resnames))
+        # This asserts that the motif sequences are the same - if you get this error something about your indices are incorrect - check chain/numbering
         assert len(ref.select_atoms(ref_selection).resnames) == len(u.select_atoms(u_selection).resnames), "Motif \
                                                                         lengths do not match, check PDB preprocessing\
                                                                         for extra residues"
