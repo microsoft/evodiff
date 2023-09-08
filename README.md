@@ -1,9 +1,16 @@
 # EvoDiff
 
 ### Description
-In this work, we introduce a general-purpose diffusion framework, EvoDiff, that combines evolutionary-scale data with the distinct conditioning capabilities of diffusion models for controllable protein generation in sequence space. EvoDiff generates high-fidelity, diverse, and structurally-plausible proteins that cover natural sequence and functional space. Critically, EvoDiff can generate proteins inaccessible to structure-based models, such as those with disordered regions, while maintaining the ability to design scaffolds for functional structural motifs, demonstrating the universality of our sequence-based formulation. We envision that EvoDiff will expand capabilities in protein engineering beyond the structure-function paradigm toward programmable, sequence-first design.
+In this work, we introduce a general-purpose diffusion framework, EvoDiff, that combines evolutionary-scale data with 
+the distinct conditioning capabilities of diffusion models for controllable protein generation in sequence space. 
+EvoDiff generates high-fidelity, diverse, and structurally-plausible proteins that cover natural sequence and functional
+space. Critically, EvoDiff can generate proteins inaccessible to structure-based models, such as those with disordered 
+regions, while maintaining the ability to design scaffolds for functional structural motifs, demonstrating the 
+universality of our sequence-based formulation. We envision that EvoDiff will expand capabilities in protein engineering
+beyond the structure-function paradigm toward programmable, sequence-first design.
 
-We evaluate our sequence and MSA models – EvoDiff-Seq and EvoDiff-MSA, respectively – across a range of generation tasks to demonstrate their power for controllable protein design. Below, we provide documentation for running our models.
+We evaluate our sequence and MSA models – EvoDiff-Seq and EvoDiff-MSA, respectively – across a range of generation tasks 
+to demonstrate their power for controllable protein design. Below, we provide documentation for running our models.
 
 ----
 
@@ -28,21 +35,19 @@ We evaluate our sequence and MSA models – EvoDiff-Seq and EvoDiff-MSA, respect
 ----
 
 # Installation
-To download our code, we recommend creating a clean conda environment with python ```v3.8.5```. After installing Anaconda, you can do so by running 
-
+To download our code, we recommend creating a clean conda environment with python ```v3.8.5```.
 ```
 conda create --name evodiff python=3.8.5
 ```
-
-In that new environment, to download our code, run:
+In that new environment, install EvoDiff: 
 ```
 pip install evodiff
 pip install git+https://github.com/microsoft/evodiff.git # bleeding edge, current repo main branch
 ```
-
 You will also need to install PyTorch (we tested our models on ` v2.0.1 `), PyTorch Geometric, and PyTorch Scatter.
 
-Our downstream analysis scripts make use of a variety of tools we do not include in our package. To run the scripts, please download the following packages first:
+Our downstream analysis scripts make use of a variety of tools we do not include in our package installation. To run the
+scripts, please download the following packages in addition to EvoDiff:
 * [TM score](https://zhanggroup.org/TM-score/)
 * [Omegafold](https://github.com/HeliXonProtein/OmegaFold)
 * [ProteinMPNN](https://github.com/dauparas/ProteinMPNN)
@@ -51,77 +56,74 @@ Our downstream analysis scripts make use of a variety of tools we do not include
 * [DISOPRED3](https://github.com/psipred/disopred)
 * [DR-BERT](https://github.com/maslov-group/DR-BERT)
 
-Please follow the setup instructions outlined by the authors of those tools.
+We refer to the setup instructions outlined by the authors of those tools.
 
 ## Data
-We obtain sequences from the [Uniref50 dataset](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4375400/), which contains approximately 45 million protein sequences. The Multiple Sequence Alignments (MSAs) are from the [OpenFold dataset](https://www.biorxiv.org/content/10.1101/2022.11.20.517210v2), which contains 401,381 MSAs for 140,000 unique Protein Data Bank (PDB) chains and 16,000,000 UniClust30 clusters. The intrinsically disordered regions (IDR) data was obtained from the [Reverse Homology GitHub](https://github.com/alexxijielu/reverse_homology/).
+We obtain sequences from the [Uniref50 dataset](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4375400/), which contains 
+approximately 42 million protein sequences. 
+The Multiple Sequence Alignments (MSAs) are from the [OpenFold dataset](https://www.biorxiv.org/content/10.1101/2022.11.20.517210v2), 
+which contains 401,381 MSAs for 140,000 unique Protein Data Bank (PDB) chains and 16,000,000 UniClust30 clusters.
+The intrinsically disordered regions (IDR) data was obtained from the [Reverse Homology GitHub](https://github.com/alexxijielu/reverse_homology/).
 
-For the scaffolding structural motifs task, we provide pdb files used for conditionally generating sequences in the [examples/scaffolding-pdbs](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-pdbs) folder. We also provide
+For the scaffolding structural motifs task, we provide pdb and fasta files used for conditionally generating sequences in the [examples/scaffolding-pdbs](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-pdbs) folder. We also provide
 We provide pdb files used for conditionally generating MSAs in the [examples/scaffolding-msas](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-msas) folder.
 
 ## Generated sequences
 
 To access the UniRef50 test sequences, use the following code:
-
 ```
 test_data = UniRefDataset('data/uniref50/', 'rtest', structure=False) # To access the test sequences
 ```
 
-We provide all generated sequences and MSAs on the [EvoDiff Zenodo](https://zenodo.org/record/8329165). We provide 6 files with the following columns:
-* ` esmif_predictions_unconditional_structure_generations.csv`
-  * sequence: predicted protein sequence from protein structure (using ESM-IF1 model)
-  * seq len: length of generated sequence
-  * model: 'foldingdiff' or 'rfdiffusion'
-* ` idr_conditional_generations.csv`
-  * sequence: subsampled sequence that contains IDR
-  * seq len: length of generated sequence
-  * gen_idrs: the generated IDR sequence
-  * original_idrs: the original IDR sequence
-  * start_idxs: indices corresponding to start of motif
-  * end_idxs: indices corresponding to end of motif
-  * model: model type used for generations
-* ` msa_evolution_conditional_generations.csv`
-  * sequence: generated query sequences
-  * seq len: length of generated sequence
-  * model: model type used for generations
-* ` msa_scaffold.csv` (generations made using EvoDiff-msa model)
-  * pdb: pdb code used for task
-  * seqs: generated motif
-  * start_idxs: indices corresponding to start of motif
-  * end_idxs: indices corresponding to end of motif
-  * seq len: length of generated sequence
-  * scores: average predicted local distance difference test (pLDDT) of sequence
-  * rmsd: RMSD between predicted motif coordinates and desired motif coordinates
-  * model: model type used for generations
-* ` seq_scaffold.csv` (generations made using EvoDiff-seq model)
-  * pdb: pdb code used for task
-  * seqs: generated motif
-  * start_idxs: indices corresponding to start of motif
-  * end_idxs: indices corresponding to end of motif
-  * seq len: length of generated sequence
-  * scores: average predicted local distance difference test (pLDDT) of sequence
-  * rmsd: RMSD between predicted motif coordinates and desired motif coordinates
-  * model: model type used for generations
-* ` unconditional_generations.csv`
-  * sequence: generated sequence
-  * min hamming dist: minimum Hamming distance between generated sequence and all training sequences
-  * seq len: length of generated sequence
-  * model: model type used for generations
-  'sequence', 'min hamming dist', 'seq len', 'model'
+We provide all generated sequences and MSAs on the [EvoDiff Zenodo](https://zenodo.org/record/8329165).
 
-Here is an example of downloading the `unconditional_generations.csv` file:
+Here is an example of downloading our unconditional generated sequences from `unconditional_generations.csv` file:
 
 ```
 curl -O https://zenodo.org/record/8329165/files/unconditional_generations.csv?download=1
 ```
 
-To extract all unconditionally generated sequences created using the EvoDiff-seq `oadm-38M` model, run the following code:
+* Unconditional generations from sequence based models: ` unconditional_generations.csv`
+  * `sequence`: generated sequence
+  * `min hamming dist`: minimum Hamming distance between generated sequence and all training sequences
+  * `seq len`: length of generated sequence
+  * `model`: model type used for generations, models: `evodiff_oadm_38M`, `evodiff_oadm_640M`, `evodiff_d3pm_uniform_38M`, \
+  `evodiff_d3pm_uniform_640M`, `evodiff_d3pm_blosum_38M`, `evodiff_d3pm_blosum_640M`, `carp_38M`, `carp_640M`, `lr_ar_38M` \
+  `lr_ar_38M`, `lr_ar_640M`, `esm_1b`, or `esm_2`
 
+To extract all unconditionally generated sequences created using the EvoDiff-seq `oadm-640M` model, run the following code:
 ```
 import pandas as pd
 df = pd.read_csv('unconditional_generations.csv', index_col = 0)
-subset = df.loc[df['model'] == 'evodiff_oadm_38M']
+subset = df.loc[df['model'] == 'evodiff_oadm_640M']
 ```
+
+Other data that can be downloaded 
+* Sequence predictions for unconditional structure generation baselines ` esmif_predictions_unconditional_structure_generations.csv`
+  * `sequence`: predicted protein sequence from protein structure (using ESM-IF1 model)
+  * `seq len`: length of generated sequence
+  * `model`: 'foldingdiff' or 'rfdiffusion'
+* Sequence generation via evolutionary alignments: ` msa_evolution_conditional_generations.csv`
+  * `sequence`: generated query sequences
+  * `seq len`: length of generated sequence
+  * `model`: model type used for generations: `evodiff_msa_oadm_maxsub`, `evodiff_msa_oadm_randsub`, `esm_msa_1b`, or `potts`
+* Generated IDRs: ` idr_conditional_generations.csv`
+  * `sequence`: subsampled sequence that contains IDR
+  * `seq len`: length of generated sequence
+  * `gen_idrs`: the generated IDR sequence
+  * `original_idrs`: the original IDR sequence
+  * `start_idxs`: indices corresponding to start of IDR in sequence
+  * `end_idxs`: indices corresponding to end of IDR in sequence (inclusive)
+  * `model`: model type used for generations `evodiff_seq_oadm_640M` or `evodiff_msa_oadm_maxsub`
+* Successfully generated scaffolds ` msa_scaffold.csv` (EvoDiff-MSA generations) or `seq_scaffold.csv` (Evodiff-Seq generations) 
+  * `pdb`: pdb code corresponding to scaffold task
+  * `seqs`: generated scaffold and motif
+  * `start_idxs`: indices corresponding to start of motif
+  * `end_idxs`: indices corresponding to end of motif
+  * `seq len`: length of generated sequence
+  * `scores`: average predicted local distance difference test (pLDDT) of sequence
+  * `rmsd`: motifRMSD between predicted motif coordinates and crystal motif coordinates
+  * `model`: model type used for generations
 
 ## Loading pretrained models
 To load a model:
