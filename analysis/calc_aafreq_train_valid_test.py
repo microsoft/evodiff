@@ -8,6 +8,8 @@ import pathlib
 from collections import Counter
 import csv
 
+# Calculate the AA freq in train, valid, test sets respectively
+
 ### SET RANDOM SEEDS ###
 random_seed = 1
 torch.random.manual_seed(random_seed)
@@ -33,10 +35,6 @@ train_sortish_sampler = SortishSampler(len_train, bucket_size, num_replicas=1, r
 
 train_sampler = ApproxBatchSampler(train_sortish_sampler, max_tokens, max_batch_size, len_train)
 valid_sampler = Subset(ds_valid, valid_idx)
-# dl_train = DataLoader(dataset=train_sampler,
-#                               shuffle=True,
-#                               batch_size=20,
-#                               num_workers=4)
 dl_train = DataLoader(dataset=ds_train,
                           batch_sampler=train_sampler,
                           num_workers=16)
@@ -52,8 +50,6 @@ aminos = Counter({'A':0, 'M':0, 'R':0, 'T':0, 'D':0, 'Y':0, 'P':0, 'F':0, 'L':0,
                       'K':0, 'Q':0, 'H':0, 'V':0, 'G':0, 'C':0, 'X':0, 'B':0, 'Z':0, 'J':0, 'O':0, 'U':0})
 seq_len = []
 
-#for i, batch in enumerate(dl_train):
-#print(len(dl_valid))
 for i, batch in enumerate(dl_valid):
     for seq in batch[0]:
         aminos.update(seq)
