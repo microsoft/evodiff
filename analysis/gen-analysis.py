@@ -2,7 +2,7 @@ import numpy as np
 import os
 import pathlib
 import argparse
-from evodiff.plot import aa_reconstruction_parity_plot, msa_substitution_rate, msa_pairwise_interactions, plot_percent_similarity_entiremsa
+from evodiff.plot import aa_reconstruction_parity_plot, msa_substitution_rate, msa_pairwise_interactions, plot_percent_similarity
 from evodiff.utils import Tokenizer
 import csv
 from sequence_models.collaters import MSAAbsorbingCollater
@@ -10,6 +10,8 @@ from evodiff.collaters import D3PMCollaterMSA
 from sequence_models.constants import MSA_ALPHABET
 
 home = str(pathlib.Path.home())
+
+# Used to evaluate/condense all MSA runs that were generated on amulet
 
 def main():
     parser = argparse.ArgumentParser()
@@ -37,14 +39,7 @@ def main():
     else:
         print("mask must be: 'autoreg', 'blosum', or 'random'")
     print(tokenizer.alphabet)
-    # if args.start_valid:
-    #     start_valid='_valid'
-    # else:
-    #     start_valid=''
 
-    # Generate a reference file
-    #tokenizer = preprocess_train_msa(data_dir=os.path.join(data_top_dir,'openfold/'), arg_mask=args.mask,
-    #                                 selection_type=args.subsampling, num_samples=100)
     print("START VALID", args.start_valid)
     if args.amlt:
         if args.start_valid:
@@ -56,26 +51,18 @@ def main():
             gen_msas = preprocess_amlt_outputs(args.out_fpath, arg_mask=args.mask, data_top_dir=data_top_dir,
                                                idr=args.idr, start_valid=args.start_valid)
             train_msas = np.load(project_dir + 'ref/' + args.mask + args.subsampling + '_tokenized_openfold_train_msas.npy')
-    #elif args.start_valid and not args.amlt:
-    #    train_msas = preprocess_train_msa_file(args.out_fpath, arg_mask=args.mask, data_top_dir=data_top_dir,idr=args.idr)
-    #    gen_msas = np.load(args.out_fpath + 'generated_msas.npy')
     else:
         train_msas = np.load(
             project_dir + 'ref/' + args.mask + args.subsampling + '_tokenized_openfold_train_msas.npy')
         gen_msas = np.load(args.out_fpath+'generated_msas.npy')
-
-    #train_msas = np.load(project_dir+'ref/'+args.mask+args.subsampling+start_valid+'_tokenized_openfold_train_msas.npy')
     if args.start_msa:
         gen_file = 'gen_msas_onlyquery.txt'
-        plot_percent_similarity_entiremsa(args.out_fpath)
     elif args.start_query:
         gen_file = 'gen_msas_onlymsa.txt'
     else:
         gen_file = 'generated_msas.a3m'
     aa_reconstruction_parity_plot(project_dir, args.out_fpath, gen_file, msa=True, start_valid=args.start_valid,
                                   start_msa=args.start_msa, start_query=args.start_query)
-    # print(gen_msas)
-    # print(train_msas)
     msa_substitution_rate(gen_msas, train_msas, tokenizer.all_aas[:-7], args.out_fpath)
     msa_pairwise_interactions(gen_msas, train_msas, tokenizer.all_aas[:-7], args.out_fpath)
 
@@ -120,11 +107,9 @@ def preprocess_amlt_outputs(out_fpath, arg_mask, data_top_dir, idr=False, start_
         os.system("cat " + gen_file + " >> " + all_gen)
         if start_valid:
             with open(valid_file, 'r') as file:
-                #print(valid_file)
                 filecontent = csv.reader(file)
                 for row in filecontent:
                     if 'SEQUENCE' in row[0] or 'seq 0' in row[0]:
-                        #print(msa)
                         msa += 1
                         num_seqs = 0
                         query_seq = True
@@ -144,16 +129,13 @@ def preprocess_amlt_outputs(out_fpath, arg_mask, data_top_dir, idr=False, start_
             filecontent = csv.reader(file)
             write_sequence = '' # POTS models are written with seqs on multiple lines of out file, make sure this works on your msa files
             for row in filecontent:
-                #print(row)
-                seq_complete=False
-                if 'SEQUENCE' in row[0] or 'seq 0' in row[0]:
+                if 'SEQUENCE_' in row[0] or 'seq 0' in row[0] or 'MSA_0' in row[0]:
                     gen_msa += 1
                     gen_num_seqs = 0
                     query_seq = True
                     all_query_gen_write_str += '>SEQUENCE' + str(i) + '\n'
-                elif '>' in row[0]:
+                elif '>' in row[0] or 'tr' in row[0]:
                     tokenized_seq = tokenizer.tokenizeMSA(write_sequence)
-                    #print("write seq", write_sequence)
                     gen_msa_arr[gen_msa - 1, gen_num_seqs, :len(tokenized_seq)] = tokenized_seq
                     gen_num_seqs += 1
                     if query_seq:
@@ -165,21 +147,7 @@ def preprocess_amlt_outputs(out_fpath, arg_mask, data_top_dir, idr=False, start_
                     write_sequence=''
                 else:
                     write_sequence += row[0]
-            # write last row
-            #print(row[0])
-            #print(write_sequence)
             os.system("echo " + write_sequence + " >> " + all_msa_gen + '.txt')
-                #if seq_complete:
-                #    if query_seq:
-                #        os.system("echo " + write_sequence + " >> " + all_query_gen + '.txt')
-                #        all_query_gen_write_str += write_sequence + '\n'
-
-                    # print(gen_msa-1, gen_num_seqs, len(tokenizer.tokenizeMSA(row[0])))
-                    #tokenized_seq = tokenizer.tokenizeMSA(row[0])
-                    #print("row", row[0])
-                    #print(gen_msa, gen_num_seqs)
-                    #gen_msa_arr[gen_msa - 1, gen_num_seqs, :len(tokenized_seq)] = tokenized_seq
-                    #gen_num_seqs += 1
     with open(all_query_valid +'.a3m', 'a') as f:
         f.write(all_query_valid_write_str)
         f.close()
@@ -208,7 +176,6 @@ def preprocess_train_msa_file(out_fpath, f_name='valid_msas.a3m', arg_mask='auto
 
     msa = 0
     msa_arr = np.zeros((total_msas, 64, 512)) + tokenizer.pad_id
-    # print(msa_arr)
 
     with open(out_fpath + f_name, 'r') as file:
         print(f_name)
@@ -221,7 +188,6 @@ def preprocess_train_msa_file(out_fpath, f_name='valid_msas.a3m', arg_mask='auto
             elif '>' in row[0]:
                 pass
             else:
-                # print(msa-1, num_seqs, len(tokenizer.tokenizeMSA(row[0])))
                 tokenized_seq = tokenizer.tokenizeMSA(row[0])
                 msa_arr[msa - 1, num_seqs, :len(tokenized_seq)] = tokenized_seq
                 num_seqs += 1
