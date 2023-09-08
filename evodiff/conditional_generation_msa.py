@@ -1,10 +1,9 @@
 from evodiff.pretrained import MSA_OA_AR_MAXSUB, MSA_OA_AR_RANDSUB, ESM_MSA_1b
 import numpy as np
 import argparse
-import urllib.request
 import torch
 import os
-import esm.inverse_folding
+import pickle
 import evodiff
 from evodiff.utils import Tokenizer, run_omegafold, clean_pdb, run_tmscore, wrap_dr_bert, read_dr_bert_output
 import pathlib
@@ -43,7 +42,8 @@ def main():
                         help="Max seq len to splice from MSA")
     parser.add_argument('--n-sequences', type=int, default=64,
                         help="Number of seqs to subsample from MSA")
-    parser.add_argument('--random-baseline', action='store_true')
+    parser.add_argument('--random-baseline', action='store_true') # for scaffold
+    parser.add_argument('--scramble-baseline', action='store_true') # for IDR
     parser.add_argument('--query-only', action='store_true')
     parser.add_argument('--amlt', action='store_true')
     parser.add_argument('--single-res-domain', action='store_true', help="if start-idx = end-idx make sure to use single-res-domain flag or else you will get errors")
@@ -157,17 +157,17 @@ def main():
                                                                               end_idx, tokenizer, device=device,
                                                                               query_only=args.query_only)
             og_start, og_end = ungap_index_IDR(start, end, og_string)
-            print("before", start, end)
+            #print("before", start, end)
             start, end = ungap_index_IDR(start, end, string[0])  # Reindex start/end for ungapped seq for dr_bert analysis
-            print("after", start, end)
-            print("after", og_start, og_end)
+            #print("after", start, end)
+            #print("after", og_start, og_end)
 
             # print("GEN STRING", string[0].replace("-",""))
             # print("GEN STRING LEN", len(string[0].replace("-","")))
             # print("OG STRING", og_string.replace("-",""))
             # print("OG STRING LEN", len(og_string.replace("-","")))
-            print(new_idr[0].replace("-",""))
-            print(string[0].replace("-","")[start:end])
+            #print(new_idr[0].replace("-",""))
+            #print(string[0].replace("-","")[start:end])
             #assert new_idr[0].replace("-","") == string[0].replace("-","")[start:end], "Generated IDR indexing wrong"
             #assert og_idr[0].replace("-","") == og_string.replace("-","")[og_start:og_end], "Original IDR indexing wrong"
             #import pdb; pdb.set_trace()
@@ -177,17 +177,22 @@ def main():
             og_b_start, og_b_end = ungap_index_IDR(b_start, b_end, b_og_string)
             b_start, b_end = ungap_index_IDR(b_start, b_end, b_string[0])
 
-            r_string, r_og_string, r_new_idr, r_og_idr, r_start, r_end = generate_idr_msa(model, original_msa, src, num_sequences, start_idx,
+            if args.scramble_baseline:
+                r_string, r_og_string, r_new_idr, r_og_idr, r_start, r_end = scramble_query(original_msa, start_idx, end_idx)
+                r_b_string, r_b_og_string, r_b_new_idr, r_b_og_idr, r_b_start, r_b_end = scramble_query(original_msa, b_start_idx, b_end_idx)
+
+            else:
+                r_string, r_og_string, r_new_idr, r_og_idr, r_start, r_end = generate_idr_msa(model, original_msa, src, num_sequences, start_idx,
                                                                               end_idx, tokenizer, device=device,
                                                                               query_only=args.query_only, random_baseline=True,
                                                                             data_top_dir=data_top_dir)
-            r_start, r_end = ungap_index_IDR(r_start, r_end, r_string[0])
-            r_b_string, r_b_og_string, r_b_new_idr, r_b_og_idr, r_b_start, r_b_end = generate_idr_msa(model, original_msa, b_src, num_sequences,
+                r_b_string, r_b_og_string, r_b_new_idr, r_b_og_idr, r_b_start, r_b_end = generate_idr_msa(model, original_msa, b_src, num_sequences,
                                                                                           b_start_idx,
                                                                                           b_end_idx, tokenizer,
                                                                                           device=device,
                                                                                           query_only=args.query_only, random_baseline=True,
                                                                             data_top_dir=data_top_dir)
+            r_start, r_end = ungap_index_IDR(r_start, r_end, r_string[0])
             r_b_start, r_b_end = ungap_index_IDR(r_b_start, r_b_end-1, r_b_string[0])
 
             oma_ids.append(oma_id)
@@ -240,6 +245,11 @@ def main():
                                   columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
         og_b_save_df.to_csv(out_fpath + 'idr_df.csv', index=True)
 
+        # Write OMA_ID to file for reference
+        with open(out_fpath + 'queried_ids.csv', 'w') as f:
+            [f.write(o_id + "\n") for o_id in oma_ids]
+        f.close()
+
 
     elif args.cond_task == 'scaffold':
         strings = []
@@ -247,14 +257,27 @@ def main():
         end_idxs = []
         scaffold_lengths = []
         for i in range(args.num_seqs): # no batching
-            string, new_start_idx, new_end_idx, seq_len = generate_scaffold_msa(args.model_type, model, args.pdb,
-                                                                                args.start_idxs, args.end_idxs,
+            print("SEQ", i)
+            motif_start_idxs = args.start_idxs
+            motif_end_idxs = [i + 1 for i in args.end_idxs]  # inclusive of final residue
+            # 50/50 split on MSAs
+            if i <50:
+                selection_type='random'
+            else:
+                selection_type='MaxHamming'
+            sliced_msa, sliced_start_idxs, sliced_end_idxs, original_motif = subsample_MSA(i, data_top_dir, args.pdb,
+                                                                                           motif_start_idxs,
+                                                                                           motif_end_idxs,
+                                                                                           Tokenizer(), query_idx=0,
+                                                                                           max_seq_len=args.max_seq_len,
+                                                                                           n_sequences=args.n_sequences,
+                                                                                           selection_type=selection_type)
+            string, new_start_idx, new_end_idx, seq_len = generate_scaffold_msa(args.model_type, model, sliced_msa,
+                                                                                sliced_start_idxs, sliced_end_idxs,
                                                                        data_top_dir, tokenizer, device=device,
                                                                        random_baseline=args.random_baseline,
                                                                        query_only=args.query_only,
-                                                                       max_seq_len=args.max_seq_len,
                                                                        n_sequences=args.n_sequences,
-                                                                       selection_type=selection_type,
                                                                        mask=mask_id, pad=pad_id)
             #print("STRING", string)
             strings.append(string)
@@ -265,11 +288,6 @@ def main():
 
         save_df = pd.DataFrame(list(zip(strings, start_idxs, end_idxs, scaffold_lengths)), columns=['seqs', 'start_idxs', 'end_idxs', 'scaffold_lengths'])
         save_df.to_csv(out_fpath+'motif_df.csv', index=True)
-
-    # Write OMA_ID to file for reference
-    with open(out_fpath + 'queried_ids.csv', 'w') as f:
-        [f.write(o_id + "\n") for o_id in oma_ids]
-    f.close()
 
     with open(out_fpath + 'generated_samples_string.csv', 'w') as f:
         for _s in strings:
@@ -349,7 +367,7 @@ def get_MSA(filename, tokenizer):
     tokenized_msa = np.array([l.tolist() for l in tokenized_msa])
     return tokenized_msa
 
-def subsample_MSA(tokenized_msa, start_idxs, end_idxs, tokenizer, query_idx=0, max_seq_len=512, n_sequences=64, selection_type='random'):
+def subsample_MSA(save_idx, data_top_dir, pdb, start_idxs, end_idxs, tokenizer, query_idx=0, max_seq_len=512, n_sequences=64, selection_type='random'):
     """
     Inputs
     tokenized_msa: tokenized MSA
@@ -367,99 +385,128 @@ def subsample_MSA(tokenized_msa, start_idxs, end_idxs, tokenizer, query_idx=0, m
     sliced_end_idx: new IDR end index of MSA
     msa_n_sequences: number of sequences in msa (will be less than or = n_sequences)
     """
-
-    msa_seq_len = len(tokenized_msa[0])
-    motif_start = start_idxs[0]
-    motif_end = end_idxs[-1]
+    save_path = data_top_dir + '/scaffolding-msas/' + pdb + '/'
+    msa_save_file = save_path + pdb + '_' + str(save_idx) + '.a3m'
+    tokenized_msa = get_MSA(data_top_dir + '/scaffolding-msas/' + pdb + '.a3m', tokenizer=Tokenizer())
     original_motif = [tokenizer.untokenize(tokenized_msa[0][start_idxs[i]:end_idxs[i]]) for i in range(len(start_idxs))]
+    print("ORIGINAL MOTIF", original_motif)
 
-    # Slice around motif
-    if msa_seq_len > max_seq_len:
-        # If seq len larger than max, center motif in slice
-        motif_len = motif_end - motif_start
-        buffer = int((max_seq_len - motif_len)/2)
-        if motif_start - buffer < 0: # if MOTIF at beginning of seq
-            print("BEGINNING")
+    if  os.path.isfile(msa_save_file):
+        output= get_MSA(msa_save_file, tokenizer=Tokenizer())
+        output = [tokenizer.untokenize(seq) for seq in output]
+        #print(output)
+        with open(save_path + 'start_idxs_'+str(save_idx) + '.pkl', "rb") as fp:
+            sliced_start_idxs = pickle.load(fp)
+        with open(save_path + 'end_idxs_'+str(save_idx) + '.pkl', "rb") as fp:
+            sliced_end_idxs = pickle.load(fp)
+    else:
+        # Else sample MSA and save to file:
+        if not os.path.exists(data_top_dir + '/scaffolding-msas/' + pdb + '/'):
+            os.mkdir(data_top_dir + '/scaffolding-msas/' + pdb + '/')
+
+        msa_seq_len = len(tokenized_msa[0])
+        motif_start = start_idxs[0]
+        motif_end = end_idxs[-1]
+
+        # Slice around motif
+        if msa_seq_len > max_seq_len:
+            # If seq len larger than max, center motif in slice
+            motif_len = motif_end - motif_start
+            buffer = int((max_seq_len - motif_len)/2)
+            if motif_start - buffer < 0: # if MOTIF at beginning of seq
+                print("BEGINNING")
+                slice_start = 0
+                slice_end = max_seq_len
+                sliced_start_idxs = start_idxs
+                sliced_end_idxs = end_idxs
+            elif motif_end + buffer > msa_seq_len: # if MOTIF at end of seq
+                print("END")
+                slice_start = msa_seq_len - max_seq_len
+                slice_end = msa_seq_len
+                sliced_end_idxs = [end_idx - slice_start for end_idx in end_idxs]
+                sliced_start_idxs = [start_idx - slice_start for start_idx in start_idxs]
+            else: # center IDR
+                print("CENTER")
+                slice_start = motif_start - buffer
+                slice_end = motif_end + buffer
+                sliced_start_idxs = [start_idx - slice_start for start_idx in start_idxs]
+                sliced_end_idxs = [end_idx - slice_start for end_idx in end_idxs]
+            # print("SLICING INDEX", slice_start, slice_end)
+            # print("OLD INDEX", start_idx, end_idx)
+            print("NEW INDEX, adjust slice", sliced_start_idxs, sliced_end_idxs)
+            #seq_len = max_seq_len
+        else:
             slice_start = 0
-            slice_end = max_seq_len
+            slice_end = msa_seq_len
             sliced_start_idxs = start_idxs
             sliced_end_idxs = end_idxs
-        elif motif_end + buffer > msa_seq_len: # if MOTIF at end of seq
-            print("END")
-            slice_start = msa_seq_len - max_seq_len
-            slice_end = msa_seq_len
-            sliced_end_idxs = [end_idx - slice_start for end_idx in end_idxs]
-            sliced_start_idxs = [start_idx - slice_start for start_idx in start_idxs]
-        else: # center IDR
-            print("CENTER")
-            slice_start = motif_start - buffer
-            slice_end = motif_end + buffer
-            sliced_start_idxs = [start_idx - slice_start for start_idx in start_idxs]
-            sliced_end_idxs = [end_idx - slice_start for end_idx in end_idxs]
-        # print("SLICING INDEX", slice_start, slice_end)
-        # print("OLD INDEX", start_idx, end_idx)
-        print("NEW INDEX, adjust slice", sliced_start_idxs, sliced_end_idxs)
-        #seq_len = max_seq_len
-    else:
-        slice_start = 0
-        slice_end = msa_seq_len
-        sliced_start_idxs = start_idxs
-        sliced_end_idxs = end_idxs
 
-    # Slice to model constraints
-    sliced_msa_seq = tokenized_msa[:, slice_start: slice_end]
-    # Remove query from array
-    sliced_msa_seq = np.append(sliced_msa_seq[:query_idx], sliced_msa_seq[query_idx+1:], axis=0)
-    # Query Sequence
-    anchor_seq = tokenized_msa[query_idx, slice_start:slice_end]  # This is the query sequence
-    sliced_msa = [seq for seq in sliced_msa_seq if (list(set(seq)) != [tokenizer.gap_id])]
-    msa_num_seqs = len(sliced_msa) + 1 # +1 accounts for query
+        # Slice to model constraints
+        sliced_msa_seq = tokenized_msa[:, slice_start: slice_end]
+        # Remove query from array
+        sliced_msa_seq = np.append(sliced_msa_seq[:query_idx], sliced_msa_seq[query_idx+1:], axis=0)
+        # Query Sequence
+        anchor_seq = tokenized_msa[query_idx, slice_start:slice_end]  # This is the query sequence
+        sliced_msa = [seq for seq in sliced_msa_seq if (list(set(seq)) != [tokenizer.gap_id])]
+        msa_num_seqs = len(sliced_msa) + 1 # +1 accounts for query
 
-    if msa_num_seqs > n_sequences:
-        #msa_n_sequences = n_sequences
-        if selection_type == 'random':
-            print("Using random subsampling")
-            random_idx = np.random.choice(msa_num_seqs-1, size=n_sequences-1, replace=False)
-            anchor_seq = np.expand_dims(anchor_seq, axis=0)
-            output = np.concatenate((anchor_seq, np.array(sliced_msa)[random_idx.astype(int)]), axis=0)
-        elif selection_type == "MaxHamming":
-            print("using MaxHamming subsampling")
-            output = [list(anchor_seq)]
-            msa_subset = sliced_msa
-            msa_ind = np.arange(msa_num_seqs-1)
-            random_ind = np.random.choice(msa_ind)
-            random_seq = sliced_msa[random_ind]
-            output.append(list(random_seq))
-            random_seq = np.expand_dims(random_seq, axis=0)
-            msa_subset = np.delete(msa_subset, (random_ind), axis=0)
-            m = len(msa_ind) - 1
-            distance_matrix = np.ones((n_sequences - 2, m))
-            for i in range(n_sequences - 2):
-                curr_dist = cdist(random_seq, msa_subset, metric='hamming')
-                curr_dist = np.expand_dims(np.array(curr_dist), axis=0)  # shape is now (1,msa_num_seqs)
-                #print(curr_dist.shape)
-                distance_matrix[i] = curr_dist
-                col_min = np.min(distance_matrix, axis=0)  # (1,num_choices)
-                max_ind = np.argmax(col_min)
-                random_ind = max_ind
-                random_seq = msa_subset[random_ind]
+        if msa_num_seqs > n_sequences:
+            #msa_n_sequences = n_sequences
+            if selection_type == 'random':
+                print("Using random subsampling")
+                random_idx = np.random.choice(msa_num_seqs-1, size=n_sequences-1, replace=False)
+                anchor_seq = np.expand_dims(anchor_seq, axis=0)
+                output = np.concatenate((anchor_seq, np.array(sliced_msa)[random_idx.astype(int)]), axis=0)
+            elif selection_type == "MaxHamming":
+                print("using MaxHamming subsampling")
+                output = [list(anchor_seq)]
+                msa_subset = sliced_msa
+                msa_ind = np.arange(msa_num_seqs-1)
+                random_ind = np.random.choice(msa_ind)
+                random_seq = sliced_msa[random_ind]
                 output.append(list(random_seq))
                 random_seq = np.expand_dims(random_seq, axis=0)
-                msa_subset = np.delete(msa_subset, random_ind, axis=0)
-                distance_matrix = np.delete(distance_matrix, random_ind, axis=1)
-    else:
-        #msa_n_sequences = msa_num_seqs
-        output = np.full(shape=(n_sequences, max_seq_len), fill_value=tokenizer.gap_id) # Treat short seqs as being algined with large gaps
-        output[0:1, :len(anchor_seq)] = anchor_seq
-        output[1:msa_num_seqs, :len(anchor_seq)] = sliced_msa
-        #output = np.concatenate((np.array(anchor_seq).reshape(1,-1), np.array(sliced_msa)), axis=0)
+                msa_subset = np.delete(msa_subset, (random_ind), axis=0)
+                m = len(msa_ind) - 1
+                distance_matrix = np.ones((n_sequences - 2, m))
+                for i in range(n_sequences - 2):
+                    curr_dist = cdist(random_seq, msa_subset, metric='hamming')
+                    curr_dist = np.expand_dims(np.array(curr_dist), axis=0)  # shape is now (1,msa_num_seqs)
+                    #print(curr_dist.shape)
+                    distance_matrix[i] = curr_dist
+                    col_min = np.min(distance_matrix, axis=0)  # (1,num_choices)
+                    max_ind = np.argmax(col_min)
+                    random_ind = max_ind
+                    random_seq = msa_subset[random_ind]
+                    output.append(list(random_seq))
+                    random_seq = np.expand_dims(random_seq, axis=0)
+                    msa_subset = np.delete(msa_subset, random_ind, axis=0)
+                    distance_matrix = np.delete(distance_matrix, random_ind, axis=1)
+        else:
+            #msa_n_sequences = msa_num_seqs
+            output = np.full(shape=(n_sequences, max_seq_len), fill_value=tokenizer.gap_id) # Treat short seqs as being algined with large gaps
+            output[0:1, :len(anchor_seq)] = anchor_seq
+            output[1:msa_num_seqs, :len(anchor_seq)] = sliced_msa
+            #output = np.concatenate((np.array(anchor_seq).reshape(1,-1), np.array(sliced_msa)), axis=0)
 
-    output_motif = [tokenizer.untokenize(output[0][sliced_start_idxs[i]:sliced_end_idxs[i]]) for i in range(len(sliced_start_idxs))]
-    print("og", original_motif)
-    print("out", output_motif)
-    assert original_motif == output_motif, "RE-SLICED MOTIFS DON'T MATCH, CHECK INDEXING"
-    output = [tokenizer.untokenize(seq) for seq in output]
-    # print(len(output), len(output[0]))
+        output_motif = [tokenizer.untokenize(output[0][sliced_start_idxs[i]:sliced_end_idxs[i]]) for i in range(len(sliced_start_idxs))]
+        print("og", original_motif)
+        print("out", output_motif)
+        assert original_motif == output_motif, "RE-SLICED MOTIFS DON'T MATCH, CHECK INDEXING"
+        output = [tokenizer.untokenize(seq) for seq in output]
+
+        with open(msa_save_file, 'a') as f:
+            for seq_num in range(len(output)):
+                seq_string = str(output[seq_num]).replace('!', '')  # remove PADs
+                if seq_num == 0 :
+                    f.write(">MSA_0" + "\n" + str(seq_string) + "\n")
+                else:
+                    f.write(">tr \n" + str(seq_string) + "\n" )
+            f.close()
+        with open(save_path + 'start_idxs_'+str(save_idx) + '.pkl', "wb") as fp:
+            pickle.dump(sliced_start_idxs, fp)
+        with open(save_path + 'end_idxs_'+str(save_idx) + '.pkl', "wb") as fp:
+            pickle.dump(sliced_end_idxs, fp)
     return output, sliced_start_idxs, sliced_end_idxs, original_motif
 
 def get_masked_locations(query_sequence, sliced_start_idxs, sliced_end_idxs, pad_id):
@@ -499,17 +546,17 @@ def untokenize_msa(model_type, tokenized, tokenizer):
         return ''.join([tokenizer.get_tok(s) for s in tokenized[1:-1]])
 
 
-def generate_scaffold_msa(model_type, model, PDB_ID, motif_start_idxs, motif_end_idxs, data_top_dir, tokenizer, query_only=True,
-                      device='gpu', random_baseline=False,  max_seq_len=512, n_sequences=64, selection_type='random',
+def generate_scaffold_msa(model_type, model, sliced_msa, sliced_start_idxs, sliced_end_idxs, data_top_dir, tokenizer, query_only=True,
+                      device='gpu', random_baseline=False, n_sequences=64,
                       mask=0, pad=1):
-    motif_end_idxs = [i + 1 for i in motif_end_idxs]  # inclusive of final residue
+    #motif_end_idxs = [i + 1 for i in motif_end_idxs]  # inclusive of final residue
     if random_baseline:
         train_prob_dist = aa_reconstruction_parity_plot(data_top_dir+'../', 'reference/', 'placeholder.csv', gen_file=False)
 
-    tokenized_msa = get_MSA(data_top_dir + '/scaffolding-msas/' + PDB_ID+'.a3m', tokenizer=Tokenizer())
-    sliced_msa, sliced_start_idxs, sliced_end_idxs, original_motif = subsample_MSA(tokenized_msa, motif_start_idxs, motif_end_idxs,
-                                                                 Tokenizer(), query_idx=0, max_seq_len=max_seq_len,
-                                                                 n_sequences=n_sequences, selection_type=selection_type)
+    # tokenized_msa = get_MSA(data_top_dir + '/scaffolding-msas/' + PDB_ID+'.a3m', tokenizer=Tokenizer())
+    # sliced_msa, sliced_start_idxs, sliced_end_idxs, original_motif = subsample_MSA(tokenized_msa, motif_start_idxs, motif_end_idxs,
+    #                                                              Tokenizer(), query_idx=0, max_seq_len=max_seq_len,
+    #                                                              n_sequences=n_sequences, selection_type=selection_type)
 
     print("INPUT MSA", sliced_msa[0])
 
@@ -584,12 +631,30 @@ def generate_scaffold_msa(model_type, model, PDB_ID, motif_start_idxs, motif_end
             p_sample = torch.multinomial(input=p_softmax, num_samples=1)
             p_sample = p_sample.squeeze()
             sample[:, random_x, random_y] = p_sample
-            print(untokenize_msa(model_type, sample[0][0], tokenizer))
+            #print(untokenize_msa(model_type, sample[0][0], tokenizer))
 
     untokenized = [untokenize_msa(model_type, sample[0][0], tokenizer)] # only return query sequence
     print(untokenized)
 
     return untokenized, sliced_start_idxs, [i - 1 for i in sliced_end_idxs], seq_len  # return output and untokenized output, re-indexed motif starts and ends (ends-1 for rmsd analyis)
+
+def scramble_query(original_msa, start_idx, end_idx):
+    scrambled_seqs = []
+
+    original_idr = original_msa[0][start_idx:end_idx]
+    scrambled_idr = list(original_idr)
+    np.random.shuffle(scrambled_idr)
+    scrambled_idr = ''.join(scrambled_idr)
+
+    print("original_idr", original_idr)
+    print("scrambled_idr", scrambled_idr)
+
+    scrambled_sequence = [original_msa[0][:start_idx] + scrambled_idr + original_msa[0][end_idx:]]
+    # print("full sequence", scrambled_sequence)
+    print(len(scrambled_sequence[0]), len(original_msa[0]))
+    assert len(scrambled_sequence[0]) == len(original_msa[0]), "SCRAMBLED seq different length"
+
+    return scrambled_sequence, original_msa[0], scrambled_idr, original_idr, start_idx, end_idx
 
 
 def generate_idr_msa(model, original_msa, src, num_sequences, start_idx, end_idx, tokenizer, device='gpu', query_only=True, random_baseline=False, data_top_dir='data/'):
