@@ -151,14 +151,14 @@ def iterate_dirs(run, seq_lengths, mpnn=False):
     else:
         return perp_group, scores_group, lengths_group, pdb_index_group, perp_index_group
 
-def mean_metric(groups, metric='perp'):
-    "Get mean of metric"
+def median_metric(groups, metric='perp'):
+    "Get median of metric to match barplot"
     for i in range(len(groups)):
         all = list(chain.from_iterable(groups[i]))
-        print(labels[i], np.median(all))
+        print(labels[i], 'mean:', np.mean(all), 'std', np.std(all))
 
 # Iterate over mdoels
-length_model='large' # large or small for 640M and 38M sequences, msa for msa models
+length_model='msa' # large or small for 640M and 38M sequences, msa for msa models
 mpnn=False # If you also ran MPNN
 
 if length_model == 'msa':
@@ -168,29 +168,30 @@ else:
 
 # TEST MUST GO FIRST FOR PLOTS TO REFERENCE CORRECTLY
 if length_model == 'large':
-    runs = ['test-data-2/','d3pm/soar-640M/',  'd3pm/oaardm-640M-backup/', 'd3pm/random-640M-0/',  'd3pm/blosum-640M-0/',
-        'hyper12/cnn-650M/', 'esm-1b/','esm2/',
-            'rfdiff/',#'foldingdiff/',
-            'random-ref/']
-    labels = ['Test','LR-AR',  'OA-AR', 'D3PM Uniform', 'D3PM Blosum',  'CARP', 'ESM-1b', 'ESM2',
-              'RFDiffusion',#'FoldingDiff',
-              'Random']
-    colors = ['#D0D0D0','#1B479D', '#46A7CB', '#63C2B5',"#b0e16d", 'plum', 'mediumpurple', '#89194B',
-              '#F8961D', 'firebrick']
+    runs = ['test-data-2/','d3pm/soar-640M/',  'd3pm/oaardm-640M-backup/', 'd3pm_uniform_640M/', 'd3pm_blosum_640M/', #'d3pm/random-640M-0/',  'd3pm/blosum-640M-0/',
+            'hyper12/cnn-650M/', 'esm-1b/',
+            'esm2/',
+            #'rfdiff/',#'foldingdiff/',
+            'random-ref/'
+            ]
+    labels = ['Test',   'LR-AR', 'OA-AR', 'D3PM Uniform', 'D3PM Blosum',  'CARP', 'ESM-1b',
+              'ESM2',
+              #'RFDiffusion',#'FoldingDiff',
+              'Random'
+              ]
+    colors = ['#D0D0D0','#1B479D', '#46A7CB', '#63C2B5',"#b0e16d", 'plum', 'mediumpurple',
+              '#89194B',#,
+              'firebrick', '#F8961D']
 elif length_model == 'small':
-    runs = ['test-data-2/','sequence/blosum-0-seq/', 'd3pm-final/random-0-seq/', 'sequence/oaardm/', 'arcnn/cnn-38M/',
+    runs = ['test-data-2/', 'arcnn/cnn-38M/', 'sequence/oaardm/', 'd3pm_uniform_38M/', 'd3pm_blosum_38M/',
          'pretrain21/cnn-38M/', 'random-ref/']
-    labels=['Test', 'D3PM Blosum', 'D3PM Uniform', 'OA-AR', 'LR-AR', 'CARP', 'Random']
-    colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'firebrick']
+    labels=['Test', 'LR-AR', 'OA-AR', 'D3PM Uniform', 'D3PM Blosum',  'CARP', 'Random']
+    colors = ['#D0D0D0', '#1B479D', '#46A7CB', '#63C2B5', "#b0e16d", 'plum', 'firebrick']
 elif length_model == 'msa':
     runs = ['msa-oaardm-max-train-startmsa/valid/', 'msa-oaardm-max-train-startmsa/gen/',
-            #'msa-oaardm-random-train-startmsa/gen/',
+            'msa-oaardm-random-train-startmsa/gen/', 'msa_oa_ar_maxsub_startrandomquery/gen/',
             'msa-esm-startmsa-t2/gen/','potts/gen/']
-    labels = ['Valid MSA', 'Cond Max',
-              #'Cond Rand',
-              'ESM-1b', 'Potts']
-    #colors = ['#D0D0D0', '#1B479D', '#46A7CB', '#63C2B5', "#b0e16d", 'plum', 'mediumpurple', '#89194B',
-    #          '#F8961D', 'firebrick']
+    labels = ['Valid MSA', 'Cond Max', 'Cond Rand', 'Cond Max-Rand', 'ESM-1b', 'Potts']
     colors = ['#D0D0D0'] + sns.color_palette("viridis", len(runs)-1)
 
 perp_groups = []
@@ -202,11 +203,10 @@ perp_index_groups = []
 
 for run in runs:
     print("Reading run", run)
-    if run == 'esm2/' or run=='foldingdiff/' or run=='d3pm/soar-640M/' or run=='arcnn/cnn-38M/' \
-            or run=='sequence/oaardm/' or run=='d3pm/oaardm-640M-backup/' or run=='test-data-2/' or run=='rfdiff/':
-        seq_lengths = [100] # just a placeholder for folder where seqs are
-    else:
+    if run == 'hyper12/cnn-650M/' or run=='esm-1b/' or run=='random-ref/' or run=='pretrain21/cnn-38M/':
         seq_lengths = [64, 128, 256, 384]
+    else:
+        seq_lengths = [100] # placeholder for generated_seq file name
     if sequences == True:
         if mpnn:
             perp_group, scores_group, lengths_group, mpnn_scores_group, pdb_index_group, perp_index_group = iterate_dirs(run, seq_lengths, mpnn=mpnn)
@@ -227,26 +227,19 @@ for run in runs:
 
 #For ESM-IF
 print("ESM-IF")
-#if length_model == 'small':
-#    plot_ecdf_bylength(perp_groups, colors, labels, seq_lengths, metric='perp', model='ESM-IF') # Look at length dependence of small models
 evodiff.plot.plot_sc_boxplot(perp_groups, colors, labels, model='ESM-IF', length_model=length_model)
-mean_metric(perp_groups, metric='perp')
+median_metric(perp_groups, metric='perp')
 
 # For MPNN
 if mpnn:
     print("MPNN")
-    #if length_model == 'small':
-    #    plot_ecdf_bylength(mpnn_scores_groups, colors, labels, seq_lengths, metric='perp', model='MPNN')
     plot_ecdf(mpnn_scores_groups, colors, labels, model='MPNN', length_model=length_model, legend=True)
-    mean_metric(mpnn_scores_groups, metric='perp')
+    median_metric(mpnn_scores_groups, metric='perp')
 
 print("Omegafold")
 # For Omegafold
-#if length_model == 'small':
-#    plot_ecdf_bylength(scores_groups, colors, labels, seq_lengths, metric='plddt', model='Omegafold')
-#plot_ecdf(scores_groups, colors, labels, metric='plddt', model='Omegafold', length_model=length_model)
 evodiff.plot.plot_sc_boxplot(scores_groups, colors, labels, metric='plddt', model='Omegafold', length_model=length_model)
-mean_metric(scores_groups, metric='plddt')
+median_metric(scores_groups, metric='plddt')
 
 # Organize plddt and perp by pdb index
 ordered_perp_group = []
@@ -256,11 +249,10 @@ for i in range(len(labels)):
     ordered_perp = []
     ordered_plddt = []
     if sequences:
-        if runs[i] == 'esm2/' or runs[i] == 'foldingdiff/' or runs[i] == 'rfdiff/' or runs[i]=='d3pm/soar-640M/' or runs[i]=='arcnn/cnn-38M/'\
-                or runs[i] == 'sequence/oaardm/' or runs[i]=='d3pm/oaardm-640M-backup/' or runs[i]=='test-data-2/':
-            seq_lengths=[100]
+        if runs[i] == 'hyper12/cnn-650M/' or runs[i]=='esm-1b/' or runs[i]=='random-ref/' or runs[i] == 'pretrain21/cnn-38M/':
+            seq_lengths = [64, 128, 256, 384]
         else:
-            seq_lengths= [64, 128, 256, 384]
+            seq_lengths=[100]
         for l_index in range(len(seq_lengths)):
             df_pdb = pd.DataFrame(np.array([list(map(float, pdb_index_groups[i][l_index])), \
                                             list(map(float, scores_groups[i][l_index]))]).T, columns=['pdb', 'plddt'])
@@ -280,29 +272,19 @@ for i in range(len(labels)):
                                          list(map(float, perp_groups[i][l_index]))]).T, columns=['pdb', 'perp'])
         df_perp.replace('nan', np.nan, inplace=True)
         df = pd.merge(df_pdb, df_perp, on=['pdb'], how='left')
-        # print(len(df), df)
-        # df.dropna(how='any')
-        # print(len(df), df)
-        # import pdb; pdb.set_trace()
         ordered_plddt += list(df['plddt'])
         ordered_perp += list(df['perp'])
-
-        # ordered_perp_group.append(ordered_perp)
-        # ordered_plddt_group.append(ordered_plddt)
 
     ordered_perp_group.append(ordered_perp)
     ordered_plddt_group.append(ordered_plddt)
 print("Len of ordered array", len(ordered_perp_group))
 
 #"PLDDT AND PERP"
-mean_train_score = np.median(list(chain.from_iterable(scores_groups[0])))
-mean_train_perp = np.median(list(chain.from_iterable(perp_groups[0])))
+mean_train_score = np.mean(list(chain.from_iterable(scores_groups[0])))
+mean_train_perp = np.mean(list(chain.from_iterable(perp_groups[0])))
 # Plot PLDDT vs perp for all models
 for idx in range(len(labels)):
     if idx>0:
-        # print(len(ordered_perp_group), len(ordered_plddt_group))
-        # print(ordered_perp_group[0])
-        # print(np.sum(ordered_perp_group[0]))
         plot_plddt_perp(ordered_plddt_group, ordered_perp_group, idx, colors, labels, perp_model='ESM-IF', length_model=length_model)
     c_df = pd.DataFrame(np.array([ordered_plddt_group[idx], ordered_perp_group[idx]]).T, columns=['plddt', 'perp'])
     print(labels[idx],
