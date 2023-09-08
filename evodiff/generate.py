@@ -77,7 +77,7 @@ def main():
 
     torch.cuda.set_device(args.gpus)
     device = torch.device('cuda:' + str(args.gpus))
-    model.eval().to(device)
+    model = model.eval().to(device)
 
     # Out directories
     if args.amlt:
