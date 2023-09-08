@@ -391,7 +391,7 @@ def download_generated_sequences(model_name):
     sequence_list = "curl -O"
     return sequence_list
 
-def run_omegafold(fpath, fasta_file="generated_samples_string.fasta"):
+def run_omegafold(fpath, fasta_file="generated_samples_string.fasta", gpu=0):
     """
     Wrapper for running omegafold
     """
@@ -443,10 +443,12 @@ def run_tmscore(fpath, pdb, num_seqs, path_to_tmscore='TMscore', amlt=False, rer
                             os.path.join(out_fpath,'SEQUENCE_'+str(i)+'.pdb'),  '-seq'],
                         stdout=temp_file)
         else:
-            if reres:
-                ref_path = os.path.join(out_fpath, pdb + '_reres.pdb')
-            else:
-                ref_path = os.path.join(out_fpath, pdb + '_reference.pdb')
+            #if reres:
+            print("NOT USING RERES") # Manually switching between reference and re-res for multi-chain PDB TMscores - add more efficient approach 
+            ref_path = os.path.join(out_fpath, pdb + '_reference.pdb')
+            #else:
+            #    ref_path = os.path.join(out_fpath, pdb + '_reference.pdb')
+            print(ref_path)
             subprocess.call([path_to_tmscore, ref_path,
                              os.path.join(out_fpath, 'SEQUENCE_' + str(i) + '.pdb'),  '-seq'],
                             stdout=temp_file)
@@ -474,7 +476,6 @@ def wrap_dr_bert(out_fpath, generated_fasta_file='generated_samples_string.fasta
 def read_dr_bert_output(out_fpath, prefix, path_to_disorder_pickle, path_to_order_pickle, disorder_df, order_df):
     drbert_disorder_out = pd.read_pickle(path_to_disorder_pickle)
     drbert_order_out = pd.read_pickle(path_to_order_pickle)
-    #og_df = pd.read_pickle(out_fpath+'og_out.pkl')
     mean_disorder_score = []
     mean_order_score = []
 
@@ -483,32 +484,9 @@ def read_dr_bert_output(out_fpath, prefix, path_to_disorder_pickle, path_to_orde
         e = disorder_df['end_idxs'][i]
         order_s = order_df['start_idxs'][i]
         order_e = order_df['end_idxs'][i]
-        #print(len(df['sequence'][i]), len(df['score'][i]))
-        # if np.isnan(gen_df.iloc[i]['score'][s:e].mean()).any() or np.isnan(og_df.iloc[i]['score'][s:e].mean()).any():
-        #     print(len(gen_df.loc[i]['score']))
-        #     print(len(gen_df.loc[i]['sequence']))
-        #     print(s,e)
-        #     print(len(og_df.loc[i]['score']))
-        #     print("GEN SEQUNECE", i, gen_df['sequence'][i][s:e])
-        #     print("GEN SEQUNECE", i, ref_df['gen_idrs'][i])
-        #     print("SCORE", gen_df['score'][i][s:e].mean())
-        #     print("SCORE", gen_df['score'][i][s:e])
-        #     print("OG SEQUENCE", i, og_df['sequence'][i][s:e])
-        #     print("OG SEQUNECE", i, ref_df['original_idrs'][i])
-        #     print("SCORE", og_df['score'][i][s:e].mean())
-        #     print("SCORE", og_df['score'][i][s:e])
-        #if len(gen_df.loc[i]['sequence']) < 1022:
         mean_disorder_score.append(drbert_disorder_out['score'][i][s:e].mean())
         mean_order_score.append(drbert_order_out['score'][i][order_s:order_e].mean())
-        #[mean_gen_score.append(item) for item in gen_df['score'][i][s:e]]
-        #[mean_og_score.append(item) for item in og_df['score'][i][s:e]]
-        #print(drbert_disorder_out.head())
         evodiff.plot.plot_idr_drbert_multiple(out_fpath + '/plots/', prefix+'_disorder_', drbert_disorder_out, s, e, drbert_order_out, order_s, order_e, i)
-        #evodiff.plot.plot_idr_drbert(out_fpath + '/plots/', prefix+'_disorder_', drbert_disorder_out, s, e, i)
-        #evodiff.plot.plot_idr_drbert(out_fpath + '/plots/', prefix+'_order_', drbert_order_out, order_s, order_e, i)
-        # else:
-        #     print("Skipping long sequence")
-        #print(mean_gen_score, mean_og_score)
 
     return mean_disorder_score, mean_order_score
 
@@ -522,7 +500,6 @@ def wrap_disopred(fasta_file='gen_seq_0.fasta', path_to_disopred='BLAST+/run_dis
 def eval_disopred_output(out_fpath, ref_df, prefix='', num_seqs=100):
     "Eval output of gen and true sequences from disopred"
     mean_gen_score = []
-    #mean_og_score = []
     for i in range(num_seqs):
         s = ref_df['start_idxs'][i]
         e = ref_df['end_idxs'][i]
@@ -537,12 +514,9 @@ def eval_disopred_output(out_fpath, ref_df, prefix='', num_seqs=100):
         evodiff.plot.plot_idr(out_fpath+'/plots/'+prefix+'gen_seq_', gen_df, s, e, i)
         evodiff.plot.plot_idr(out_fpath+'/plots/'+prefix+'true_seq_', og_df, s, e, i)
 
-        #print(len(gen_df))
-        #print(gen_df)
         print("MEAN GEN SCORE", gen_df['score'][s:e].mean())
         print("MEAN TRUE SCORE", og_df['score'][s:e].mean())
         mean_gen_score.append(gen_df['score'][s:e].mean())
-        #mean_og_score.append(og_df['score'][s:e].mean())
 
     return mean_gen_score #, mean_og_score
 
