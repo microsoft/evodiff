@@ -4,6 +4,9 @@ from scipy.spatial import distance
 from tqdm import tqdm
 from evodiff.utils import Tokenizer
 import math
+from sequence_models.datasets import UniRefDataset
+import pickle
+import os
 
 # run python calc_nearestseq_hamming.py
 
@@ -20,155 +23,101 @@ def tokenize_fasta(fasta_file):
                     seqs.append(tokenized)
     return seqs
 
-def parse_train(fasta_file):
-    "Get all sequences of the same length from train dataset"
-    seq_lengths = [64, 128, 256, 384]
-    seqs_64 = []
-    seqs_128 = []
-    seqs_256 = []
-    seqs_384 = []
-    with open(fasta_file, 'r') as file:
-        filecontent = csv.reader(file)
-        for row in tqdm(filecontent):
-            if len(row) >= 1:
-                if row[0][0] != '>':
-                    if len(row[0]) == seq_lengths[0] or len(row[0]) == seq_lengths[1] or len(row[0]) == seq_lengths[2] or len(row[0]) == seq_lengths[3]:
-                        padded_row = list(row[0])
-                        tokenized = [tokenizer.tokenize(s).item() for s in padded_row]
-                        if len(row[0]) == seq_lengths[0]:
-                            seqs_64.append(tokenized)
-                        elif len(row[0]) == seq_lengths[1]:
-                            seqs_128.append(tokenized)
-                        elif len(row[0]) == seq_lengths[2]:
-                            seqs_256.append(tokenized)
-                        elif len(row[0]) == seq_lengths[3]:
-                            seqs_384.append(tokenized)
-    return seqs_64, seqs_128, seqs_256, seqs_384
+# def parse_train(fasta_file):
+#     "Get all sequences of the same length from train dataset"
+#     seq_lengths = [64, 128, 256, 384]
+#     seqs_64 = []
+#     seqs_128 = []
+#     seqs_256 = []
+#     seqs_384 = []
+#     with open(fasta_file, 'r') as file:
+#         filecontent = csv.reader(file)
+#         for row in tqdm(filecontent):
+#             if len(row) >= 1:
+#                 if row[0][0] != '>':
+#                     if len(row[0]) == seq_lengths[0] or len(row[0]) == seq_lengths[1] or len(row[0]) == seq_lengths[2] or len(row[0]) == seq_lengths[3]:
+#                         padded_row = list(row[0])
+#                         tokenized = [tokenizer.tokenize(s).item() for s in padded_row]
+#                         if len(row[0]) == seq_lengths[0]:
+#                             seqs_64.append(tokenized)
+#                         elif len(row[0]) == seq_lengths[1]:
+#                             seqs_128.append(tokenized)
+#                         elif len(row[0]) == seq_lengths[2]:
+#                             seqs_256.append(tokenized)
+#                         elif len(row[0]) == seq_lengths[3]:
+#                             seqs_384.append(tokenized)
+#     return seqs_64, seqs_128, seqs_256, seqs_384
 
-def parse_train_for_length(fasta_file, seq_length):
-    """Get all sequences of a certain length from train dataset (used for ESM2 (all 100 res), and FoldingDiff (all diff
-    lengths)"""
-
-    seqs = []
-    with open(fasta_file, 'r') as file:
-        filecontent = csv.reader(file)
-        for row in tqdm(filecontent):
-            if len(row) >= 1:
-                if row[0][0] != '>':
-                    if len(row[0]) == seq_length:
-                        padded_row = list(row[0])
-                        tokenized = [tokenizer.tokenize(s).item() for s in padded_row]
-                        seqs.append(tokenized)
-    return seqs
+def parse_train_for_length(fasta_loader):
+    from collections import defaultdict
+    """Get indices corresponding to sequences at every length and save as pkl file"""
+    # Parse entire set once, then use pkl
+    if os.path.isfile('train_fasta_lengths.pkl'):
+        with open('train_fasta_lengths.pkl', 'rb') as f:
+            seqs = pickle.load(f)
+    else:
+        seqs = defaultdict(list)
+        for i in tqdm(range(len(fasta_loader))):
+            key = str(len(fasta_loader[i][0]))
+            val = i
+            seqs[key].append(val)
+        with open('train_fasta_lengths.pkl', 'wb') as f:
+            pickle.dump(seqs, f)
+    return seqs # dict with indices of seqs at var seq lengths
 
 def batch_hamming(train_set, g):
-    "Compute hamming distance for a batch of data"
+    """Compute hamming distance for a batch of data (train_set) and a given sequence (g)"""
     all_dist = [distance.hamming(t, g) for t in train_set]
     return all_dist
 
 project_dir = ''
-train_fasta = project_dir + 'data/uniref50/' + 'consensus.fasta'
+train_loader = UniRefDataset('data/uniref50/', 'train', structure=False, max_len=2048)
+
 # Calculate each dist to train
-runs = ['d3pm/oaardm-640M-backup/']
-#runs = ['sequence/blosum-0-seq/', 'sequence/oaardm/',
-#runs = ['d3pm-final/random-0-seq/', 'arcnn/cnn-38M/', 'pretrain21/cnn-38M/', 'esm-1b/']
+runs = ['d3pm/soar-640M/', 'd3pm_uniform_640M/', 'd3pm_blosum_640M/',
+        'hyper12/cnn-650M/', 'esm-1b/',
+        'esm2/']
+runs = ['arcnn/cnn-38M/', 'sequence/oaardm/', 'd3pm_uniform_38M/', 'd3pm_blosum_38M/',
+         'pretrain21/cnn-38M/', 'random-ref/']
+compute_natural = False
 
-batch_size = 25 #10000
-
-# Compute Hamming between all natural sequences
-# Uncomment when done getting new data
-# train_dists = []
-# min_dist = 0.1
-# num_lengths= 1
-# train_seqs = parse_train(train_fasta)
-# for i in range(num_lengths):
-#     num_batches = math.ceil(len(train_seqs[i])/batch_size)
-#     for batch in range(num_batches):
-#         seq_arr=np.array([np.array(s) for s in train_seqs[i][batch*batch_size:(batch+1)*batch_size]])
-#         print("batch", batch, "of", num_batches, "seq arr", seq_arr.shape)
-#         all_dist = list(distance.pdist(np.array(seq_arr), metric='hamming'))
-#         if min(all_dist) <= min_dist:
-#             print(min(all_dist))
-#             print([tokenizer.untokenize(seq) for seq in seq_arr])
-#             min_dist = min(all_dist)
-#             import pdb; pdb.set_trace()
-#             print("minimum dis", min_dist)
+if compute_natural == True:
+    # Compute Hamming between all natural sequences
+    train_dists = []
+    min_dist = 0.1
+    num_lengths= 1
+    train_seqs = parse_train(train_fasta)
+    for i in range(num_lengths):
+        num_batches = math.ceil(len(train_seqs[i])/batch_size)
+        for batch in range(num_batches):
+            seq_arr=np.array([np.array(s) for s in train_seqs[i][batch*batch_size:(batch+1)*batch_size]])
+            print("batch", batch, "of", num_batches, "seq arr", seq_arr.shape)
+            all_dist = list(distance.pdist(np.array(seq_arr), metric='hamming'))
+            if min(all_dist) <= min_dist:
+                print(min(all_dist))
+                print([tokenizer.untokenize(seq) for seq in seq_arr])
+                min_dist = min(all_dist)
+                print("minimum dis", min_dist)
 
 for run in runs:
-    if run =='esm2':
-        # For ESM2, they only generated seqs of length 100, so only compare to lengths 100
-        per_length = 1000
-        num_lengths = 1
-        train_seqs = [parse_train_for_length(train_fasta, 100)]
-        gen_fasta = project_dir + 'blobfuse/'+run+'generated_samples_string.fasta'
-        seqs = tokenize_fasta(gen_fasta)
-
-        train_gen_dists = []
-        min_train_gen_dists = 1
-        for i in range(num_lengths):
-            num_batches = math.ceil(len(train_seqs[i]) / batch_size) # Do in batches so faster
-            for batch in range(num_batches):
-                seq_arr = np.array([np.array(s) for s in train_seqs[i][batch * batch_size:(batch + 1) * batch_size]])
-                print("batch", batch, "of", num_batches, "seq arr", seq_arr.shape)
-                gen_batch = seqs[i * per_length:(i + 1) * per_length]
-                all_dist = [batch_hamming(seq_arr, g) for g in gen_batch]
-                for list_dist in all_dist:
-                    if min(list_dist) <= min_train_gen_dists: # Report new min
-                        min_train_gen_dists = min(list_dist)
-                        print("minimum dis", min_train_gen_dists)
-                    [train_gen_dists.append(dist) for dist in list_dist if dist <= 0.5]
-        all_mins.append(min_train_gen_dists)
-
-    elif run == 'foldingdiff/' or run =='arcnn/cnn-38M/' or run=='d3pm/soar-640M/' or run=='sequence/oaardm/' or run=='d3pm/oaardm-640M-backup/': #or run=='esm-1b/': have 1 weird sequence in esm-1b
-        all_mins = []
-        print("Gathering seqs len for each sequence")
-        # For autoreg and FoldingDiff data, find minimum hamming to each len in train of same length
-        gen_fasta = project_dir + 'blobfuse/'+run+'generated_samples_string.fasta'
-        seqs = tokenize_fasta(gen_fasta)
-        # Sort seqs by length
-        seqs.sort(key=lambda s: len(s))
-        train_gen_dists = []
-        min_train_gen_dists = 1
-        curr_seq_len = 0
-        include_list = [200, 380, 669, 945, 876] # lookup hamming for featured seqs
-        for seq_count, seq in enumerate(seqs):
-            if seq_count in include_list:
-                if len(seq) != curr_seq_len:
-                    train_batch = parse_train_for_length(train_fasta, len(seq))
-                    curr_seq_len = len(seq)
-                if len(train_batch)>0:
-                    all_dist = batch_hamming(train_batch, seq)
-                    if min(all_dist) <= min_train_gen_dists:
-                        min_train_gen_dists = min(all_dist)
-                        print("minimum dist", min_train_gen_dists)
-                all_mins.append(min_train_gen_dists)
-                print("seq", seq_count, min(all_dist))
-
-    else: # For everything else we conditionally generated at 4 lengths so can just iterate over train data 1x
-        train_seqs = parse_train(train_fasta)  # takes ~ 4 mim
-        num_lengths = 4
-        per_length = 250
-        all_mins = []
-        gen_fasta = project_dir + 'blobfuse/' + run + 'generated_samples_string.fasta'
-        seqs = tokenize_fasta(gen_fasta)
-
-        train_gen_dists = []
-        min_train_gen_dists = 1
-        for i in range(num_lengths):
-            num_batches = math.ceil(len(train_seqs[i]) / batch_size) # Do in batches so faster
-            for batch in range(num_batches):
-                seq_arr = np.array([np.array(s) for s in train_seqs[i][batch * batch_size:(batch + 1) * batch_size]])
-                print("batch", batch, "of", num_batches, "seq arr", seq_arr.shape)
-                gen_batch = seqs[i * per_length:(i + 1) * per_length]
-                all_dist = [batch_hamming(seq_arr, g) for g in gen_batch]
-                for list_dist in all_dist:
-                    if min(list_dist) <= min_train_gen_dists: # Report new min
-                        min_train_gen_dists = min(list_dist)
-                        print("minimum dis", min_train_gen_dists)
-                    #[train_gen_dists.append(dist) for dist in list_dist if dist <= 0.5]
-        all_mins.append(min_train_gen_dists)
-
-    out_file = run + '_similarity.csv'
+    print(run)
+    all_mins = []
+    print("Gathering seqs len for each sequence")
+    gen_fasta = project_dir + 'blobfuse/'+run+'generated_samples_string.fasta'
+    train_dict = parse_train_for_length(train_loader)
+    seqs = tokenize_fasta(gen_fasta)
+    train_gen_dists = []
+    include_list = [200, 380, 669, 945, 876] # indices to print out hamming for ; (now save all to file - don't need)
+    for seq_count, seq in tqdm(enumerate(seqs)):
+        train_batch = [[tokenizer.tokenize(s).item() for s in train_loader[idx][0]] for idx in train_dict[str(len(seq))]] # select indices corresponding to dict entry for seq_len
+        curr_seq_len = len(seq)
+        if len(train_batch)>0:
+            all_dist = batch_hamming(train_batch, seq)
+        all_mins.append(min(all_dist)) # append minimum hamming per seq
+        if seq_count in include_list:
+            print("seq", seq_count, min(all_dist))
+    # write to file
+    out_file = 'blobfuse/'+ run + 'hamming_similarity.csv'
     with open(out_file, 'w') as f:
         [f.write(str(line) + "\n") for line in all_mins]
     f.close()
