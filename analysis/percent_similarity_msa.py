@@ -12,6 +12,7 @@ import seaborn as sns
 import pandas as pd
 from evodiff.plot import plot_percent_similarity, plot_conditional_tmscores
 
+# Calc max percent similarity between generated query, and all sequences in original MSA (including query)
 
 def extract_seq_a3m(generate_file):
     list_of_seqs = []
@@ -36,32 +37,22 @@ def calc_sim(df_gen, df_valid, path_to_file, verbose=True, ignore_query=False):
         sim.append(sm.ratio()*100)
         if not ignore_query:
             sim_msa_temp.append(sm.ratio()*100)
-        #msa_seqs = extract_seq_a3m(path_to_file+run+'gen-'+str(i+1)+'/generated_msas.a3m')
         start=i*63
         end = (i+1)*63
-        #print(msa_seqs.shape)
-        #print(i, start, end, len(msa_seqs))
-        #import pdb ; pdb.set_trace()
-        #print(msa_seqs[start:end])
-        #if i >= 1: # for seqs in msa (not including query)
         for index, seq in msa_seqs[start:end].iterrows():
-            #print(seq)
-            #print(list(itertools.chain.from_iterable(seq)))
             sm_msa=difflib.SequenceMatcher(None,s1,list(itertools.chain.from_iterable(seq)))
             sim_msa_temp.append(sm_msa.ratio()*100)
         sim_msa.append(max(sim_msa_temp)) # append max seq sim
         if verbose:
             if i in included_list:
                 print("SEQUENCE", i, "seq sim:", sm.ratio()*100, "msa sim:", sm_msa.ratio()*100)
-                #print("gen", "".join(s1))
-                #print("valid", "".join(s2))
     return sim, sim_msa
 
 path_to_file = 'amlt-generate-msa/'
 runs = ['msa-oaardm-max-train-startmsa/', 'msa-oaardm-max-train-startmsa/',
-        'msa-oaardm-random-train-startmsa/',
+        'msa-oaardm-random-train-startmsa/', 'msa_oa_ar_maxsub_startrandomquery/',
         'msa-esm-startmsa-t2/','potts/']
-labels = ['Valid', 'Cond Max', 'Cond Rand',
+labels = ['Valid', 'Cond Max', 'Cond Rand', 'Cond Max-Rand',
           'ESM-1b','Potts']
 colors = ['#D0D0D0'] + sns.color_palette("viridis", len(runs)-1) #+ ['#D0D0D0']
 palette = {labels[i]: colors[i] for i in range(len(labels))}
@@ -77,7 +68,6 @@ for i, run in enumerate(runs):
         sim, sim_msa = calc_sim(df_gen, df_valid, path_to_file)
         new = pd.DataFrame(np.append(np.array(sim), np.array(sim_msa)), columns=[labels[i]])
         all_df = pd.concat([all_df, new], axis=1)
-    #print(all_df.tail())
 print([(label, all_df[label].mean(), all_df[label].std()) for label in labels])
 plot_percent_similarity(all_df, colors, legend=True)
 
