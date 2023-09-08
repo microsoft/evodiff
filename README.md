@@ -14,7 +14,7 @@ We evaluate our sequence and MSA models – EvoDiff-Seq and EvoDiff-MSA, respect
 - [Table of contents](#table-of-contents)
 - [Installation](#installation)
     - [Data](#data)
-    - [Generated sequences and MSAs](#generated-sequences-and-msas)
+    - [Generated sequences](#generated-sequences)
     - [Loading pretrained models](#loading-pretrained-models)
     - [Provided notebook with examples](#provided-notebook-with-examples)
 - [Conditional sequence generation](#conditional-sequence-generation)
@@ -59,7 +59,7 @@ We obtain sequences from the [Uniref50 dataset](https://www.ncbi.nlm.nih.gov/pmc
 For the scaffolding structural motifs task, we provide pdb files used for conditionally generating sequences in the [examples/scaffolding-pdbs](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-pdbs) folder. We also provide
 We provide pdb files used for conditionally generating MSAs in the [examples/scaffolding-msas](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-msas) folder.
 
-## Generated sequences and MSAs
+## Generated sequences
 
 To access the UniRef50 test sequences, use the following code:
 
