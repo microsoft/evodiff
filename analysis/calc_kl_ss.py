@@ -7,6 +7,10 @@ import numpy as np
 import torch.nn.functional as F
 from evodiff.plot import ss_helix_strand, ss_box_whisker
 
+
+# Need to run PGP first on generated seqs , this performs downstream analysis
+# https://github.com/hefeda/PGP
+
 def load_data(output_directory):
     "Edited directly from Noelia PGP Notebooks"
     indexes = read_csv(str(output_directory + 'ids.txt'), names=['header'], sep="\t")
@@ -125,35 +129,37 @@ save_name = 'large' # large or small
 
 # Large
 if save_name == 'large':
-    colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'mediumpurple', 'rebeccapurple',
-              'darkslateblue', 'firebrick']
+    colors = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'mediumpurple',  '#89194B',
+              '#F8961D', 'darkgoldenrod',
+              'firebrick', 'grey']
     random = load_data(folder+'PGP_OUT_LARGE/ref/') # ref baseline is random
     random.insert(0, "type", "ref")
     valid = load_data(folder+'PGP_OUT_LARGE/valid/')
     valid.insert(0, "type", "valid")
     test = load_data(folder+'PGP_OUT_LARGE/test3/')
     test.insert(0, "type", "test")
-    blosum = load_data(folder+'PGP_OUT_LARGE/blosum/')
+    blosum = load_data(folder+'PGP_OUT_LARGE/blosum-new/')
     blosum.insert(0, "type", "blosum d3pm")
-    uniform = load_data(folder+'PGP_OUT_LARGE/random/')  # random model is uniform
+    uniform = load_data(folder+'PGP_OUT_LARGE/uniform-new/')  # random model is uniform
     uniform.insert(0, "type", "random d3pm")
     so = load_data(folder+'PGP_OUT_LARGE/soardm/')
     so.insert(0, "type", "soardm")
-    oa = load_data(folder+'PGP_OUT_LARGE/oaardm/')
+    oa = load_data(folder+'PGP_OUT_LARGE/oaardm-backup/')
     oa.insert(0, "type", "oaardm")
     carp = load_data('../PGP/PGP_OUT_LARGE/carp/')
     carp.insert(0, "type", "carp")
-    folding = load_data('../PGP/PGP_OUT_LARGE/rfdiff/')#'../PGP/PGP_OUT_LARGE/foldingdiff/')
+    rf = load_data('../PGP/PGP_OUT_LARGE/rfdiff/')#'../PGP/PGP_OUT_LARGE/foldingdiff/')
+    rf.insert(0, "type", "rfdiff")
+    folding = load_data('../PGP/PGP_OUT_LARGE/foldingdiff-new/')
     folding.insert(0, "type", "folding")
     esm1b = load_data('../PGP/PGP_OUT_LARGE/esm-1b/')
     esm1b.insert(0, "type", "esm1b")
     esm2 = load_data('../PGP/PGP_OUT_LARGE/esm2/')
     esm2.insert(0, "type", "esm2")
     #concatenate the dataframes
-    data = pd.concat([valid, blosum, uniform, oa, so, carp, esm1b, esm2, folding, random, test]).reset_index(drop=True)
-    runs = ['valid', 'blosum d3pm', 'random d3pm', 'oaardm', 'soardm', 'carp', 'esm1b', 'esm2', 'folding', 'ref', 'test']
-    labels =['Valid', 'Blosum D3PM', 'Uniform D3PM', 'OA-ARDM', 'LR-AR', 'CARP', 'ESM-1b', 'ESM2',
-             'RFDiffusion', #'FoldingDiff',
+    data = pd.concat([valid, blosum, uniform, oa, so, carp, esm1b, esm2, rf, folding, random, test]).reset_index(drop=True)
+    runs = ['valid', 'blosum d3pm', 'random d3pm', 'oaardm', 'soardm', 'carp', 'esm1b', 'esm2', 'rfdiff', 'folding', 'ref', 'test']
+    labels =['Valid', 'Blosum D3PM', 'Uniform D3PM', 'OA-ARDM', 'LR-AR', 'CARP', 'ESM-1b', 'ESM2', 'RFDiffusion', 'FoldingDiff',
              'Random', 'Test']
 
 # Small
@@ -166,9 +172,9 @@ elif save_name=='small':
     valid.insert(0, "type", "valid")
     test = load_data(folder+'PGP_OUT/test3/')
     test.insert(0, "type", "test")
-    blosum = load_data(folder+'PGP_OUT/blosum/')
+    blosum = load_data(folder+'PGP_OUT/blosum-new/')
     blosum.insert(0, "type", "blosum d3pm")
-    uniform = load_data(folder+'PGP_OUT/random/')  # random model is uniform
+    uniform = load_data(folder+'PGP_OUT/uniform-new/')  # random model is uniform
     uniform.insert(0, "type", "random d3pm")
     so = load_data(folder+'PGP_OUT/soardm/')
     so.insert(0, "type", "soardm")
