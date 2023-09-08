@@ -12,12 +12,10 @@ from numpy import iscomplexobj
 from scipy.linalg import sqrtm
 from evodiff.utils import parse_txt
 from evodiff.plot import plot_embedding
+import umap
 
 # Need to run PGP first on generated seqs , this performs downstream analysis
 # https://github.com/hefeda/PGP
-
-# python calc_fid.py
-
 
 def calculate_fid(act1, act2):
     """calculate frechet inception distance"""
@@ -35,18 +33,18 @@ def calculate_fid(act1, act2):
     fid = ssdiff + trace(sigma1 + sigma2 - 2.0 * covmean)
     return fid
 
-project_run='small' #'large' or 'small'
+project_run='large' #'large' or 'small'
 
 # Calculate FID between test dataset sample and generated seqs
 if project_run=='large':
     project_dir = '../PGP/PGP_OUT_LARGE/'
-    runs = ['blosum', 'random', 'oaardm', 'soardm', 'carp', 'ref', 'valid', 'esm-1b', 'esm2',
-            'rfdiff', #'foldingdiff'
-            ]
-    c = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'lightcoral', 'firebrick', 'grey', 'mediumpurple', 'rebeccapurple', 'darkslateblue']
+    runs = ['blosum-new', 'uniform-new', 'oaardm-backup', 'soardm', 'carp', 'ref', 'valid', 'esm-1b', 'esm2',
+            'rfdiff', 'foldingdiff-new']
+    c = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'firebrick', 'grey', 'mediumpurple',
+         '#89194B', '#F8961D', 'darkgoldenrod', 'darkslateblue', 'darkgoldenrod', 'firebrick']
 elif project_run=='small':
     project_dir = '../PGP/PGP_OUT/'
-    runs = ['blosum', 'random', 'oaardm', 'soardm', 'carp', 'ref', 'valid']
+    runs = ['blosum-new', 'uniform-new', 'oaardm', 'soardm', 'carp', 'ref', 'valid']
     c = ['#D0D0D0', "#b0e16d", '#63C2B5', '#46A7CB', '#1B479D', 'plum', 'firebrick', 'grey']
 
 test_fasta = project_dir + 'test3/seqs.txt'
@@ -63,26 +61,19 @@ for i, run in enumerate(runs):
 runs = ['test'] + runs
 runs
 
-# Can use any embedding here to do the same analysis
+# Fit UMAP to train embeddings, then fit to each model
 embedder = ProtTransBertBFDEmbedder()
 embeddings = embedder.embed_many([s for s in sequences])
 embeddings = list(embeddings)
 reduced_embeddings = [ProtTransBertBFDEmbedder.reduce_per_protein(e) for e in embeddings]
-#print(reduced_embeddings[0].shape, reduced_embeddings[1].shape)
-
-options = {
-    'n_components':2, # Can use 2 or 3 for best visualization
-    'perplexity': 3,
-    'n_iter': 500
-}
-projected_embeddings = tsne_reduce(reduced_embeddings, **options)
-train_proj_emb = projected_embeddings[:len_test]
+projection = umap.UMAP(n_components=2, n_neighbors=25, random_state=42).fit(reduced_embeddings[:len_test])
+train_proj_emb = projection.transform(reduced_embeddings[:len_test])
 # Plot and save to file
 for i in range(len(runs)-1):
     begin = len_test + (1000 * (i))
     end = len_test + (1000 * (i + 1))
     print(begin, end)
-    run_proj_emb = projected_embeddings[begin:end]
+    run_proj_emb = projection.transform(reduced_embeddings[begin:end])
     print(len(run_proj_emb))
     print(run_proj_emb.shape)
     plot_embedding(train_proj_emb, run_proj_emb, c, i, runs, project_run)
