@@ -444,7 +444,7 @@ def run_tmscore(fpath, pdb, num_seqs, path_to_tmscore='TMscore', amlt=False, rer
                         stdout=temp_file)
         else:
             #if reres:
-            print("NOT USING RERES") # Manually switching between reference and re-res for multi-chain PDB TMscores - add more efficient approach 
+            print("NOT USING RERES") # Manually switching between reference and re-res for multi-chain PDB TMscores - add more efficient approach
             ref_path = os.path.join(out_fpath, pdb + '_reference.pdb')
             #else:
             #    ref_path = os.path.join(out_fpath, pdb + '_reference.pdb')
