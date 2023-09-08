@@ -43,7 +43,10 @@ def load_sequence_checkpoint(model_name, config_path, diffusion_timesteps, token
     state_dict = download_model(model_name)
     # sd = torch.load(state_dict, map_location=torch.device('cpu'))
     msd = state_dict['model_state_dict']
-    msd = {k.split('module.')[1]: v for k, v in msd.items()}
+    if model_name == 'carp-640M' or model_name == 'carp-38M':
+        msd = {k.split('module.')[0]: v for k, v in msd.items()}
+    else:
+        msd = {k.split('module.')[1]: v for k, v in msd.items()}
     model.load_state_dict(msd)
 
     return model, tokenizer
@@ -66,7 +69,10 @@ def load_msa_checkpoint(model_name, config_path, diffusion_timesteps, tokenizer=
     state_dict = download_model(model_name)
     # sd = torch.load(state_dict, map_location=torch.device('cpu'))
     msd = state_dict['model_state_dict']
-    msd = {k.split('module.')[1]: v for k, v in msd.items()}
+    if model_name == 'carp-640M' or model_name == 'carp-38M':
+        msd = {k.split('module.')[0]: v for k, v in msd.items()}
+    else:
+        msd = {k.split('module.')[1]: v for k, v in msd.items()}
     model.load_state_dict(msd)
     return model, tokenizer
 
