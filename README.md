@@ -22,15 +22,15 @@ to demonstrate their power for controllable protein design. Below, we provide do
 - [Installation](#installation)
     - [Datasets](#datasets)
     - [Loading pretrained models](#loading-pretrained-models)
-- [Unconditional sequence generation](#unconditional-sequence-generation)
-  - [Unconditional generation with EvoDiff-Seq](#unconditional-generation-with-evodiff-seq)
-  - [Unconditional generation with EvoDiff-MSA](#unconditional-generation-with-evodiff-msa)
+- [Unconditional generation](#unconditional-sequence-generation)
+- [Unconditional sequence generation](#unconditional-generation-with-evodiff-seq)
+- [Unconditional MSA generation](#unconditional-generation-with-evodiff-msa)
 - [Conditional sequence generation](#conditional-sequence-generation)
     - [Evolution-guided protein generation with EvoDiff-MSA](#evolution-guided-protein-generation-with-evodiff-msa)
     - [Generating intrinsically disordered regions](#generating-intrinsically-disordered-regions)
-    - [Scaffolding functional motifs](#scaffolding-functional-motifs)
-- [Analysis of generations](#analysis-of-generations)
-- [Downloading generated sequences](#downloading-generated-sequences)
+    - [Scaffolding functional motifs with sequence information alone](#scaffolding-functional-motifs-with-sequence-information-alone)
+- [Analysis](#analysis-of-generations)
+- [Generated sequences](#generated-sequences)
 
 ----
 
@@ -160,7 +160,7 @@ First, we test the ability of EvoDiff-MSA (`msa_oa_dm_maxsub`) to generate query
 
 Note that when conditionally generating an MSA, you can specify query_only = True. By setting this flag to true, you only generate the query sequence. If it is false, then you generate the alignment too.
 
-To generate a new query sequence, given an alignment, use the following with the `--start-msa` flag enables. This starts conditional generation by sampling from a validation MSA. 
+To generate a new query sequence, given an alignment, use the following with the `--start-msa` flag. This starts conditional generation by sampling from a validation MSA. 
 ``` 
 python evodiff/generate-msa.py --model-type msa_oa_dm_maxsub --batch-size 1 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming --start-msa
 ```

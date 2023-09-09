@@ -109,7 +109,7 @@ def D3PM_BLOSUM_38M(return_all=False):
 
 def D3PM_UNIFORM_640M(return_all=False):
     dt = 500
-    tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=True)
+    tokenizer = Tokenizer(sequences=True)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
     collater = D3PMCollater(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
     file_path = pkg_resources.resource_filename('config', 'config640M.json')
@@ -125,7 +125,7 @@ def D3PM_UNIFORM_640M(return_all=False):
 
 def D3PM_UNIFORM_38M(return_all=False):
     dt = 500
-    tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=True)
+    tokenizer = Tokenizer(sequences=True)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
     collater = D3PMCollater(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
     file_path = pkg_resources.resource_filename('config', 'config38M.json')
@@ -250,7 +250,7 @@ def MSA_D3PM_BLOSUM_MAXSUB(return_all=False):
 
 def MSA_D3PM_UNIFORM_RANDSUB(return_all=False):
     dt = 500
-    tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
+    tokenizer = Tokenizer(sequences=False)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
     collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
     file_path = pkg_resources.resource_filename('config', 'configMSA.json')
@@ -266,7 +266,7 @@ def MSA_D3PM_UNIFORM_RANDSUB(return_all=False):
 
 def MSA_D3PM_UNIFORM_MAXSUB(return_all=False):
     dt = 500
-    tokenizer = Tokenizer(path_to_blosum="data/blosum62-special-MSA.mat", sequences=False)
+    tokenizer = Tokenizer(sequences=False)
     Q_prod, Q_t = tokenizer.q_random_schedule(timesteps=dt)
     collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=dt, Q=Q_t, Q_bar=Q_prod)
     file_path = pkg_resources.resource_filename('config', 'configMSA.json')
