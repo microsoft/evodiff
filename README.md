@@ -20,17 +20,18 @@ to demonstrate their power for controllable protein design. Below, we provide do
   - [Description](#description)
 - [Table of contents](#table-of-contents)
 - [Installation](#installation)
-    - [Data](#data)
-    - [Generated sequences](#generated-sequences)
+    - [Datasets](#data)
     - [Loading pretrained models](#loading-pretrained-models)
     - [Provided notebook with examples](#provided-notebook-with-examples)
+- [Unconditional generation](#unconditional-sequence-generation)
+- [Unconditional sequence generation](#unconditional-generation-with-evodiff-seq)
+- [Unconditional MSA generation](#unconditional-generation-with-evodiff-msa)
 - [Conditional sequence generation](#conditional-sequence-generation)
     - [Evolution-guided protein generation with EvoDiff-MSA](#evolution-guided-protein-generation-with-evodiff-msa)
     - [Generating intrinsically disordered regions](#generating-intrinsically-disordered-regions)
     - [Scaffolding functional motifs with sequence information alone](#scaffolding-functional-motifs-with-sequence-information-alone)
-- [Unconditional sequence generation](#unconditional-sequence-generation)
-- [Unconditional MSA generation](#unconditional-msa-generation)
-- [Analysis of generations](#analysis-of-generations)
+- [Analysis](#analysis-of-generations)
+- [Generated sequences](#generated-sequences)
 
 ----
 
