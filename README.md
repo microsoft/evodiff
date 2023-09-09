@@ -218,12 +218,7 @@ The default model type is `msa_oa_dm_maxsub` , and the other available model typ
 Please see section [Evolution-guided protein generation with EvoDiff-MSA](#evolution-guided-protein-generation-with-evodiff-msa) for information on using the query-only flag.
 
 ## Analysis of generations
-To access the sequences described in table S1 of the paper, use the following code:
 
-```
-test_data = UniRefDataset('data/uniref50/', 'rtest', structure=False) # To access the test sequences
-curl -O ...(TODO) # To access the generated sequences
-```
 To analyze the quality of the generations, we look at:
 * amino acid KL divergence ([aa_reconstruction_parity_plot](https://github.com/microsoft/evodiff/blob/main/evodiff/plot.py))
 * secondary structure KL divergence ([evodiff/analysis/calc_kl_ss.py](https://github.com/microsoft/evodiff/blob/main/analysis/calc_kl_ss.py))
