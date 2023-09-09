@@ -1,4 +1,4 @@
-from evodiff.pretrained import MSA_OA_AR_MAXSUB, MSA_OA_AR_RANDSUB, ESM_MSA_1b
+from evodiff.pretrained import MSA_OA_DM_MAXSUB, MSA_OA_DM_RANDSUB, ESM_MSA_1b
 import numpy as np
 import argparse
 import torch
@@ -20,8 +20,8 @@ def main():
     np.random.seed(0)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model-type', type=str, default='msa_oa_ar_maxsub',
-                        help='Choice of: msa_oa_ar_randsub, msa_oa_ar_maxsub, esm_msa_1b')
+    parser.add_argument('--model-type', type=str, default='msa_oa_dm_maxsub',
+                        help='Choice of: msa_oa_dm_randsub, msa_oa_dm_maxsub, esm_msa_1b')
     parser.add_argument('--gpus', type=int, default=0)
     parser.add_argument('--cond-task', type=str, default='scaffold',
                         help="Choice of 'scaffold' or 'idr'")
@@ -54,15 +54,15 @@ def main():
         args.end_idxs.sort()
 
     if args.random_baseline:
-        args.model_type = 'msa_oa_ar_randsub' # placeholder
+        args.model_type = 'msa_oa_dm_randsub' # placeholder
 
-    if args.model_type == 'msa_oa_ar_randsub':
-        checkpoint = MSA_OA_AR_RANDSUB()
+    if args.model_type == 'msa_oa_dm_randsub':
+        checkpoint = MSA_OA_DM_RANDSUB()
         selection_type = 'random'
         mask_id = checkpoint[2].mask_id
         pad_id = checkpoint[2].pad_id
-    elif args.model_type == 'msa_oa_ar_maxsub':
-        checkpoint = MSA_OA_AR_MAXSUB()
+    elif args.model_type == 'msa_oa_dm_maxsub':
+        checkpoint = MSA_OA_DM_MAXSUB()
         selection_type = 'MaxHamming'
         mask_id = checkpoint[2].mask_id
         pad_id = checkpoint[2].pad_id
@@ -530,7 +530,7 @@ def mask_sequence(seq, mask_locations, mask_id):
     return masked_seq
 
 def tokenize_msa(model_type, untokenized, tokenizer):
-    if model_type == 'msa_oa_ar_maxsub' or model_type == 'msa_oa_ar_randsub':
+    if model_type == 'msa_oa_dm_maxsub' or model_type == 'msa_oa_dm_randsub':
         return [tokenizer.tokenizeMSA(seq) for seq in untokenized]
     elif model_type == 'esm_msa_1b':
         src = []
@@ -540,7 +540,7 @@ def tokenize_msa(model_type, untokenized, tokenizer):
         return src
 
 def untokenize_msa(model_type, tokenized, tokenizer):
-    if model_type == 'msa_oa_ar_maxsub' or model_type == 'msa_oa_ar_randsub':
+    if model_type == 'msa_oa_dm_maxsub' or model_type == 'msa_oa_dm_randsub':
         return tokenizer.untokenize(tokenized)
     elif model_type == 'esm_msa_1b':
         return ''.join([tokenizer.get_tok(s) for s in tokenized[1:-1]])

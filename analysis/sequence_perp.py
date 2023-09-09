@@ -1,6 +1,6 @@
 import numpy as np
 from evodiff.pretrained import CARP_38M, CARP_640M, D3PM_BLOSUM_38M, D3PM_BLOSUM_640M, D3PM_UNIFORM_38M, D3PM_UNIFORM_640M,\
-                           OA_AR_640M, OA_AR_38M, LR_AR_38M, LR_AR_640M, ESM1b_650M, ESM2_650M
+                           OA_DM_640M, OA_DM_38M, LR_AR_38M, LR_AR_640M, ESM1b_650M, ESM2_650M
 from torch.nn import CrossEntropyLoss
 from evodiff.losses import OAMaskedCrossEntropyLoss
 from sequence_models.losses import MaskedCrossEntropyLoss
@@ -19,7 +19,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model-type', type=str, default='d3pm_blosum_38M',
                         help='Choice of: carp_38M carp_640M esm1b_640M \
-                              oa_ar_38M oa_ar_640M \
+                              oa_dm_38M oa_dm_640M \
                               lr_ar_38M lr_ar_640M \
                               d3pm_blosum_38M d3pm_blosum_640M \
                               d3pm_uniform_38M d3pm_uniform_38M')
@@ -35,10 +35,10 @@ def main():
         checkpoint = CARP_38M()
     elif args.model_type=='carp_640M':
         checkpoint = CARP_640M()
-    elif args.model_type=='oa_ar_38M':
-        checkpoint = OA_AR_38M()
-    elif args.model_type=='oa_ar_640M':
-        checkpoint = OA_AR_640M()
+    elif args.model_type=='oa_dm_38M':
+        checkpoint = OA_DM_38M()
+    elif args.model_type=='oa_dm_640M':
+        checkpoint = OA_DM_640M()
     elif args.model_type=='lr_ar_38M':
         checkpoint = LR_AR_38M()
     elif args.model_type=='lr_ar_640M':

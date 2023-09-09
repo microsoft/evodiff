@@ -11,7 +11,7 @@ from tqdm import tqdm
 from evodiff.plot import aa_reconstruction_parity_plot
 import pandas as pd
 from evodiff.pretrained import CARP_38M, CARP_640M, D3PM_BLOSUM_38M, D3PM_BLOSUM_640M, D3PM_UNIFORM_38M, D3PM_UNIFORM_640M,\
-                           OA_AR_640M, OA_AR_38M, LR_AR_38M, LR_AR_640M, ESM1b_650M
+                           OA_DM_640M, OA_DM_38M, LR_AR_38M, LR_AR_640M, ESM1b_650M
 
 
 home = str(pathlib.Path.home())
@@ -48,9 +48,9 @@ def main():
     elif args.model_type=='carp_640M':
         checkpoint = CARP_640M()
     elif args.model_type=='oa_ar_38M':
-        checkpoint = OA_AR_38M()
+        checkpoint = OA_DM_38M()
     elif args.model_type=='oa_ar_640M':
-        checkpoint = OA_AR_640M()
+        checkpoint = OA_DM_640M()
     elif args.model_type=='lr_ar_38M':
         checkpoint = LR_AR_38M()
     elif args.model_type=='lr_ar_640M':

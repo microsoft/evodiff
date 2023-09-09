@@ -138,7 +138,7 @@ def D3PM_UNIFORM_38M(return_all=False):
         return model, collater, tokenizer, scheme
 
 
-def OA_AR_640M():
+def OA_DM_640M():
     tokenizer = Tokenizer()
     collater = OAMaskCollater(tokenizer=tokenizer)
     file_path = pkg_resources.resource_filename('config', 'config640M.json')
@@ -149,7 +149,7 @@ def OA_AR_640M():
     return model, collater, tokenizer, scheme
 
 
-def OA_AR_38M():
+def OA_DM_38M():
     tokenizer = Tokenizer()
     collater = OAMaskCollater(tokenizer=tokenizer)
     file_path = pkg_resources.resource_filename('config', 'config38M.json')
@@ -281,7 +281,7 @@ def MSA_D3PM_UNIFORM_MAXSUB(return_all=False):
         return model, collater, tokenizer, scheme
 
 
-def MSA_OA_AR_RANDSUB():
+def MSA_OA_DM_RANDSUB():
     tokenizer = Tokenizer()
     collater = MSAAbsorbingCollater(alphabet=MSA_ALPHABET)
     file_path = pkg_resources.resource_filename('config', 'configMSA.json')
@@ -292,7 +292,7 @@ def MSA_OA_AR_RANDSUB():
     scheme = 'mask'
     return model, collater, tokenizer, scheme
 
-def MSA_OA_AR_MAXSUB():
+def MSA_OA_DM_MAXSUB():
     tokenizer = Tokenizer()
     collater = MSAAbsorbingCollater(alphabet=MSA_ALPHABET)
     file_path = pkg_resources.resource_filename('config', 'configMSA.json')

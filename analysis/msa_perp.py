@@ -1,7 +1,7 @@
 import numpy as np
 import evodiff.utils
 from evodiff.pretrained import MSA_D3PM_UNIFORM_RANDSUB, MSA_D3PM_UNIFORM_MAXSUB, MSA_D3PM_BLOSUM_RANDSUB, \
-    MSA_D3PM_BLOSUM_MAXSUB, MSA_OA_AR_RANDSUB, MSA_OA_AR_MAXSUB, ESM_MSA_1b
+    MSA_D3PM_BLOSUM_MAXSUB, MSA_OA_DM_RANDSUB, MSA_OA_DM_MAXSUB, ESM_MSA_1b
 from evodiff.losses import D3PMCELoss
 from sequence_models.losses import MaskedCrossEntropyLossMSA
 import torch
@@ -20,7 +20,7 @@ def main():
     parser.add_argument('--model-type', type=str, default='D3PM_BLOSUM_38M',
                         help='Choice of: msa_d3pm_uniform_randsub, msa_d3pm_uniform_maxsub,\
                          msa_d3pm_blosum_randsub, msa_d3pm_blosum_maxsub,\
-                         msa_oa_ar_randsub, msa_oa_ar_maxsub, esm_msa_1b')
+                         msa_oa_dm_randsub, msa_oa_dm_maxsub, esm_msa_1b')
     parser.add_argument('--subsampling', type=str, default='random') # or MaxHamming
     args = parser.parse_args()
 
@@ -34,10 +34,10 @@ def main():
         checkpoint = MSA_D3PM_BLOSUM_RANDSUB()
     elif args.model_type=='msa_d3pm_blosum_maxsub':
         checkpoint = MSA_D3PM_BLOSUM_MAXSUB()
-    elif args.model_type=='msa_oa_ar_randsub':
-        checkpoint = MSA_OA_AR_RANDSUB()
-    elif args.model_type=='msa_oa_ar_maxsub':
-        checkpoint = MSA_OA_AR_MAXSUB()
+    elif args.model_type=='msa_oa_dm_randsub':
+        checkpoint = MSA_OA_DM_RANDSUB()
+    elif args.model_type=='msa_oa_dm_maxsub':
+        checkpoint = MSA_OA_DM_MAXSUB()
     elif args.model_type=='esm_msa_1b':
         checkpoint = ESM_MSA_1b()
     else:

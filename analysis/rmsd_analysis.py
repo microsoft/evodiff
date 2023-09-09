@@ -18,9 +18,9 @@ def main():
     np.random.seed(0)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model-type', type=str, default='oa_ar_640M',
+    parser.add_argument('--model-type', type=str, default='oa_dm_640M',
                         help='Choice of: carp_38M carp_640M esm1b_650M \
-                                  oa_ar_38M oa_ar_640M lr_ar_38M lr_ar_640M')
+                                  oa_dm_38M oa_dm_640M lr_ar_38M lr_ar_640M')
     parser.add_argument('--pdb', type=str, default=None,
                         help="If using cond-task=scaffold, provide a PDB code and motif indexes")
     parser.add_argument('--start-idxs', type=int, action='append',

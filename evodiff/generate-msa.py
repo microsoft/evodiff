@@ -38,7 +38,7 @@ def main():
                         help='number of gpus per node')
     parser.add_argument('-off', '--offset', default=0, type=int,
                         help='Number of GPU devices to skip.')
-    parser.add_argument('--model-type', type=str, default='msa_oa_ar_maxsub')
+    parser.add_argument('--model-type', type=str, default='msa_oa_dm_maxsub')
     parser.add_argument('--dataset', type=str, default='openfold')
     parser.add_argument('--batch-size', type=int, default=1) # batch-size (on amlt use 1)
     parser.add_argument('--n-sequences', type=int, default=64)
@@ -59,13 +59,13 @@ def main():
     device = torch.device('cuda:' + str(args.gpus + args.offset))
 
     d3pm = False
-    if args.model_type == 'msa_oa_ar_randsub':
-        checkpoint = evodiff.pretrained.MSA_OA_AR_RANDSUB()
+    if args.model_type == 'msa_oa_dm_randsub':
+        checkpoint = evodiff.pretrained.MSA_OA_DM_RANDSUB()
         #selection_type = 'random'
         mask_id = checkpoint[2].mask_id
         pad_id = checkpoint[2].pad_id
-    elif args.model_type == 'msa_oa_ar_maxsub':
-        checkpoint = evodiff.pretrained.MSA_OA_AR_MAXSUB()
+    elif args.model_type == 'msa_oa_dm_maxsub':
+        checkpoint = evodiff.pretrained.MSA_OA_DM_MAXSUB()
         #selection_type = 'MaxHamming'
         mask_id = checkpoint[2].mask_id
         pad_id = checkpoint[2].pad_id

@@ -1,5 +1,5 @@
 import evodiff
-from evodiff.pretrained import OA_AR_640M, OA_AR_38M, CARP_640M, LR_AR_38M, LR_AR_640M
+from evodiff.pretrained import OA_DM_640M, OA_DM_38M, CARP_640M, LR_AR_38M, LR_AR_640M
 import numpy as np
 import argparse
 import urllib.request
@@ -21,9 +21,9 @@ def main():
     np.random.seed(0)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model-type', type=str, default='oa_ar_640M',
+    parser.add_argument('--model-type', type=str, default='oa_dm_640M',
                         help='Choice of: carp_38M carp_640M esm1b_650M \
-                              oa_ar_38M oa_ar_640M lr_ar_38M lr_ar_640M')
+                              oa_dm_38M oa_dm_640M lr_ar_38M lr_ar_640M')
     parser.add_argument('--gpus', type=int, default=0)
     parser.add_argument('--cond-task', type=str, default='scaffold',
                         help="Choice of 'scaffold' or 'idr'")
@@ -59,13 +59,13 @@ def main():
         args.end_idxs.sort()
 
     if args.random_baseline:
-        args.model_type = 'oa_ar_640M' # placeholder
+        args.model_type = 'oa_dm_640M' # placeholder
 
     print("USING MODEL", args.model_type)
-    if args.model_type == 'oa_ar_38M':
-        checkpoint = OA_AR_38M()
-    elif args.model_type == 'oa_ar_640M':
-        checkpoint = OA_AR_640M()
+    if args.model_type == 'oa_dm_38M':
+        checkpoint = OA_DM_38M()
+    elif args.model_type == 'oa_dm_640M':
+        checkpoint = OA_DM_640M()
     elif args.model_type == 'carp_640M':
         checkpoint = CARP_640M()
     elif args.model_type == 'lr_ar_38M':
@@ -172,7 +172,7 @@ def main():
         scaffold_lengths = []
         for i in range(args.num_seqs):
             scaffold_length = random.randint(args.scaffold_min, args.scaffold_max)
-            if args.model_type == 'oa_ar_38M' or args.model_type == 'oa_ar_640M' or args.model_type == 'carp_38M'\
+            if args.model_type == 'oa_dm_38M' or args.model_type == 'oa_dm_640M' or args.model_type == 'carp_38M'\
                     or args.model_type == 'carp_640M':
                 string, new_start_idx, new_end_idx = generate_scaffold(model, args.pdb, args.start_idxs,
                                                                                args.end_idxs, scaffold_length,
