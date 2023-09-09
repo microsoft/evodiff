@@ -152,7 +152,7 @@ First, we test the ability of EvoDiff-MSA to generate query sequences conditione
 
 Note that when conditionally generating an MSA, you can specify query_only = True. By setting this flag to true, you only generate the query sequence. If it is false, then you generate the alignment too.
 
-To generate a new query sequence, given an alignment, use the following with the `--start-msa` flag enables. This starts conditional generation by sampling from a validation MSA. 
+To generate a new query sequence, given an alignment, use the following with the `--start-msa` flag. This starts conditional generation by sampling from a validation MSA. 
 ``` 
 python evodiff/generate-msa.py --model-type msa_oa_dm_maxsub --batch-size 1 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming --start-msa
 ```
