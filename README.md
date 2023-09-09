@@ -174,7 +174,7 @@ Because EvoDiff generates directly in sequence space, we hypothesized that it co
 
 We used inpainting with EvoDiff-Seq and EvoDiff-MSA to intentionally generate disordered regions conditioned on their surrounding structured regions, and then used DR-BERT to predict disorder scores for each residue in the generated and natural sequences.
 
-To run our code and generate IDRs, run:
+To run our code and generate IDRs from EvoDiff-Seq, run:
 
 ```
 python generate/conditional_generation.py --model-type oa_dm_640M --cond-task idr 
@@ -183,7 +183,7 @@ python generate/conditional_generation.py --model-type oa_dm_640M --cond-task id
 Which will sample IDRs from the IDR dataset, and generate new ones. 
 
 
-### Scaffolding functional motifs with sequence information alone
+### Scaffolding functional motifs
 
 Given that the fixed functional motif includes the residue identities for the motif, we investigated whether a structural model is actually necessary for motif scaffolding. We used conditional generation with EvoDiff to generate scaffolds for a diverse set of 25 motif-scaffolding problems by fixing the functional motif, supplying only the motif's amino-acid sequence as conditioning information, and then decoding the remainder of the sequence 
 
@@ -217,7 +217,7 @@ The default model type is `msa_oa_dm_maxsub` , and the other available model typ
 
 Please see section [Evolution-guided protein generation with EvoDiff-MSA](#evolution-guided-protein-generation-with-evodiff-msa) for information on using the query-only flag.
 
-# Analysis of generations
+## Analysis of generations
 To access the sequences described in table S1 of the paper, use the following code:
 
 ```
