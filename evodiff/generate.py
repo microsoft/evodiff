@@ -90,6 +90,7 @@ def main():
         if not args.random_baseline:
             out_fpath = home + args.model_type + '/'
         else:
+            scheme='random'
             out_fpath = home + 'random-baseline/'
 
     if not os.path.exists(out_fpath):
@@ -118,37 +119,36 @@ def main():
             r_idx = np.random.choice(len(data))
             seq_len = len(data[r_idx][0])  # randomly sample a sequence length from train data
             i_string = generate_random_seq(seq_len, train_prob_dist)
-            string.append(i_string)
+            print(i_string)
+            string.append([i_string])
     else:
         string = []
         sample = []
         for _ in tqdm(range(args.num_seqs)):
             r_idx = np.random.choice(len(data))
             seq_len = len(data[r_idx][0])  # randomly sample a sequence length from train data
-            count = args.count  # if appending to prev run, index from last seq generating (easier for downstream tasks)
 
             if scheme == 'mask':
-                i_sample, i_string = generate_oaardm(model, tokenizer, seq_len, penalty=args.penalty, batch_size=1,
-                                                     device=device)
+                i_sample, i_string = generate_oaardm(model, tokenizer, seq_len, penalty=args.penalty, batch_size=1, device=device)
             elif scheme == 'd3pm':
                 i_sample, i_string = generate_d3pm(model, tokenizer, Q, Q_bar, timestep, seq_len, batch_size=1,
                                                    device=device)
             string.append(i_string)
             sample.append(i_sample)
-
+    print("String", string)
     # Write list of sequences (string) to fasta and CSV
     with open(out_fpath + 'generated_samples_string.csv', 'w') as f:
         for _s in string:
             f.write(_s[0] + "\n")
     with open(out_fpath + 'generated_samples_string.fasta', 'w') as f:
         for i, _s in enumerate(string):
-            f.write(">SEQUENCE_" + str(count+i) + "\n" + str(_s[0]) + "\n")
+            f.write(">SEQUENCE_" + str(args.count+i) + "\n" + str(_s[0]) + "\n")
 
     # Plot distribution of generated samples
     aa_reconstruction_parity_plot(home, out_fpath, 'generated_samples_string.csv')
 
 
-def generate_oaardm(model, tokenizer, seq_len, penalty=None, batch_size=20, device='cuda'):
+def generate_oaardm_order_opt(model, tokenizer, seq_len, penalty=None, batch_size=20, device='cuda'):
     # Generate a random start string and convert to tokens
     all_aas = tokenizer.all_aas
     mask = tokenizer.mask_id
@@ -177,47 +177,42 @@ def generate_oaardm(model, tokenizer, seq_len, penalty=None, batch_size=20, devi
     return sample, untokenized
 
 
-# def generate_oaardm(checkpoint, seq_len, penalty=None, batch_size=3):
-#     # Generate a random start string and convert to tokens
-#
-#     model, collater, tokenizer, scheme = checkpoint
-#     model.eval().cuda()
-#     device = model.device()
-#
-#     all_aas = tokenizer.all_aas
-#     mask = tokenizer.mask_id
-#
-#     # Start from mask
-#     sample = torch.zeros((batch_size, seq_len))+mask
-#     sample = sample.to(torch.long)
-#     sample = sample.to(device)
-#
-#     # Unmask 1 loc at a time randomly
-#     loc = np.arange(seq_len)
-#     np.random.shuffle(loc)
-#     with torch.no_grad():
-#         for i in loc:
-#             timestep = torch.tensor([0] * batch_size) # placeholder but not called in model
-#             timestep = timestep.to(device)
-#             prediction = model(sample, timestep) #, input_mask=input_mask.unsqueeze(-1)) #sample prediction given input
-#             p = prediction[:, i, :len(all_aas)-6] # sample at location i (random), dont let it predict non-standard AA
-#             p = torch.nn.functional.softmax(p, dim=1) # softmax over categorical probs
-#             p_sample = torch.multinomial(p, num_samples=1)
-#             # Repetition penalty
-#             if penalty is not None: # ignore if value is None
-#                 for j in range(batch_size): # iterate over each obj in batch
-#                     case1 = (i == 0 and sample[j, i+1] == p_sample[j]) # beginning of seq
-#                     case2 = (i == seq_len-1 and sample[j, i-1] == p_sample[j]) # end of seq
-#                     case3 = ((i < seq_len-1 and i > 0) and ((sample[j, i-1] == p_sample[j]) or (sample[j, i+1] == p_sample[j]))) # middle of seq
-#                     if case1 or case2 or case3:
-#                         #print("identified repeat", p_sample, sample[i-1], sample[i+1])
-#                         p[j, int(p_sample[j])] /= penalty # reduce prob of that token by penalty value
-#                         p_sample[j] = torch.multinomial(p[j], num_samples=1) # resample
-#             sample[:, i] = p_sample.squeeze()
-#             #print([tokenizer.untokenize(s) for s in sample]) # check that sampling correctly
-#     #print("final seq", [tokenizer.untokenize(s) for s in sample])
-#     untokenized = [tokenizer.untokenize(s) for s in sample]
-#     return sample, untokenized
+def generate_oaardm(model, tokenizer, seq_len, penalty=None, batch_size=3, device='cuda'):
+    # Generate a random start string and convert to tokens
+    all_aas = tokenizer.all_aas
+    mask = tokenizer.mask_id
+
+    # Start from mask
+    sample = torch.zeros((batch_size, seq_len))+mask
+    sample = sample.to(torch.long)
+    sample = sample.to(device)
+
+    # Unmask 1 loc at a time randomly
+    loc = np.arange(seq_len)
+    np.random.shuffle(loc)
+    with torch.no_grad():
+        for i in loc:
+            timestep = torch.tensor([0] * batch_size) # placeholder but not called in model
+            timestep = timestep.to(device)
+            prediction = model(sample, timestep) #, input_mask=input_mask.unsqueeze(-1)) #sample prediction given input
+            p = prediction[:, i, :len(all_aas)-6] # sample at location i (random), dont let it predict non-standard AA
+            p = torch.nn.functional.softmax(p, dim=1) # softmax over categorical probs
+            p_sample = torch.multinomial(p, num_samples=1)
+            # Repetition penalty
+            if penalty is not None: # ignore if value is None
+                for j in range(batch_size): # iterate over each obj in batch
+                    case1 = (i == 0 and sample[j, i+1] == p_sample[j]) # beginning of seq
+                    case2 = (i == seq_len-1 and sample[j, i-1] == p_sample[j]) # end of seq
+                    case3 = ((i < seq_len-1 and i > 0) and ((sample[j, i-1] == p_sample[j]) or (sample[j, i+1] == p_sample[j]))) # middle of seq
+                    if case1 or case2 or case3:
+                        #print("identified repeat", p_sample, sample[i-1], sample[i+1])
+                        p[j, int(p_sample[j])] /= penalty # reduce prob of that token by penalty value
+                        p_sample[j] = torch.multinomial(p[j], num_samples=1) # resample
+            sample[:, i] = p_sample.squeeze()
+            #print([tokenizer.untokenize(s) for s in sample]) # check that sampling correctly
+    #print("final seq", [tokenizer.untokenize(s) for s in sample])
+    untokenized = [tokenizer.untokenize(s) for s in sample]
+    return sample, untokenized
 
 def generate_autoreg(model, tokenizer, samples=100, batch_size=1, max_seq_len=1024):
     # Generates 1 seq at a time, no batching, to make it easier to deal w variable seq lengths
@@ -312,7 +307,7 @@ def generate_random_seq(seq_len, train_prob_dist, tokenizer=Tokenizer()):
     """
     sample = torch.multinomial(torch.tensor(train_prob_dist), num_samples=seq_len, replacement=True)
     sample = sample.to(torch.long)
-    return sample, tokenizer.untokenize(sample)
+    return tokenizer.untokenize(sample)
 
 def generate_valid_subset(data_valid, samples=20):
     sample = []
