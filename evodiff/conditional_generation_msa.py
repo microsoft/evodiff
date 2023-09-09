@@ -72,7 +72,7 @@ def main():
         mask_id = checkpoint[2].mask_idx
         pad_id = checkpoint[2].padding_idx
     else:
-        raise Exception("Please select either msa_or_ar_randsub, msa_oa_oar_maxsub, or esm_msa_1b baseline. You selected:", args.model_type)
+        raise Exception("Please select either msa_oa_dm_randsub, msa_oa_dm_maxsub, or esm_msa_1b baseline. You selected:", args.model_type)
 
     model, collater, tokenizer, scheme = checkpoint
     model.eval().cuda()

@@ -73,8 +73,7 @@ def main():
     elif args.model_type == 'lr_ar_640M':
         checkpoint = LR_AR_640M()
     else:
-        print("Please select valid model, if you want to generate a random baseline add --random-baseline flag to any"
-              " model")
+        raise Exception("Please select either oa_dm_38M, oa_dm_640M, carp_640M, lr_ar_38M, or lr_ar_640M. You selected: ", args.model_type, ". If you want to generate a random baseline, add the --random-baseline flag to any model.")
 
     model, collater, tokenizer, scheme = checkpoint
     model.eval().cuda()
