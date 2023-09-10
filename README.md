@@ -94,7 +94,8 @@ Available evodiff models are:
 * ``` MSA_D3PM_UNIFORM_MAXSUB() ```
 * ``` MSA_OA_DM_RANDSUB() ```
 * ``` MSA_OA_DM_MAXSUB() ```
-Its also possible to load our LRAR baseline models: 
+
+It is also possible to load our LRAR baseline models: 
 * ``` LR_AR_640M() ```
 * ``` LR_AR_38M() ```
 
@@ -119,6 +120,7 @@ The default model type is `oa_dm_640M`, other evodiff models available are:
 * ` d3pm_blosum_640M `
 * ` d3pm_uniform_38M `
 * ` d3pm_uniform_640M `
+
 Our LRAR baseline models are also available:
 * ` lr_ar_38M `
 * ` lr_ar_640M `
