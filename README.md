@@ -17,14 +17,13 @@ to demonstrate their power for controllable protein design. Below, we provide do
 ## Table of contents
 
 - [Evodiff](#EvoDiff)
-  - [Description](#description)
 - [Table of contents](#table-of-contents)
 - [Installation](#installation)
     - [Datasets](#datasets)
     - [Loading pretrained models](#loading-pretrained-models)
-- [Unconditional generation](#unconditional-sequence-generation)
-- [Unconditional sequence generation](#unconditional-generation-with-evodiff-seq)
-- [Unconditional MSA generation](#unconditional-generation-with-evodiff-msa)
+- [Unconditional generation](#unconditional-sequence-generation) 
+  - [Unconditional sequence generation](#unconditional-generation-with-evodiff-seq)
+  - [Unconditional MSA generation](#unconditional-generation-with-evodiff-msa)
 - [Conditional sequence generation](#conditional-sequence-generation)
     - [Evolution-guided protein generation with EvoDiff-MSA](#evolution-guided-protein-generation-with-evodiff-msa)
     - [Generating intrinsically disordered regions](#generating-intrinsically-disordered-regions)
@@ -67,7 +66,7 @@ The Multiple Sequence Alignments (MSAs) are from the [OpenFold dataset](https://
 which contains 401,381 MSAs for 140,000 unique Protein Data Bank (PDB) chains and 16,000,000 UniClust30 clusters.
 The intrinsically disordered regions (IDR) data was obtained from the [Reverse Homology GitHub](https://github.com/alexxijielu/reverse_homology/).
 
-For the scaffolding structural motifs task, we provide pdb and fasta files used for conditionally generating sequences in the [examples/scaffolding-pdbs](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-pdbs) folder. We also provide
+For the scaffolding structural motifs task, we use the baselines compiled in RFDiffusion. We provide pdb and fasta files used for conditionally generating sequences in the [examples/scaffolding-pdbs](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-pdbs) folder. We also provide
 We provide pdb files used for conditionally generating MSAs in the [examples/scaffolding-msas](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-msas) folder.
 
 To access the UniRef50 test sequences, use the following code:
@@ -82,21 +81,22 @@ from evodiff.pretrained import OA_DM_38M
 
 model, collater, tokenizer, scheme = OA_DM_38M()
 ```
-Available models are:
+Available evodiff models are:
 * ``` D3PM_BLOSUM_640M() ```
 * ``` D3PM_BLOSUM_38M() ```
 * ``` D3PM_UNIFORM_640M() ```
 * ``` D3PM_UNIFORM_38M() ```
 * ``` OA_DM_640M() ```
 * ``` OA_DM_38M() ```
-* ``` LR_AR_640M() ```
-* ``` LR_AR_38M() ```
 * ``` MSA_D3PM_BLOSUM_RANDSUB() ```
 * ``` MSA_D3PM_BLOSUM_MAXSUB() ```
 * ``` MSA_D3PM_UNIFORM_RANDSUB() ```
 * ``` MSA_D3PM_UNIFORM_MAXSUB() ```
 * ``` MSA_OA_DM_RANDSUB() ```
 * ``` MSA_OA_DM_MAXSUB() ```
+Its also possible to load our LRAR baseline models: 
+* ``` LR_AR_640M() ```
+* ``` LR_AR_38M() ```
 
 Note: if you want to download a `BLOSUM` model, you will first need to download [data/blosum62-special-MSA.mat](https://github.com/microsoft/evodiff/blob/main/data/blosum62-special-MSA.mat).
 
@@ -113,17 +113,16 @@ To unconditionally generate 100 sequences, run the following script:
 python evodiff/generate.py --model-type oa_dm_38M --num-seqs 100 
 ```
 
-The default model type is `oa_dm_640M`, and the other available model types are:
+The default model type is `oa_dm_640M`, other evodiff models available are:
 * ` oa_dm_38M `
-* ` carp_38M `
-* ` carp_640M `
-* ` esm1b_650M `
-* ` lr_ar_38M `
-* ` lr_ar_640M `
 * ` d3pm_blosum_38M `
 * ` d3pm_blosum_640M `
 * ` d3pm_uniform_38M `
 * ` d3pm_uniform_640M `
+Our LRAR baseline models are also available:
+* ` lr_ar_38M `
+* ` lr_ar_640M `
+
 
 An example of generating one sequence randomly sampled from the train distribution length can be found in [this notebook](https://github.com/microsoft/evodiff/tree/main/examples/evodiff.ipynb).
 
@@ -135,15 +134,14 @@ Follow the instructions in the [Datasets](#datasets) section for how to download
 
 To explicitly leverage evolutionary information, we design and train EvoDiff-MSA models using the MSA Transformer architecture on the OpenFold dataset. To do so, we subsample MSAs to a length of 512 residues per sequence and a depth of 64 sequences, either by randomly sampling the sequences (“Random”) or by greedily maximizing for sequence diversity (“Max”). 
 
-To unconditionally generate an entire MSA, run the following script:
+It is possible to unconditionally generate an entire MSA, using the following script:
 
 ``` 
 python evodiff/generate-msa.py --model-type msa_oa_dm_maxsub --batch-size 1 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming
 ```
 
-The default model type is `msa_oa_dm_maxsub`, and the other available model types are:
+The default model type is `msa_oa_dm_maxsub`, and the other available evodiff models are: 
 * ` msa_oa_dm_randsub `
-* ` esm_msa_1b `
 * ` msa_d3pm_blosum_maxsub `
 * ` msa_d3pm_blosum_randsub `
 * ` msa_d3pm_uniform_maxsub `
@@ -153,12 +151,10 @@ You can also specify a desired number of sequences per MSA, sequence length, bat
 
 
 ## Conditional sequence generation
-EvoDiff’s OADM diffusion framework induces a natural method for conditional sequence generation by fixing some subsequences and inpainting the remainder. Because the model is trained to generate proteins with an arbitrary decoding order, this is easily accomplished by simply masking and decoding the desired portions. We apply EvoDiff’s power for controllable protein design across three scenarios: conditioning on evolutionary information encoded in MSAs, inpainting functional domains, and scaffolding structural motifs.
+EvoDiff’s OADM diffusion framework induces a natural method for conditional sequence generation by fixing some subsequences and predicting the remainder. Because the model is trained to generate proteins with an arbitrary decoding order, this is easily accomplished by simply masking and decoding the desired portions. We apply EvoDiff’s power for controllable protein design across three scenarios: conditioning on evolutionary information encoded in MSAs, inpainting functional domains, and scaffolding structural motifs.
 
 ### Evolution-guided protein generation with EvoDiff-MSA
 First, we test the ability of EvoDiff-MSA (`msa_oa_dm_maxsub`) to generate query sequences conditioned on the remainder of an MSA, thus generating new members of a protein family without needing to train family-specific generative models.
-
-Note that when conditionally generating an MSA, you can specify query_only = True. By setting this flag to true, you only generate the query sequence. If it is false, then you generate the alignment too.
 
 To generate a new query sequence, given an alignment, use the following with the `--start-msa` flag. This starts conditional generation by sampling from a validation MSA. 
 ``` 
@@ -166,11 +162,10 @@ python evodiff/generate-msa.py --model-type msa_oa_dm_maxsub --batch-size 1 --n-
 ```
 
 Additionally, the code is capable of generating an alignment given a query sequence, use the following `--start-query` flag. This starts with the query and generates the alignment
-
 ```
 python evodiff/generate-msa.py --model-type msa_oa_dm_maxsub --batch-size 1 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming --start-query
  ```
-NOTE: you can only specify one of the above flags at a time. You cannot specify both (--start-query & --start-msa) together. Please look at generate.py for more information.
+NOTE: you can only specify one of the above flags at a time. You cannot specify both (`--start-query` & `--start-msa`) together. Please look at generate.py for more information.
 
 ### Generating intrinsically disordered regions
 
@@ -179,9 +174,12 @@ Because EvoDiff generates directly in sequence space, we hypothesized that it co
 We used inpainting with EvoDiff-Seq and EvoDiff-MSA to intentionally generate disordered regions conditioned on their surrounding structured regions, and then used DR-BERT to predict disorder scores for each residue in the generated and natural sequences.
 
 To run our code and generate IDRs from EvoDiff-Seq, run:
-
 ```
-python generate/conditional_generation.py --model-type oa_dm_640M --cond-task idr 
+python generate/conditional_generation_msa.py --model-type msa_oa_ar_maxsub --cond-task idr --num-seqs 1 
+```
+or equivalently, from EvoDiff-MSA: 
+```
+python generate/conditional_generation_msa.py --model-type msa_oa_ar_maxsub --cond-task idr --query-only --max-seq-len 150 --num-seqs 1 
 ```
 
 Which will sample IDRs from the IDR dataset, and generate new ones. 
@@ -235,12 +233,12 @@ Our analysis scripts for iterating over these tools are in the [evodiff/analysis
 
 ## Downloading generated sequences
 
-We provide all generated sequences on the [EvoDiff Zenodo](https://zenodo.org/record/8329165).
+We provide all generated sequences on the [EvoDiff Zenodo](https://zenodo.org/record/8332830).
 
 To download our unconditional generated sequences from `unconditional_generations.csv` file:
 
 ```
-curl -O https://zenodo.org/record/8329165/files/unconditional_generations.csv?download=1
+curl -O https://zenodo.org/record/8332830/files/unconditional_generations.csv?download=1
 ```
 
 To extract all unconditionally generated sequences created using the EvoDiff-seq `oa_dm_640M` model, run the following code:
