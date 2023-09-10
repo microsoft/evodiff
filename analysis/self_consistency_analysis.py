@@ -204,9 +204,7 @@ perp_index_groups = []
 for run in runs:
     print("Reading run", run)
     if run == 'hyper12/cnn-650M/' or run=='esm-1b/' or run=='random-ref/' or run=='pretrain21/cnn-38M/':
-        seq_lengths = [64, 128, 256, 384]
-    else:
-        seq_lengths = [100] # placeholder for generated_seq file name
+    seq_lengths = [100] # placeholder for generated_seq file name
     if sequences == True:
         if mpnn:
             perp_group, scores_group, lengths_group, mpnn_scores_group, pdb_index_group, perp_index_group = iterate_dirs(run, seq_lengths, mpnn=mpnn)
@@ -249,10 +247,7 @@ for i in range(len(labels)):
     ordered_perp = []
     ordered_plddt = []
     if sequences:
-        if runs[i] == 'hyper12/cnn-650M/' or runs[i]=='esm-1b/' or runs[i]=='random-ref/' or runs[i] == 'pretrain21/cnn-38M/':
-            seq_lengths = [64, 128, 256, 384]
-        else:
-            seq_lengths=[100]
+        seq_lengths=[100]
         for l_index in range(len(seq_lengths)):
             df_pdb = pd.DataFrame(np.array([list(map(float, pdb_index_groups[i][l_index])), \
                                             list(map(float, scores_groups[i][l_index]))]).T, columns=['pdb', 'plddt'])
