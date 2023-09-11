@@ -74,6 +74,8 @@ To access the UniRef50 test sequences, use the following code:
 test_data = UniRefDataset('data/uniref50/', 'rtest', structure=False) # To access the test sequences
 ```
 
+The train and validation MSAs are saved in `data/valid_msas.csv` and `data/train_msas.csv`
+
 ## Loading pretrained models
 To load a model:
 ```
