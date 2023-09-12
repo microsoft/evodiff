@@ -3,7 +3,6 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from torch.utils.checkpoint import checkpoint
-from torch.nn import TransformerEncoder, TransformerEncoderLayer, TransformerDecoder, TransformerDecoderLayer
 from sequence_models.layers import PositionFeedForward, DoubleEmbedding
 from sequence_models.convolutional import ByteNetBlock
 from sequence_models.constants import MSA_PAD, MASK, MSA_ALPHABET
@@ -254,59 +253,3 @@ class MSATransformerTime(nn.Module):
         x = x.permute(2, 0, 1, 3)  # R x C x B x D -> B x R x C x D
         x = self.lm_head(x)
         return x
-
-
-class TransformerTime(nn.Module):
-    """
-    """
-    def __init__(self, n_tokens, d_embedding, d_model, n_layers, n_head, d_feedforward, padding_idx=None,
-                 max_positions=1024, bidirectional=True, dropout=0.0, activation='relu',
-                 norm_first=False, timesteps=None):
-        """
-        """
-        super().__init__()
-        self.d_model = d_model
-        self.bidirectional = bidirectional
-        self.embedder = nn.Embedding(n_tokens, d_embedding, padding_idx=padding_idx)
-        self.pos_encoding = PositionalEncoding(d_embedding, max_positions)
-        self.timesteps = timesteps
-        if self.timesteps is not None:
-            self.time_encoding = PositionalEncoding1D(d_embedding, timesteps)  # Timestep encoding
-        self.up_embedder = PositionFeedForward(d_embedding, d_model)
-        if bidirectional: # for oa autoregressive model, d3pm models
-            encoder_layers = TransformerEncoderLayer(d_model, n_head, dim_feedforward=d_feedforward, dropout=dropout,
-                                                     activation=activation, batch_first=True, norm_first=norm_first)
-            self.transformer = TransformerEncoder(encoder_layers, n_layers)
-        else: # for single-order autoregressive model
-            decoder_layers = TransformerDecoderLayer(d_model, n_head, dim_feedforward=d_feedforward, dropout=dropout,
-                                                     activation=activation, batch_first=True, norm_first=norm_first)
-            self.transformer = TransformerDecoder(decoder_layers, n_layers)
-        self.decoder = nn.Linear(d_model, n_tokens)
-
-        # self.init_weights()
-
-    # def init_weights(self):
-    #     initrange = 0.1
-    #     self.embedder.weight.data.uniform_(-initrange, initrange)
-    #     self.decoder.bias.data.zero_()
-    #     self.decoder.weight.data.uniform_(-initrange, initrange)
-
-    def forward(self, src, tgt, t, input_mask=None):
-        src = self.embedder(src) * np.sqrt(self.d_model)
-        src = self.pos_encoding(src.reshape(src.shape[1], src.shape[0], src.shape[2]))
-        tgt = self.embedder(tgt) * np.sqrt(self.d_model)
-        tgt = self.pos_encoding(tgt.reshape(tgt.shape[1], tgt.shape[0], tgt.shape[2]))
-
-        if self.timesteps is not None:
-            t = self.time_encoding(t).unsqueeze(1)
-            t = t.expand(src.shape[0], src.shape[1], src.shape[2])
-            src += t
-
-        src = self.up_embedder(src)
-        tgt = self.up_embedder(tgt)
-
-        if self.bidirectional:
-            out = self.transformer(src, src_key_padding_mask=input_mask)
-        else:
-            out = self.transformer(tgt, src, tgt_key_padding_mask=input_mask)
-        return self.decoder(out)

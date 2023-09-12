@@ -31,7 +31,6 @@ import sys
 sys.setrecursionlimit(1000) # must be as large as diffusion timesteps for Q_bar calculation
 
 ### SET RANDOM SEEDS ###
-#random_seed =
 torch.cuda.empty_cache() # empty caches
 
 home = str(pathlib.Path.home())
@@ -58,7 +57,7 @@ def main():
     parser.add_argument('--final_norm', action='store_true')
     parser.add_argument('--norm_first', action='store_true') # turns norm_first on in transformer model
     parser.add_argument('--mini_run', action='store_true') # Set to True if running on subset of data
-    parser.add_argument('--mask', type=str, default='autoreg')  # Set to True if running on subset of data
+    parser.add_argument('--mask', type=str, default='oadm')  # Set to True if running on subset of data
     parser.add_argument('--warmup', action='store_true')  # Set to True if running on subset of data
     parser.add_argument('--checkpoint_freq', type=float, default=1)  # in minutes
     parser.add_argument('--log_freq', type=float, default=10)  # in steps
@@ -68,7 +67,6 @@ def main():
 
     args = parser.parse_args()
     args.world_size = args.gpus * args.nodes
-    #print(args.out_fpath)
     if args.aml:
         pass
     else:
@@ -97,12 +95,6 @@ def train(gpu, args):
     d_embed = config['d_embed']
     d_model = config['d_model']
     n_layers = config['n_layers']
-    # if args.model_type == 'Transformer':
-    #     n_head = config['n_head']
-    #     d_feedforward = config['d_feedforward']
-    # if args.model_type == 'ByteNet':
-    #     kernel_size = config['kernel_size']
-    #     r = config['r']
     kernel_size = config['kernel_size']
     r = config['r']
     if 'slim' in config:
@@ -144,15 +136,15 @@ def train(gpu, args):
     # ----------------------------------------------------------
     ### COLLATORS ###
     # ----------------------------------------------------------
-    if args.mask == 'autoreg':
+    if args.mask == 'oadm':
         tokenizer = Tokenizer()
         collater = OAMaskCollater(tokenizer=tokenizer)
         diffusion_timesteps = None # Not input to model
-    elif args.mask == 'so':
-        tokenizer = Tokenizer()
-        raise Exception("Have not included single order autoregressive in this code yet")
-        collater = BertMaskCollater(tokenizer=tokenizer) # TODO add kevins Collater from sequence models
-        diffusion_timesteps = None  # Not input to model
+    # elif args.mask == 'so':
+    #     tokenizer = Tokenizer()
+    #     raise Exception("Autoreg in other script")
+    #     collater = BertMaskCollater(tokenizer=tokenizer)
+    #     diffusion_timesteps = None  # Not input to model
     elif args.mask == 'blosum' or args.mask == 'random':
         diffusion_timesteps = config['diffusion_timesteps']
         tokenizer = Tokenizer(path_to_blosum=data_top_dir+"blosum62-special-MSA.mat", sequences=True)
@@ -161,14 +153,11 @@ def train(gpu, args):
         if args.mask == 'blosum':
             Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=diffusion_timesteps)
         collater = D3PMCollater(tokenizer=tokenizer, num_timesteps=diffusion_timesteps, Q=Q_t, Q_bar=Q_prod)
-        #Q_prod = Q_prod.to(device)
     else:
-        print("mask must be: 'autoreg', 'so', 'blosum', or 'random'")
+        print("mask must be: 'oadm', 'blosum', or 'random'")
     causal = False
-    bidirectional=True
     if args.mask == 'so':
         causal = True
-        bidirectional = False
     # ----------------------------------------------------------
     ### DATALOADER ###
     # ----------------------------------------------------------
@@ -227,12 +216,6 @@ def train(gpu, args):
                       causal=causal, padding_idx=masking_idx, rank=weight_rank, dropout=args.dropout,
                       tie_weights=args.tie_weights, final_ln=args.final_norm, slim=slim, activation=activation,
                       timesteps=diffusion_timesteps)
-    # elif args.model_type == 'Transformer':
-    #     model = TransformerTime(n_tokens, d_embed, d_model, n_layers, n_head, d_feedforward, padding_idx=masking_idx,
-    #                             bidirectional=bidirectional, dropout=args.dropout,
-    #                             norm_first=args.norm_first, activation=activation, timesteps=diffusion_timesteps)
-    # else:
-    #     print("choose ByteNet or Transformer for --model_type")
     optimizer = Adam(model.parameters(), lr=lr, weight_decay=args.weight_decay)
     outputs = os.listdir(args.out_fpath)
     if len(outputs) > 0:
@@ -244,49 +227,18 @@ def train(gpu, args):
                    args.state_dict = args.out_fpath + output
                    last_epoch = epoch
     model = model.to(device)
-    if args.pretrained:
+    if args.pretrained: # testing something w/ pretraining
         args.state_dict = 'data/pretrained/checkpoint538468.tar'
     if args.state_dict is not None:
         print('Loading weights from ' + args.state_dict + '...')
-        if args.pretrained:
-            # REMAP weights from PROTEIN_ALPHABET -> MSA ALPHABET TODO: not sure if this is correct
-            # STOP->GAP (27->28)
-            # GAP->STOP (28->27)
-            # ADD MSA_PAD as zeros
-            sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
-            msd = sd['model_state_dict']
-            msd = {k.split('module.')[1]: v for k, v in msd.items()}
-            embedder_weight_new = torch.zeros(31, 8)
-            embedder_weight_new[:26, :] = msd['embedder.embedder.weight'][:26, :]
-            embedder_weight_new[26:27, :] = msd['embedder.embedder.weight'][27:28, :]
-            embedder_weight_new[27:28, :] = msd['embedder.embedder.weight'][26:27, :]
-            embedder_weight_new[28:30, :] = msd['embedder.embedder.weight'][28:30, :]
-            decoder_weight_new = torch.zeros(31, 1280, 1)
-            decoder_weight_new[:26, :, :] = msd['decoder.conv.weight'][:26, :, :]
-            decoder_weight_new[26:27, :, :] = msd['decoder.conv.weight'][27:28, :, :]
-            decoder_weight_new[27:28, :, :] = msd['decoder.conv.weight'][26:27, :, :]
-            decoder_weight_new[28:30, :, :] = msd['decoder.conv.weight'][28:30, :, :]
-            decoder_bias_new = torch.zeros(31)
-            decoder_bias_new[:26] = msd['decoder.conv.bias'][:26]
-            decoder_bias_new[26:27] = msd['decoder.conv.bias'][27:28]
-            decoder_bias_new[27:28] = msd['decoder.conv.bias'][26:27]
-            decoder_bias_new[28:30] = msd['decoder.conv.bias'][28:30]
-            msd['embedder.embedder.weight'] = embedder_weight_new
-            msd['decoder.conv.weight'] = decoder_weight_new
-            msd['decoder.conv.bias'] = decoder_bias_new
-            model.load_state_dict(msd)
-            initial_epoch = 0
-            total_steps = 0
-            total_tokens = 0
-        else:
-            sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
-            msd = sd['model_state_dict']
-            msd = {k.split('module.')[1]: v for k,v in msd.items()}
-            model.load_state_dict(msd)
-            optimizer.load_state_dict(sd['optimizer_state_dict'])
-            initial_epoch = sd['epoch'] + 1
-            total_steps = sd['step']
-            total_tokens = sd['tokens']
+        sd = torch.load(args.state_dict, map_location=torch.device('cpu'))
+        msd = sd['model_state_dict']
+        msd = {k.split('module.')[1]: v for k,v in msd.items()}
+        model.load_state_dict(msd)
+        optimizer.load_state_dict(sd['optimizer_state_dict'])
+        initial_epoch = sd['epoch'] + 1
+        total_steps = sd['step']
+        total_tokens = sd['tokens']
     else:
         initial_epoch = 0
         total_steps = 0
@@ -300,7 +252,7 @@ def train(gpu, args):
         scheduler = LambdaLR(optimizer, warmup(warmup_steps), verbose=False)
     else:
         raise Exception("add --warmup flag to runtime")
-    if args.mask == 'autoreg' or args.mask == 'so':
+    if args.mask == 'oadm' or args.mask == 'so':
         loss_func = OAMaskedCrossEntropyLoss(reweight=True)
     elif args.mask == 'blosum' or args.mask == 'random':
         # Austin = LVB + lambda * CE
@@ -322,7 +274,6 @@ def train(gpu, args):
             loader = dl_valid
             t = 'Validating:'
         losses = []
-        #ce_losses = []
         nll_losses = []
         accus = []
         ns = []
@@ -347,17 +298,13 @@ def train(gpu, args):
                 optimizer.load_state_dict(sd['optimizer_state_dict'])
                 scheduler.load_state_dict(sd['scheduler_state_dict'])
             new_loss, new_nll_loss, new_accu, new_n, new_seqs, new_processed = step(model, batch, train)
-            #print("before reduce", new_loss)
             if train:
                 dist.reduce(new_loss, 0, op=dist.ReduceOp.SUM)
-                #dist.reduce(new_ce_loss, 0, op=dist.ReduceOp.SUM)
                 dist.reduce(new_nll_loss, 0, op=dist.ReduceOp.SUM)
                 dist.reduce(new_accu, 0, op=dist.ReduceOp.SUM)
                 dist.reduce(new_n, 0, op=dist.ReduceOp.SUM)
                 dist.reduce(new_seqs, 0, op=dist.ReduceOp.SUM)
-            #print("after reduce", new_loss, new_ce_loss)
             losses.append(new_loss.item())
-            #ce_losses.append(new_ce_loss.item())
             nll_losses.append(new_nll_loss.item())
             accus.append(new_accu.item())
             ns.append(new_n.item())
@@ -365,13 +312,6 @@ def train(gpu, args):
             n_seen += new_seqs.item()
             total_n = sum(ns)
             r_loss = sum(losses) / total_n
-            #print("after reduce", new_loss)
-            # if r_loss <= 0 or r_loss >= 1000000:
-            #     print(new_loss.item())
-            #     print(losses)
-            #     print(total_n)
-            #     import pdb; pdb.set_trace()
-            #r_ce_loss = sum(ce_losses) / total_n
             r_nll_loss = sum(nll_losses) / total_n
             raccu = sum(accus) / total_n
             if train:
@@ -390,9 +330,7 @@ def train(gpu, args):
                       % (t, e + 1, epochs, nsteps, tokens_trained, n_seen, n_total, r_loss, r_nll_loss, raccu),
                       end=end)
             if train:
-                #print(nsteps)
                 losses = losses[-999:]
-                #ce_losses = ce_losses[-999:]
                 accus = accus[-999:]
                 ns = ns[-999:]
                 num_seqs = num_seqs[-999:]
@@ -432,7 +370,6 @@ def train(gpu, args):
         if args.mask == 'blosum' or args.mask == 'random':
             src, src_onehot, timestep, tgt, tgt_onehot, Q, Q_bar, q = batch
             q = q.to(device)
-            #q_minus1 = q_minus1.to(device)
             Q = Q.to(device)
             Q_bar = Q_bar.to(device)
             src_onehot = src_onehot.to(device)
@@ -440,8 +377,6 @@ def train(gpu, args):
         else:
             src, timestep, tgt, mask = batch
             mask = mask.to(device)
-        #print(src, src_onehot, timestep, tgt, tgt_onehot, Q, Q_bar, q)
-        # print("Batchsize", len(timestep))
         timestep = timestep.to(device)
         src = src.to(device)
         tgt = tgt.to(device)
@@ -460,22 +395,16 @@ def train(gpu, args):
 
         # Enables autocasting for the forward pass (model + loss)
         with torch.cuda.amp.autocast(dtype=torch.float32):
-            #if args.model_type=='ByteNet':
             outputs = model(src, timestep, input_mask=input_mask.unsqueeze(-1))
-            # elif args.model_type=='Transformer':
-            #     outputs = model(src, tgt, timestep, input_mask=~input_mask.bool())
-            #print(outputs.dtype)
             if args.mask == 'blosum' or args.mask == 'random':
                 lvb_loss = loss_func1(src_onehot, q, outputs, tgt, tgt_onehot, input_mask, timestep, Q, Q_bar)
                 ce_loss = loss_func2(outputs, tgt, input_mask)
                 lvb_loss = lvb_loss.to(torch.float32)
                 ce_loss = ce_loss.to(torch.float32)
                 loss = (lvb_loss + (_lambda * ce_loss)) * n_tokens
-                #print(ce_loss.dtype, lvb_loss.dtype, loss.dtype)
                 nll_loss = ce_loss * n_tokens
                 accu = accu_func(outputs, tgt, input_mask) * n_tokens
-                #print('lvb', lvb_loss, '\n ce', ce_loss, '\n loss', loss, '\n nll', nll_loss)
-            elif args.mask == 'autoreg' or args.mask=='so':
+            elif args.mask == 'oadm' or args.mask=='so':
                 ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask)  # sum(loss per token)
                 loss = ce_loss
                 accu = accu_func(outputs, tgt, mask) * n_tokens
