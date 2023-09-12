@@ -57,7 +57,7 @@ def main():
     parser.add_argument('--final_norm', action='store_true')
     parser.add_argument('--norm_first', action='store_true') # turns norm_first on in transformer model
     parser.add_argument('--mini_run', action='store_true') # Set to True if running on subset of data
-    parser.add_argument('--mask', type=str, default='autoreg')  # Set to True if running on subset of data
+    parser.add_argument('--mask', type=str, default='oadm')  # Set to True if running on subset of data
     parser.add_argument('--warmup', action='store_true')  # Set to True if running on subset of data
     parser.add_argument('--checkpoint_freq', type=float, default=1)  # in minutes
     parser.add_argument('--log_freq', type=float, default=10)  # in steps
@@ -136,15 +136,15 @@ def train(gpu, args):
     # ----------------------------------------------------------
     ### COLLATORS ###
     # ----------------------------------------------------------
-    if args.mask == 'autoreg':
+    if args.mask == 'oadm':
         tokenizer = Tokenizer()
         collater = OAMaskCollater(tokenizer=tokenizer)
         diffusion_timesteps = None # Not input to model
-    elif args.mask == 'so':
-        tokenizer = Tokenizer()
-        raise Exception("Have not included single order autoregressive in this code yet")
-        collater = BertMaskCollater(tokenizer=tokenizer) # TODO add kevins Collater from sequence models
-        diffusion_timesteps = None  # Not input to model
+    # elif args.mask == 'so':
+    #     tokenizer = Tokenizer()
+    #     raise Exception("Autoreg in other script")
+    #     collater = BertMaskCollater(tokenizer=tokenizer)
+    #     diffusion_timesteps = None  # Not input to model
     elif args.mask == 'blosum' or args.mask == 'random':
         diffusion_timesteps = config['diffusion_timesteps']
         tokenizer = Tokenizer(path_to_blosum=data_top_dir+"blosum62-special-MSA.mat", sequences=True)
@@ -154,7 +154,7 @@ def train(gpu, args):
             Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=diffusion_timesteps)
         collater = D3PMCollater(tokenizer=tokenizer, num_timesteps=diffusion_timesteps, Q=Q_t, Q_bar=Q_prod)
     else:
-        print("mask must be: 'autoreg', 'so', 'blosum', or 'random'")
+        print("mask must be: 'oadm', 'blosum', or 'random'")
     causal = False
     if args.mask == 'so':
         causal = True
@@ -252,7 +252,7 @@ def train(gpu, args):
         scheduler = LambdaLR(optimizer, warmup(warmup_steps), verbose=False)
     else:
         raise Exception("add --warmup flag to runtime")
-    if args.mask == 'autoreg' or args.mask == 'so':
+    if args.mask == 'oadm' or args.mask == 'so':
         loss_func = OAMaskedCrossEntropyLoss(reweight=True)
     elif args.mask == 'blosum' or args.mask == 'random':
         # Austin = LVB + lambda * CE
@@ -404,7 +404,7 @@ def train(gpu, args):
                 loss = (lvb_loss + (_lambda * ce_loss)) * n_tokens
                 nll_loss = ce_loss * n_tokens
                 accu = accu_func(outputs, tgt, input_mask) * n_tokens
-            elif args.mask == 'autoreg' or args.mask=='so':
+            elif args.mask == 'oadm' or args.mask=='so':
                 ce_loss, nll_loss = loss_func(outputs, tgt, mask, timestep, input_mask)  # sum(loss per token)
                 loss = ce_loss
                 accu = accu_func(outputs, tgt, mask) * n_tokens

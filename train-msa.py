@@ -121,7 +121,7 @@ def train(gpu, args):
         ptjob = False
 
     # build datasets, samplers, and loaders
-    if args.mask == 'autoreg':
+    if args.mask == 'oadm':
         tokenizer = Tokenizer()
         collater = MSAAbsorbingCollater(alphabet=MSA_ALPHABET)
         diffusion_timesteps = None # Not input to model
@@ -134,7 +134,7 @@ def train(gpu, args):
             Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=diffusion_timesteps)
         collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=diffusion_timesteps, Q=Q_t, Q_bar=Q_prod)
     else:
-        print("mask must be: 'autoreg', 'blosum', or 'random'")
+        print("mask must be: 'oadm', 'blosum', or 'random'")
 
     padding_idx = tokenizer.pad_id  # PROTEIN_ALPHABET.index(PAD)
     masking_idx = tokenizer.mask_id
@@ -204,7 +204,7 @@ def train(gpu, args):
                                   num_workers=8)
 
     # Initiate model
-    if args.mask == 'autoreg':
+    if args.mask == 'oadm':
         model = MSATransformer(d_embed, d_hidden, n_layers, n_heads, use_ckpt=True, n_tokens=len(MSA_ALPHABET),
                                padding_idx=padding_idx, mask_idx=masking_idx).cuda()
     else:
@@ -247,7 +247,7 @@ def train(gpu, args):
     model = model.to(device)
     model = DDP(model, device_ids=[gpu + args.offset], output_device=args.offset)
 
-    if args.mask == 'autoreg':
+    if args.mask == 'oadm':
         loss_func = MaskedCrossEntropyLossMSA(ignore_index=padding_idx)
     elif args.mask == 'blosum' or args.mask == 'random':
         # Austin = LVB + lambda * CE
@@ -437,7 +437,7 @@ def train(gpu, args):
             nll_loss = ce_loss * n_tokens
             accu = accu_func(outputs, tgt, nonpad_mask) * n_tokens
             loss = (lvb_loss + _lambda * ce_loss) * n_tokens
-        elif args.mask == 'autoreg':
+        elif args.mask == 'oadm':
             outputs = model(src)
             ce_loss, nll_loss = loss_func(outputs, tgt, mask, nonpad_mask)
             loss = ce_loss
