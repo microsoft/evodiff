@@ -106,7 +106,7 @@ It is also possible to load our LRAR baseline models:
 Note: if you want to download a `BLOSUM` model, you will first need to download [data/blosum62-special-MSA.mat](https://github.com/microsoft/evodiff/blob/main/data/blosum62-special-MSA.mat).
 
 ## Unconditional sequence generation!
-[Alt Text](img/unconditional.gif)
+![unconditional_generation](img/unconditional.gif)
 
 ### Unconditional generation with EvoDiff-Seq
 
