@@ -1,5 +1,7 @@
 # EvoDiff
-
+<p align="center">
+<img src="img/unconditional.gif" width="500" />
+</p>
 ### Description
 In this work, we introduce a general-purpose diffusion framework, EvoDiff, that combines evolutionary-scale data with 
 the distinct conditioning capabilities of diffusion models for controllable protein generation in sequence space. 
@@ -106,9 +108,6 @@ It is also possible to load our LRAR baseline models:
 Note: if you want to download a `BLOSUM` model, you will first need to download [data/blosum62-special-MSA.mat](https://github.com/microsoft/evodiff/blob/main/data/blosum62-special-MSA.mat).
 
 ## Unconditional sequence generation
-<p align="center">
-<img src="img/unconditional.gif" width="500" />
-</p>
 
 ### Unconditional generation with EvoDiff-Seq
 
