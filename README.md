@@ -27,9 +27,9 @@ to demonstrate their power for controllable protein design. Below, we provide do
 - [Conditional sequence generation](#conditional-sequence-generation)
     - [Evolution-guided protein generation with EvoDiff-MSA](#evolution-guided-protein-generation-with-evodiff-msa)
     - [Generating intrinsically disordered regions](#generating-intrinsically-disordered-regions)
-    - [Scaffolding functional motifs with sequence information alone](#scaffolding-functional-motifs-with-sequence-information-alone)
+    - [Scaffolding functional motifs](#scaffolding-functional-motifs)
 - [Analysis](#analysis-of-generations)
-- [Generated sequences](#generated-sequences)
+- [Downloading generated sequences](#downloading-generated-sequences)
 
 ----
 
