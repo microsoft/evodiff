@@ -1,21 +1,12 @@
-# IDR generation 
-From sequence model 
-```
-python evodiff/conditional_generation.py --model-type oa_ar_640M --cond-task idr 
-```
-From MSA model 
-```
-TODO
-```
+# Scaffolding Task Inputs 
 
-# Scaffolding Task
-Benchmark conditional generation runs from Table S9 https://www.nature.com/articles/s41586-023-06415-8
+Below we provide all the examples we generated for the scaffolding benchmark from Table S9 https://www.nature.com/articles/s41586-023-06415-8
 
-Start/end indexes are adjusted for the protein sequence extracted from PDB files
+Start/end indexes are adjusted in cases where the protein sequence extracted from PDB files was not in Chain A 
 
 Corresponding motif domains held frozen for each scaffolding task are listed for reference
 
-All motifs were generated in a 50-100 residue scaffold
+All EvoDiff-Seq motifs were generated in a 50-100 residue scaffold, and All EvoDiff-MSA motifs were subsampled to a max length of 150 residues, for fair comparison. 
 
 ### PDB CODE: 1PRW
 Domains: 16-35 (FSLFDKDGDGTITTKELGTV), 52-71 (INEVDADGNGTIDFPEFLTM)
