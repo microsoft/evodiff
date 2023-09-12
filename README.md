@@ -27,6 +27,7 @@ EvoDiff is described in this [preprint](todo:link)
 - [Installation](#installation)
     - [Datasets](#datasets)
     - [Loading pretrained models](#loading-pretrained-models)
+- [Available models](#available-models)
 - [Unconditional generation](#unconditional-sequence-generation) 
   - [Unconditional sequence generation](#unconditional-generation-with-evodiff-seq)
   - [Unconditional MSA generation](#unconditional-generation-with-evodiff-msa)
@@ -64,7 +65,7 @@ scripts, please download the following packages in addition to EvoDiff:
 
 We refer to the setup instructions outlined by the authors of those tools.
 
-## Datasets
+### Datasets
 We obtain sequences from the [Uniref50 dataset](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4375400/), which contains 
 approximately 42 million protein sequences. 
 The Multiple Sequence Alignments (MSAs) are from the [OpenFold dataset](https://www.biorxiv.org/content/10.1101/2022.11.20.517210v2), 
@@ -81,7 +82,7 @@ test_data = UniRefDataset('data/uniref50/', 'rtest', structure=False) # To acces
 
 The filenames for train and validation Openfold splits are saved in `data/valid_msas.csv` and `data/train_msas.csv`
 
-## Loading pretrained models
+### Loading pretrained models
 To load a model:
 ```
 from evodiff.pretrained import OA_DM_38M
@@ -107,6 +108,21 @@ It is also possible to load our LRAR baseline models:
 * ``` LR_AR_38M() ```
 
 Note: if you want to download a `BLOSUM` model, you will first need to download [data/blosum62-special-MSA.mat](https://github.com/microsoft/evodiff/blob/main/data/blosum62-special-MSA.mat).
+
+## Available models
+
+We investigated two types of forward processes for diffusion over discrete data modalitiesto determine which would be most effective. 
+In order-agnostic autoregressive diffusion [OADM](https://arxiv.org/abs/2110.02037), one amino acid is converted to a special mask token at each step in the forward process. 
+After $T=L$ steps, where $L$ is the length of the sequence, the entire sequence is masked. 
+We additionally designed discrete denoising diffusion probabilistic models [D3PM](https://arxiv.org/abs/2107.03006) for protein sequences.
+In EvoDiff-D3PM, the forward process corrupts sequences by sampling mutations according to a transition matrix, such that after $T$ steps the sequence is indistinguishable from a uniform sample over the amino acids.
+In the reverse process for both, a neural network model is trained to undo the previous corruption. 
+The trained model can then generate new sequences starting from sequences of masked tokens or of uniformly-sampled amino acids for EvoDiff-OADM or EvoDiff-D3PM, respectively. 
+We trained all EvoDiff sequence models on 42M sequences from UniRef50 using a dilated convolutional neural network architecture introduced in the [CARP](https://doi.org/10.1101/2022.05.19.492714) protein masked language model.
+We trained 38M-parameter and 640M-parameter versions for each forward corruption scheme and for left-to-right autoregressive (LRAR) decoding. 
+
+To explicitly leverage evolutionary information, we designed and trained EvoDiff MSA models using the [MSA Transformer](https://proceedings.mlr.press/v139/rao21a.html) architecture on the [OpenFold](https://github.com/aqlaboratory/openfold) dataset}. 
+To do so, we subsampled MSAs to a length of 512 residues per sequence and a depth of 64 sequences, either by randomly sampling the sequences ("Random") or by greedily maximizing for sequence diversity ("Max"). Within each subsampling strategy, we then trained EvoDiff MSA models with the OADM and D3PM corruption schemes. 
 
 ## Unconditional sequence generation
 
