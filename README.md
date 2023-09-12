@@ -15,7 +15,7 @@ to demonstrate their power for controllable protein design. Below, we provide do
 EvoDiff is described in this [preprint](todo:link)
 
 <p align="center">
-<img src="img/combined-0.gif" width="600" />
+<img src="img/combined-0.gif" />
 </p>
 
 ----
