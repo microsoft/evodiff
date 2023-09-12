@@ -1,7 +1,5 @@
 # EvoDiff
-<p align="center">
-<img src="img/unconditional.gif" width="500" />
-</p>
+
 ### Description
 In this work, we introduce a general-purpose diffusion framework, EvoDiff, that combines evolutionary-scale data with 
 the distinct conditioning capabilities of diffusion models for controllable protein generation in sequence space. 
@@ -15,6 +13,10 @@ We evaluate our sequence and MSA models – EvoDiff-Seq and EvoDiff-MSA, respect
 to demonstrate their power for controllable protein design. Below, we provide documentation for running our models.
 
 Evodiff is described in this [preprint](todo:link)
+
+<p align="center">
+<img src="img/unconditional.gif" width="500" />
+</p>
 
 ----
 
