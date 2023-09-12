@@ -12,6 +12,8 @@ beyond the structure-function paradigm toward programmable, sequence-first desig
 We evaluate our sequence and MSA models – EvoDiff-Seq and EvoDiff-MSA, respectively – across a range of generation tasks 
 to demonstrate their power for controllable protein design. Below, we provide documentation for running our models.
 
+Evodiff is described in this [preprint](todo:link)
+
 ----
 
 ## Table of contents
@@ -103,7 +105,9 @@ It is also possible to load our LRAR baseline models:
 
 Note: if you want to download a `BLOSUM` model, you will first need to download [data/blosum62-special-MSA.mat](https://github.com/microsoft/evodiff/blob/main/data/blosum62-special-MSA.mat).
 
-## Unconditional sequence generation
+## Unconditional sequence generation!
+[Alt Text](img/unconditional.gif)
+
 ### Unconditional generation with EvoDiff-Seq
 
 EvoDiff can generate new sequences starting from sequences of masked tokens or of uniformly-sampled amino acids. All available models 
