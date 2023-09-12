@@ -107,7 +107,7 @@ Note: if you want to download a `BLOSUM` model, you will first need to download 
 
 ## Unconditional sequence generation
 <p align="center">
-<img src="img/unconditional.gif" width="40" height="40" />
+<img src="img/unconditional.gif" width="250" height="250" />
 </p>
 
 ### Unconditional generation with EvoDiff-Seq
