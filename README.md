@@ -2,7 +2,9 @@
 <p align="center">
 <img src="img/unconditional.gif" width="500" />
 </p>
+
 ### Description
+
 In this work, we introduce a general-purpose diffusion framework, EvoDiff, that combines evolutionary-scale data with 
 the distinct conditioning capabilities of diffusion models for controllable protein generation in sequence space. 
 EvoDiff generates high-fidelity, diverse, and structurally-plausible proteins that cover natural sequence and functional
