@@ -149,7 +149,7 @@ Our LRAR baseline models are also available:
 * ` lr_ar_640M `
 
 
-An example of generating one sequence randomly sampled from the train distribution length can be found in
+An example of unconditionally generating a sequence of a specified length can be found in
 [this notebook](https://github.com/microsoft/evodiff/tree/main/examples/evodiff.ipynb).
 
 To evaluate the generated sequences, we implement our self-consistency Omegafold ESM-IF pipeline, as shown in

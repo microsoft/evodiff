@@ -14,6 +14,78 @@ import torch
 import os
 from torch.utils.data import Subset
 
+def subsample_msa(path_to_msa, n_sequences=64, max_seq_len=512, selection_type='random'):
+    alphabet = PROTEIN_ALPHABET
+    tokenizer = Tokenizer(alphabet)
+    alpha = np.array(list(alphabet))
+    gap_idx = tokenizer.alphabet.index(GAP)
+
+    if not os.path.exists(path_to_msa):
+        print("PATH TO MSA DOES NOT EXIST")
+    path = path_to_msa
+    parsed_msa = parse_fasta(path)
+
+    aligned_msa = [[char for char in seq if (char.isupper() or char == '-') and not char == '.'] for seq in
+                   parsed_msa]
+    aligned_msa = [''.join(seq) for seq in aligned_msa]
+
+    tokenized_msa = [tokenizer.tokenizeMSA(seq) for seq in aligned_msa]
+    tokenized_msa = np.array([l.tolist() for l in tokenized_msa])
+    msa_seq_len = len(tokenized_msa[0])
+
+    if msa_seq_len > max_seq_len:
+        slice_start = np.random.choice(msa_seq_len - max_seq_len + 1)
+        seq_len = max_seq_len
+    else:
+        slice_start = 0
+        seq_len = msa_seq_len
+
+    # Slice to 512
+    sliced_msa_seq = tokenized_msa[:, slice_start: slice_start + max_seq_len]
+    anchor_seq = sliced_msa_seq[0]  # This is the query sequence in MSA
+
+    # slice out all-gap rows
+    sliced_msa = [seq for seq in sliced_msa_seq if (list(set(seq)) != [gap_idx])]
+    msa_num_seqs = len(sliced_msa)
+
+    if msa_num_seqs < n_sequences:
+        output = np.full(shape=(n_sequences, seq_len), fill_value=tokenizer.pad_id)
+        output[:msa_num_seqs] = sliced_msa
+        raise Exception("msa num_seqs < self.n_sequences, indicates dataset not filtered properly")
+    elif msa_num_seqs > n_sequences:
+        if selection_type == 'random':
+            random_idx = np.random.choice(msa_num_seqs - 1, size=n_sequences - 1, replace=False) + 1
+            anchor_seq = np.expand_dims(anchor_seq, axis=0)
+            output = np.concatenate((anchor_seq, np.array(sliced_msa)[random_idx.astype(int)]), axis=0)
+        elif selection_type == "MaxHamming":
+            output = [list(anchor_seq)]
+            msa_subset = sliced_msa[1:]
+            msa_ind = np.arange(msa_num_seqs)[1:]
+            random_ind = np.random.choice(msa_ind)
+            random_seq = sliced_msa[random_ind]
+            output.append(list(random_seq))
+            random_seq = np.expand_dims(random_seq, axis=0)
+            msa_subset = np.delete(msa_subset, (random_ind - 1), axis=0)
+            m = len(msa_ind) - 1
+            distance_matrix = np.ones((n_sequences - 2, m))
+
+            for i in range(n_sequences - 2):
+                curr_dist = cdist(random_seq, msa_subset, metric='hamming')
+                curr_dist = np.expand_dims(np.array(curr_dist), axis=0)  # shape is now (1,msa_num_seqs)
+                distance_matrix[i] = curr_dist
+                col_min = np.min(distance_matrix, axis=0)  # (1,num_choices)
+                max_ind = np.argmax(col_min)
+                random_ind = max_ind
+                random_seq = msa_subset[random_ind]
+                output.append(list(random_seq))
+                random_seq = np.expand_dims(random_seq, axis=0)
+                msa_subset = np.delete(msa_subset, random_ind, axis=0)
+                distance_matrix = np.delete(distance_matrix, random_ind, axis=1)
+    else:
+        output = sliced_msa
+
+    output = [''.join(seq) for seq in alpha[output]]
+    return output, output[0]
 
 def read_openfold_files(data_dir, filename):
     """

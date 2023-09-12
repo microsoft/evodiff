@@ -394,7 +394,7 @@ def generate_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_
                 p = torch.nn.functional.softmax(p, dim=1)  # softmax over categorical probs
                 p_sample = torch.multinomial(p, num_samples=1)
             sample[:, i] = p_sample.squeeze()
-    print("new sequence", [tokenizer.untokenize(s) for s in sample])
+    print("Generated sequence:", [tokenizer.untokenize(s) for s in sample])
     untokenized = [tokenizer.untokenize(s) for s in sample]
 
     return untokenized, new_start_idxs, new_end_idxs
@@ -484,6 +484,29 @@ def scramble_input(sequences, start_idxs, end_idxs):
     sequences = [[s] for s in sequences]
     return scrambled_seqs, sequences, scrambled_idrs, original_idrs, start_idxs, end_idxs
 
+def inpaint_simple(model, sequence, start_idx, end_idx, tokenizer=Tokenizer(), device='cuda'):
+    "used in examples for simplicity"
+    all_aas = tokenizer.all_aas
+    idr_length = end_idx - start_idx
+    masked_sequence = sequence[0:start_idx] + '#' * idr_length + sequence[end_idx:]
+    tokenized_sequence = torch.tensor(tokenizer.tokenizeMSA(masked_sequence))
+
+    loc = np.arange(start_idx, end_idx)
+    sample = tokenized_sequence.to(torch.long)
+    sample = sample.to(device)
+    np.random.shuffle(loc)
+    with torch.no_grad():
+        for i in tqdm(loc):
+            timestep = torch.tensor([0]) # placeholder but not called in model
+            timestep = timestep.to(device)
+            prediction = model(sample.unsqueeze(0), timestep)
+            p = prediction[:, i, :len(all_aas)-6]
+            p = torch.nn.functional.softmax(p, dim=1)
+            p_sample = torch.multinomial(p, num_samples=1)
+            sample[i] = p_sample.squeeze()
+    untokenized_seq = tokenizer.untokenize(sample)
+    untokenized_idr = tokenizer.untokenize(sample[start_idx:end_idx])
+    return sample, untokenized_seq, untokenized_idr
 
 def inpaint(model, tokenized_sequences, start_idxs, end_idxs, sequences, tokenizer=Tokenizer(), device='cuda', random_baseline=False, data_top_dir='/'):
     if random_baseline:

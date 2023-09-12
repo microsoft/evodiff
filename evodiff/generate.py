@@ -191,7 +191,7 @@ def generate_oaardm(model, tokenizer, seq_len, penalty=None, batch_size=3, devic
     loc = np.arange(seq_len)
     np.random.shuffle(loc)
     with torch.no_grad():
-        for i in loc:
+        for i in tqdm(loc):
             timestep = torch.tensor([0] * batch_size) # placeholder but not called in model
             timestep = timestep.to(device)
             prediction = model(sample, timestep) #, input_mask=input_mask.unsqueeze(-1)) #sample prediction given input
@@ -217,7 +217,7 @@ def generate_oaardm(model, tokenizer, seq_len, penalty=None, batch_size=3, devic
 def generate_autoreg(model, tokenizer, samples=100, batch_size=1, max_seq_len=1024):
     # Generates 1 seq at a time, no batching, to make it easier to deal w variable seq lengths
     # Generates until max length or until stop token is predicted
-    model.eval().cuda()
+    #model.eval().cuda()
     device = model.device()
 
     start = tokenizer.start_id
@@ -260,7 +260,7 @@ def generate_d3pm(model, tokenizer, Q, Q_bar, timesteps, seq_len, batch_size=3, 
     """
     Generate a random start string from uniform dist and convert to predictions
     """
-    model.eval().cuda()
+    #model.eval()
     #device = model.device()
 
     sample = torch.randint(0, tokenizer.K, (batch_size, seq_len))

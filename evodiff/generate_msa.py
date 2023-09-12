@@ -1,32 +1,18 @@
 import argparse
-import json
 import evodiff
 import os
 import numpy as np
-import torch
-import pandas as pd
-from sequence_models.esm import MSATransformer
-from sequence_models.constants import MSA_ALPHABET, MSA_PAD, MASK
-from evodiff.utils import Tokenizer
-from sequence_models.utils import parse_fasta
-from evodiff.model import MSATransformerTime
-from evodiff.data import read_idr_files
 from tqdm import tqdm
 import pathlib
 import glob
-import string
-
 from evodiff.data import A3MMSADataset, IDRDataset
 from torch.utils.data import Subset
-from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 from torch.utils.data import DataLoader
 import torch
 from sequence_models.collaters import MSAAbsorbingCollater
 from evodiff.collaters import D3PMCollaterMSA
 from sequence_models.constants import MSA_ALPHABET
 from evodiff.utils import Tokenizer
-from scipy.spatial.distance import hamming, cdist
-
 home = str(pathlib.Path.home())
 
 def main():
@@ -235,6 +221,52 @@ def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, penalty_
     untokenized = [[tokenizer.untokenize(msa.flatten())] for msa in sample]
     return sample, untokenized # return output and untokenized output
 
+def generate_query_oadm_msa_simple(path_to_msa, model, tokenizer, n_sequences, seq_length, batch_size=1, penalty_value=2, device='gpu',
+                 start_msa=True, selection_type='MaxHamming'):
+    mask_id = tokenizer.mask_id
+    src = torch.full((batch_size, n_sequences, seq_length), fill_value=mask_id)
+
+    valid_msas = []
+    query_sequences = []
+    for i in range(batch_size):
+        #print(path_to_msa)
+        valid_msa, query_sequence = evodiff.data.subsample_msa(path_to_msa, n_sequences=n_sequences,
+                                                               max_seq_len=seq_length, selection_type=selection_type)
+        valid_msa = torch.tensor(np.array([tokenizer.tokenizeMSA(seq) for seq in valid_msa]))
+        valid_msas.append(valid_msa)
+        query_sequences.append(query_sequence)
+
+    for i in range(batch_size):
+        seq_len = len(query_sequences[i])
+        src[i, 1:n_sequences, :seq_len] = valid_msas[i][1:n_sequences, :seq_len].squeeze()
+        padding = torch.full((n_sequences, seq_length-seq_len), fill_value=tokenizer.pad_id)
+        src[i, :, seq_len:] = padding
+        x_indices = np.arange(0,1)
+        y_indices = np.arange(seq_len)
+    src = src.to(device)
+    sample = src.clone()
+    if start_msa:
+        all_ind = np.transpose([np.tile(x_indices, len(y_indices)), np.repeat(y_indices, len(x_indices))])
+    np.random.shuffle(all_ind)
+
+    # ONLY USING ON BATCH_SIZE=1 for now
+    with torch.no_grad():
+        for i in tqdm(all_ind):
+            random_x, random_y = i
+            preds = model(sample)  # Output shape of preds is (BS=1, N=64, L, n_tokens=31)
+            p = preds[:, random_x, random_y, :]
+            if random_x == 0 : # for first row don't let p_softmax predict gaps
+                p = preds[:, random_x, random_y, :tokenizer.K-1]
+            p_softmax = torch.nn.functional.softmax(p, dim=1)
+            # Penalize gaps
+            penalty = torch.ones(p.shape).to(p.device)
+            penalty[:, -1] += penalty_value
+            p_softmax /= penalty
+            p_sample = torch.multinomial(input=p_softmax, num_samples=1)
+            p_sample = p_sample.squeeze()
+            sample[:, random_x, random_y] = p_sample
+    untokenized = [[tokenizer.untokenize(msa[0])] for msa in sample] # return query sequence only
+    return sample, untokenized # return query sequences only
 
 def generate_msa_d3pm(model, batch_size, n_sequences, seq_length, Q_bar=None, Q=None, tokenizer=Tokenizer(),
                       start_query=False, data_top_dir='../data', selection_type='MaxHamming', out_path='../ref/',
