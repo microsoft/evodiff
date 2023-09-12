@@ -193,9 +193,7 @@ generation by sampling from a validation MSA. To run this script you must have t
 ``` 
 python evodiff/generate-msa.py --model-type msa_oa_dm_maxsub --batch-size 1 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming --start-msa
 ```
-
-If you want to generate on a custom MSA, it is possible to retrofit existing code as shown in this example: 
-TODO: need to add this to notebook 
+If you want to generate on a custom MSA, it is possible to retrofit existing code. 
 
 Additionally, the code is capable of generating an alignment given a query sequence, use the following `--start-query` flag. 
 This starts with the query and generates the alignment. 
