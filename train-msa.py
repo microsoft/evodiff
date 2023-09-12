@@ -3,9 +3,7 @@ import json
 import os
 from datetime import datetime, timedelta
 import pathlib
-import esm
 import numpy as np
-# import mlflow
 import torch
 from torch.cuda.amp import GradScaler
 import torch.multiprocessing as mp
@@ -21,12 +19,10 @@ from evodiff.losses import  D3PMCELoss,  D3PMLVBLossMSA
 from evodiff.model import MSATransformerTime
 from sequence_models.esm import MSATransformer
 from sequence_models.constants import MSA_ALPHABET
-#from sequence_models.datasets import TRRMSADataset #, A3MMSADataset # TODO move datasets back to sequence_models
 from evodiff.data import TRRMSADataset, A3MMSADataset
 from sequence_models.collaters import MSAAbsorbingCollater
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
 from sequence_models.losses import MaskedCrossEntropyLossMSA
-#from sequence_models.metrics import MaskedAccuracy # TODO move this back to sequence_models?
 from evodiff.metrics import MaskedAccuracyMSA
 from torch.utils.data import Subset
 from sequence_models.utils import warmup, transformer_lr
@@ -90,7 +86,6 @@ def train(gpu, args):
     with open(args.config_fpath, 'r') as f:
         config = json.load(f)
 
-    #selection_type = config['selection_type']
     selection_type = args.selection_type
     d_embed = config['d_embed']
     d_hidden = config['d_hidden']
@@ -121,10 +116,8 @@ def train(gpu, args):
         ptjob = True
     except:
         data_top_dir = 'data/'
-        #print(data_top_dir)
         data_dir = data_top_dir
         data_dir += config['dataset'] + '/'
-        #print(data_dir)
         ptjob = False
 
     # build datasets, samplers, and loaders
@@ -140,7 +133,6 @@ def train(gpu, args):
         if args.mask == 'blosum':
             Q_prod, Q_t = tokenizer.q_blosum_schedule(timesteps=diffusion_timesteps)
         collater = D3PMCollaterMSA(tokenizer=tokenizer, num_timesteps=diffusion_timesteps, Q=Q_t, Q_bar=Q_prod)
-        #Q_prod = Q_prod.to(device)
     else:
         print("mask must be: 'autoreg', 'blosum', or 'random'")
 
@@ -195,7 +187,6 @@ def train(gpu, args):
         if config['dataset'] == 'trrosetta':
             dl_valid = DataLoader(dataset=ds_valid,
                                   batch_size=4,
-                                  # batch_sampler=valid_sampler,
                                   collate_fn=collater,
                                   num_workers=8)
         elif config['dataset'] == 'openfold':
@@ -407,19 +398,6 @@ def train(gpu, args):
                          str(current_step), str(e)]))
                     f.write('\n')
             print('Validation complete in ' + str(datetime.now() - start_time))
-
-        # if split == 'test':
-        #     with open(args.out_fpath + 'metrics_test.csv', 'a') as f:
-        #         f.write(','.join(
-        #             [str(rloss_ardm), str(rloss_nll), str(raccu), str(int(current_tokens)),
-        #              str(current_step)]))
-        #         f.write('\n')
-
-        #    print('Testing complete in ' + str(datetime.now() - start_time))
-
-        # elif rank == 0:
-        #     if not ptjob:
-        #         print()
         print('Epoch complete in ' + str(datetime.now() - start_time))
         return i, tokens_trained
 
@@ -429,16 +407,13 @@ def train(gpu, args):
             src_one_hot = src_one_hot.to(device)
             tgt_one_hot = tgt_one_hot.to(device)
             q = q.to(device)
-            #q_minus1 = q_minus1.to(device)
             Q = Q.to(device)
             Q_prod = Q_prod.to(device)
             timestep = timestep.to(device)
         else:
             src, tgt, mask = batch
             mask = mask.to(device)
-        # print('z', rank, device)
         src = src.to(device)
-        # print('y', rank)
         tgt = tgt.to(device)
         input_mask = (src != masking_idx).float()
         nonpad_mask = (src != padding_idx).float()
@@ -453,7 +428,6 @@ def train(gpu, args):
         if split == 'train':
             optimizer.zero_grad()
 
-        #with torch.cuda.amp.autocast(): # TODO enable debug
         if args.mask == 'blosum' or args.mask == 'random':
             outputs = model(src, timestep)
             lvb_loss = loss_func1(src_one_hot, q, outputs, tgt, tgt_one_hot, nonpad_mask, timestep, Q, Q_prod)
@@ -464,10 +438,7 @@ def train(gpu, args):
             accu = accu_func(outputs, tgt, nonpad_mask) * n_tokens
             loss = (lvb_loss + _lambda * ce_loss) * n_tokens
         elif args.mask == 'autoreg':
-            #print(src.shape)
-            #import pdb; pdb.set_trace()
             outputs = model(src)
-            #print(outputs.shape)
             ce_loss, nll_loss = loss_func(outputs, tgt, mask, nonpad_mask)
             loss = ce_loss
             accu = accu_func(outputs, tgt, mask) * n_tokens
@@ -481,11 +452,6 @@ def train(gpu, args):
             skip_scheduler = (scale > scaler.get_scale())
             if not skip_scheduler:
                scheduler.step()
-            # # remove mixed precision for debugging TODO delete
-            # loss.backward()
-            # _ = clip_grad_norm_(model.parameters(), clip)
-            # optimizer.step()
-            # scheduler.step()
 
         n_seqs = torch.tensor(len(src), device=device)
         return loss, nll_loss, accu, n_tokens, n_seqs, n_processed
@@ -493,19 +459,11 @@ def train(gpu, args):
     n_parameters = sum(p.numel() for p in model.parameters())
     if rank == 0:
         print('%d model parameters' % n_parameters)
-        #print('%d training sequences' % len(len_train))
-        #print('%d validation sequences' % len(len_valid))
     for e in range(initial_epoch, epochs):
         print("epoch: ", e + 1, rank)
-        #train_sortish_sampler.set_epoch(e + 1)
         s, t = epoch(model, e, split='train', current_step=total_steps, current_tokens=total_tokens)
         total_steps += s
         total_tokens += t
-
-        # writer.flush()
-        # writer.close()
-
-    # _, _ = epoch(model, e, split='test', current_step=total_steps, current_tokens=total_tokens)
 
 
 if __name__ == '__main__':
