@@ -12,7 +12,8 @@ beyond the structure-function paradigm toward programmable, sequence-first desig
 We evaluate our sequence and MSA models – EvoDiff-Seq and EvoDiff-MSA, respectively – across a range of generation tasks 
 to demonstrate their power for controllable protein design. Below, we provide documentation for running our models.
 
-EvoDiff is described in this [preprint](https://www.biorxiv.org/content/10.1101/2023.09.11.556673v1)
+EvoDiff is described in this [preprint](https://www.biorxiv.org/content/10.1101/2023.09.11.556673v1); if you use the code from this repository or the results, please cite the preprint.
+
 
 <p align="center">
 <img src="img/combined-0.gif" />
