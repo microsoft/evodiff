@@ -14,7 +14,7 @@ Generation of protein sequences and evolutionary alignments via discrete diffusi
 5. [Training Details](#training-details)
 6. [Evaluation](#evaluation)
 7. [Environmental Impact](#environmental-impact)
-8. [Citation](#citation)
+<!-- 8. [Citation](#citation) -->
 <!-- 9. [Technical Specifications](#technical-specifications-optional) -->
 <!-- 7. [Model Examination](#model-examination) -->
 <!-- 11. [Glossary](#glossary-optional) -->
@@ -46,7 +46,7 @@ beyond the structure-function paradigm toward programmable, sequence-first desig
 <!-- Provide the basic links for the model. -->
 
 - **Repository:** [https://github.com/microsoft/evodiff](https://github.com/microsoft/evodiff)
-- **Paper:** TODO
+- **Preprint:** [https://www.biorxiv.org/content/10.1101/2023.09.11.556673v1](https://www.biorxiv.org/content/10.1101/2023.09.11.556673v1)
 
 ## Uses
 
@@ -273,7 +273,7 @@ We present EvoDiff, a diffusion modeling framework capable of generating high-fi
 
 <!-- {{ software | default("[More Information Needed]", true)}} -->
 
-## Citation
+<!-- ## Citation -->
 
 <!-- If there is a paper or blog post introducing the model, the APA and Bibtex information for that should go in this section. -->
 
