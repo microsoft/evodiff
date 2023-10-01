@@ -328,6 +328,17 @@ The CSV files containing generated data are organized as follows:
   * `rmsd`: motifRMSD between predicted motif coordinates and crystal motif coordinates
   * `model`: model type used for generations
 
+## Docker
+
+```sh
+## Build Docker Image
+docker build -t evodiff .
+
+## Run Docker Image (Bash Console)
+docker run --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 --name evodiff --rm -it evodiff /bin/bash
+
+```
+
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
