@@ -15,12 +15,6 @@ RUN apt-get clean && \
         curl \
         wget
 
-## Install Conda
-# ENV CONDA_DIR /opt/conda
-# RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
-#     /bin/bash ~/miniconda.sh -b -p /opt/conda
-# ENV PATH=$CONDA_DIR/bin:$PATH
-
 ## Pip Install Requirements
 RUN python -m pip install \
         pandas \
