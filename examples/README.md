@@ -11,7 +11,7 @@ All EvoDiff-Seq motifs were generated in a 50-100 residue scaffold, and All EvoD
 ### PDB CODE: 1PRW
 Domains: 16-35 (FSLFDKDGDGTITTKELGTV), 52-71 (INEVDADGNGTIDFPEFLTM)
 ```
-python evodiff/conditional_generation.py --model-type oa_ar_640M --cond-task scaffold --pdb 1prw --start-idxs 15 --end-idxs 34 --start-idxs 51 --end-idxs 70 --num-seqs 100 --scaffold-min 50 --scaffold-max 100
+python evodiff/conditional_generation.py --model-type oa_dm_640M --cond-task scaffold --pdb 1prw --start-idxs 15 --end-idxs 34 --start-idxs 51 --end-idxs 70 --num-seqs 100 --scaffold-min 50 --scaffold-max 100
 ```
 Equivalent code for generating from MSA:
 ```
@@ -76,7 +76,7 @@ python evodiff/conditional_generation.py --cond-task scaffold --pdb 5ius --start
 ### PDB CODE: 5YUI
 Domains: 93-97 (FHFHW), 118-120 (LHL), 198-200 (TTP)
 ```
-python evodiff/conditional_generation.py --model-type oa_ar_640M --cond-task scaffold --pdb 5yui --start-idxs 89 --end-idxs 93 --start-idxs 114 --end-idxs 116 --start-idxs 194 --end-idxs 196  --num-seqs 100 --scaffold-min 50 --scaffold-max 100
+python evodiff/conditional_generation.py --model-type oa_dm_640M --cond-task scaffold --pdb 5yui --start-idxs 89 --end-idxs 93 --start-idxs 114 --end-idxs 116 --start-idxs 194 --end-idxs 196  --num-seqs 100 --scaffold-min 50 --scaffold-max 100
 ```
 
 ### PDB CODE: 6VW1
