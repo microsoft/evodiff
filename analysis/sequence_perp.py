@@ -82,7 +82,7 @@ def main():
             if not np.isnan(loss): #esm-1b predicts nans at large % mask
                 losses.append(loss)
                 n_tokens.append(tokens)
-                if save_name=='esm1b_650M' or save_name=='esm2_650M':
+                if save_name=='esm1b_650M' or save_name=='esm2_650M' or save_name=='carp_640M' or save_name=='carp_38M':
                     time_loss_data.append([t, loss, tokens])
                 else:
                     time_loss_data.append([t.item(), loss, tokens])

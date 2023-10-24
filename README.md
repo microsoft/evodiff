@@ -73,8 +73,7 @@ The Multiple Sequence Alignments (MSAs) are from the [OpenFold dataset](https://
 which contains 401,381 MSAs for 140,000 unique Protein Data Bank (PDB) chains and 16,000,000 UniClust30 clusters.
 The intrinsically disordered regions (IDR) data was obtained from the [Reverse Homology GitHub](https://github.com/alexxijielu/reverse_homology/).
 
-For the scaffolding structural motifs task, we use the baselines compiled in RFDiffusion. We provide pdb and fasta files used for conditionally generating sequences in the [examples/scaffolding-pdbs](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-pdbs) folder. We also provide
-We provide pdb files used for conditionally generating MSAs in the [examples/scaffolding-msas](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-msas) folder.
+For the scaffolding structural motifs task, we use the baselines compiled in RFDiffusion. We provide pdb and fasta files used for conditionally generating sequences in the [examples/scaffolding-pdbs](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-pdbs) folder. We also provide pdb files used for conditionally generating MSAs in the [examples/scaffolding-msas](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-msas) folder.
 
 To access the UniRef50 test sequences, use the following code:
 ```
@@ -218,11 +217,11 @@ generate with our scripts here, you must have the IDR dataset downloaded. Differ
 
 To run our code and generate IDRs from EvoDiff-Seq, run the following: 
 ```
-python generate/conditional_generation_msa.py --model-type msa_oa_ar_maxsub --cond-task idr --num-seqs 1 
+python evodiff/conditional_generation_msa.py --model-type msa_oa_ar_maxsub --cond-task idr --num-seqs 1 
 ```
 or equivalently, from EvoDiff-MSA: 
 ```
-python generate/conditional_generation_msa.py --model-type msa_oa_ar_maxsub --cond-task idr --query-only --max-seq-len 150 --num-seqs 1 
+python evodiff/conditional_generation_msa.py --model-type msa_oa_ar_maxsub --cond-task idr --query-only --max-seq-len 150 --num-seqs 1 
 ```
 
 Which will sample IDRs from the IDR dataset, and generate new ones.
@@ -240,14 +239,14 @@ An example of generating 1 MSA scaffold of a structural motif can be found in [t
 
 To generate from EvoDiff-Seq:
 ```
-python generate/conditional_generation.py --model-type oa_dm_640M --cond-task scaffold --pdb 1prw --start-idxs 15 --end-idxs 34 --start-idxs 51 --end-idxs 70 --num-seqs 100 --scaffold-min 50 --scaffold-max 100
+python evodiff/conditional_generation.py --model-type oa_dm_640M --cond-task scaffold --pdb 1prw --start-idxs 15 --end-idxs 34 --start-idxs 51 --end-idxs 70 --num-seqs 100 --scaffold-min 50 --scaffold-max 100
 ```
 
 The `--start-idxs` and `--end-idxs` indicate the start & end indices for the motif being scaffolded. If defining multiple motifs, you can supply the start and end index motifs as new arguments, such as in the example we provide above.
 
 Equivalent code for generating a new scaffold sequence from an EvoDiff-MSA:
 ```
-python generate/conditional_generation_msa.py --model-type msa_oa_dm_maxsub --cond-task scaffold --pdb 1prw --start-idxs 15 --end-idxs 34 --start-idxs 51 --end-idxs 70 --num-seqs 1 --query-only
+python evodiff/conditional_generation_msa.py --model-type msa_oa_dm_maxsub --cond-task scaffold --pdb 1prw --start-idxs 15 --end-idxs 34 --start-idxs 51 --end-idxs 70 --num-seqs 1 --query-only
 ```
 
 To generate a custom scaffold for a given motif, one simply needs to supply the PDB ID, and the residue indices of the motif. The code will download the PDB for you.
