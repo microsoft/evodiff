@@ -4,7 +4,6 @@ import os
 from datetime import datetime, timedelta
 import pathlib
 
-import  mlflow
 import numpy as np
 import torch
 import torch.multiprocessing as mp
@@ -15,7 +14,7 @@ from torch.utils.data import DataLoader
 import torch.distributed as dist
 from torch.cuda.amp import GradScaler
 
-from evodiff.model import ByteNetLMTime, TransformerTime
+from evodiff.model import ByteNetLMTime
 from evodiff.utils import Tokenizer
 from torch.utils.data import Subset
 from sequence_models.samplers import SortishSampler, ApproxBatchSampler
@@ -24,7 +23,7 @@ from sequence_models.constants import MSA_ALPHABET
 from evodiff.collaters import OAMaskCollater, D3PMCollater
 from evodiff.losses import OAMaskedCrossEntropyLoss, D3PMCELoss, D3PMLVBLoss
 from sequence_models.metrics import MaskedAccuracy
-from sequence_models.utils import warmup, transformer_lr
+from sequence_models.utils import warmup 
 import sys
 
 
