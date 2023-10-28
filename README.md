@@ -73,8 +73,7 @@ The Multiple Sequence Alignments (MSAs) are from the [OpenFold dataset](https://
 which contains 401,381 MSAs for 140,000 unique Protein Data Bank (PDB) chains and 16,000,000 UniClust30 clusters.
 The intrinsically disordered regions (IDR) data was obtained from the [Reverse Homology GitHub](https://github.com/alexxijielu/reverse_homology/).
 
-For the scaffolding structural motifs task, we use the baselines compiled in RFDiffusion. We provide pdb and fasta files used for conditionally generating sequences in the [examples/scaffolding-pdbs](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-pdbs) folder. We also provide
-We provide pdb files used for conditionally generating MSAs in the [examples/scaffolding-msas](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-msas) folder.
+For the scaffolding structural motifs task, we use the baselines compiled in RFDiffusion. We provide pdb and fasta files used for conditionally generating sequences in the [examples/scaffolding-pdbs](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-pdbs) folder. We also provide pdb files used for conditionally generating MSAs in the [examples/scaffolding-msas](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-msas) folder.
 
 To access the UniRef50 test sequences, use the following code:
 ```
@@ -112,7 +111,7 @@ Note: if you want to download a `BLOSUM` model, you will first need to download 
 
 ## Available models
 
-We investigated two types of forward processes for diffusion over discrete data modalitiesto determine which would be most effective. 
+We investigated two types of forward processes for diffusion over discrete data modalities to determine which would be most effective. 
 In order-agnostic autoregressive diffusion [OADM](https://arxiv.org/abs/2110.02037), one amino acid is converted to a special mask token at each step in the forward process. 
 After $T=L$ steps, where $L$ is the length of the sequence, the entire sequence is masked. 
 We additionally designed discrete denoising diffusion probabilistic models [D3PM](https://arxiv.org/abs/2107.03006) for protein sequences.
@@ -234,8 +233,7 @@ can be used for a motif scaffolding task. We used EvoDiff to generate scaffolds 
 by fixing the functional motif, supplying only the motif's amino-acid sequence as conditioning information, and then decoding 
 the remainder of the sequence.
 
-For the scaffolding structural motifs task, we provide pdb and fasta files used for conditionally generating sequences in the [examples/scaffolding-pdbs](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-pdbs) folder. We also provide
-We provide a3m files used for conditionally generating MSAs in the [examples/scaffolding-msas](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-msas) folder. Please view the PDB codes available and select an appropriate code. In this example, we use PDB code 1prw with domains 16-35 (FSLFDKDGDGTITTKELGTV) and 52-71 (INEVDADGNGTIDFPEFLTM).
+For the scaffolding structural motifs task, we provide pdb and fasta files used for conditionally generating sequences in the [examples/scaffolding-pdbs](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-pdbs) folder. We also provide a3m files used for conditionally generating MSAs in the [examples/scaffolding-msas](https://github.com/microsoft/evodiff/tree/main/examples/scaffolding-msas) folder. Please view the PDB codes available and select an appropriate code. In this example, we use PDB code 1prw with domains 16-35 (FSLFDKDGDGTITTKELGTV) and 52-71 (INEVDADGNGTIDFPEFLTM).
 An example of generating 1 MSA scaffold of a structural motif can be found in [this notebook](https://github.com/microsoft/evodiff/tree/main/examples/evodiff.ipynb).
 
 To generate from EvoDiff-Seq:
@@ -251,7 +249,7 @@ python evodiff/conditional_generation_msa.py --model-type msa_oa_dm_maxsub --con
 ```
 
 To generate a custom scaffold for a given motif, one simply needs to supply the PDB ID, and the residue indices of the motif. The code will download the PDB for you.
-In some cases PDB files downloaded from rcsb will be incomplete, or contain additional residues. We have implemented code to circumvent PDB-reading issues, but we recommend care when
+In some cases PDB files downloaded from [RCSB](https://www.rcsb.org/) will be incomplete, or contain additional residues. We have implemented code to circumvent PDB-reading issues, but we recommend care when
 generating files for this task. 
 
 ## Analysis of generations
@@ -295,7 +293,7 @@ subset = df.loc[df['model'] == 'evodiff_oa_dm_640M']
 ```
 
 The CSV files containing generated data are organized as follows:
-* Unconditional generations from sequence based models: ` unconditional_generations.csv`
+* Unconditional generations from sequence-based models: ` unconditional_generations.csv`
   * `sequence`: generated sequence
   * `min hamming dist`: minimum Hamming distance between generated sequence and all training sequences
   * `seq len`: length of generated sequence
