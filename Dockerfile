@@ -12,20 +12,23 @@ RUN apt-get clean && \
         sudo \
         git \
         curl \
-        wget
+        wget \
+        g++
 
-## Pip Install EvoDiff
-RUN pip install evodiff
+## Pip Install EvoDiff (and other dependencies)
+RUN pip install evodiff \
+        torch_geometric \
+        torch_scatter
 
 ## Clone EvoDiff GitHub Repo (to get scripts)
-RUN git clone https://github.com/microsoft/evodiff && \
-    cd evodiff
+RUN git clone https://github.com/microsoft/evodiff
 
 ## Set Working Directory
 WORKDIR /workspace/evodiff
 
 ## Get UniRef50 Data
-# RUN wget -O data/uniref50.tar.gz https://evodiff.blob.core.windows.net/evodiff-data/uniref50.tar.gz && \
-RUN wget -O data/uniref50.tar.gz https://zenodo.org/records/6564798/files/uniref50.tar.gz?download=1 && \
-    tar -xzf data/uniref50.tar.gz && \
-    rm data/uniref50.tar.gz
+RUN cd data && \
+    # wget https://evodiff.blob.core.windows.net/evodiff-data/uniref50.tar.gz && \
+    wget -O uniref50.tar.gz https://zenodo.org/records/6564798/files/uniref50.tar.gz?download=1 && \
+    tar -xzf uniref50.tar.gz && \
+    rm uniref50.tar.gz

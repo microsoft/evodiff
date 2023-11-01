@@ -329,20 +329,32 @@ The CSV files containing generated data are organized as follows:
 
 ## Docker
 
+The Docker image for EvoDiff is hosted on DockerHub at [https://hub.docker.com/r/cford38/evodiff](https://hub.docker.com/r/cford38/evodiff).
+
+```sh
+docker pull cford38/evodiff:latest
+```
+
+Alternatively, you can build the Docker image locally.
+
 ```sh
 ## Build Docker Image
 docker build -t evodiff .
+```
 
+Then, run the Docker image locally with the following command.
+
+```sh
 ## Run Docker Image (Bash Console)
 docker run --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 --name evodiff --rm -it evodiff /bin/bash
 ```
 
 __Note:__ You may need to set your default Torch device to `cuda` in the Docker container so that EvoDiff executes on the GPU.
+
 ```py
 import torch
 torch.set_default_device('cuda:0')
 ```
-
 
 ## Contributing
 
