@@ -326,6 +326,7 @@ The CSV files containing generated data are organized as follows:
   * `rmsd`: motifRMSD between predicted motif coordinates and crystal motif coordinates
   * `model`: model type used for generations
 
+
 ## Docker
 
 ```sh
@@ -334,8 +335,14 @@ docker build -t evodiff .
 
 ## Run Docker Image (Bash Console)
 docker run --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 --name evodiff --rm -it evodiff /bin/bash
-
 ```
+
+__Note:__ You may need to set your default Torch device to `cuda` in the Docker container so that EvoDiff executes on the GPU.
+```py
+import torch
+torch.set_default_device('cuda:0')
+```
+
 
 ## Contributing
 
