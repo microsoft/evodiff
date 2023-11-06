@@ -253,7 +253,7 @@ class TRRMSADataset(Dataset):
             slice_start = 0
             seq_len = msa_seq_len
 
-        sliced_msa = msa[:, slice_start: slice_start + self.max_seq_len]
+        sliced_msa = msa[:, slice_start: slice_start + seq_len]
         anchor_seq = sliced_msa[0]  # This is the query sequence in MSA
 
         sliced_msa = [list(seq) for seq in sliced_msa if (list(set(seq)) != [self.tokenizer.alphabet.index(GAP)])]
