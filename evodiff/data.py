@@ -271,7 +271,7 @@ class TRRMSADataset(Dataset):
                 anchor_seq = np.expand_dims(anchor_seq, axis=0)
                 output = np.concatenate((anchor_seq, sliced_msa[random_idx]), axis=0)
             elif self.selection_type == 'non-random':
-                output = sliced_msa[:64]
+                output = sliced_msa[:self.n_sequences]
             elif self.selection_type == "MaxHamming":
                 output = [list(anchor_seq)]
                 msa_subset = sliced_msa[1:]
