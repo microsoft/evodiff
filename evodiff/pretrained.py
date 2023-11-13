@@ -43,7 +43,7 @@ def load_sequence_checkpoint(model_name, config_path, diffusion_timesteps, token
     state_dict = download_model(model_name)
     # sd = torch.load(state_dict, map_location=torch.device('cpu'))
     msd = state_dict['model_state_dict']
-    if model_name == 'carp-640M' or model_name == 'carp-38M':
+    if model_name == 'carp-640M' or model_name == 'carp-38M' or model_name == 'lrar-640M' or model_name=='lrar-38M':
         msd = {k.split('module.')[0]: v for k, v in msd.items()}
     else:
         msd = {k.split('module.')[1]: v for k, v in msd.items()}
