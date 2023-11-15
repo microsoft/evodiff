@@ -38,6 +38,7 @@ EvoDiff is described in this [preprint](https://www.biorxiv.org/content/10.1101/
     - [Scaffolding functional motifs](#scaffolding-functional-motifs)
 - [Analysis](#analysis-of-generations)
 - [Downloading generated sequences](#downloading-generated-sequences)
+- [Docker](#docker)
 
 ----
 
