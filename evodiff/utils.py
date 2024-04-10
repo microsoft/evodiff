@@ -1,7 +1,7 @@
 import torch
 import evodiff
 import numpy as np
-from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS, GAP, START, STOP
+from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS, GAP, START, STOP, SEP
 from evodiff.constants import BLOSUM_ALPHABET
 from sklearn.preprocessing import normalize
 import itertools
@@ -149,7 +149,7 @@ def parse_fasta(seq_file, idx):
 class Tokenizer(object):
     """Convert between strings and index"""
     def __init__(self, protein_alphabet=MSA_ALPHABET, pad=MSA_PAD, mask=MASK, all_aas=MSA_AAS, gap=GAP, start=START,
-                 stop=STOP, path_to_blosum=None, sequences=False):
+                 stop=STOP, sep=SEP, path_to_blosum=None, sequences=False):
         self.alphabet = list("".join(protein_alphabet))
         self.all_aas = list("".join(all_aas))
         self.pad = pad
@@ -157,6 +157,7 @@ class Tokenizer(object):
         self.gap = gap
         self.start = start
         self.stop = stop
+        self.sep = sep
         self.a_to_i = {u: i for i, u in enumerate(self.alphabet)}
         self.i_to_a = np.array(self.alphabet)
         if path_to_blosum is not None:
@@ -187,6 +188,10 @@ class Tokenizer(object):
     @property
     def stop_id(self):
         return self.tokenize(self.stop)[0]
+
+    @property
+    def sep_id(self):
+        return self.tokenize(self.sep)[0]
 
     def q_blosum(self):
         q = np.array([i for i in self.matrix_dict.values()])
@@ -445,7 +450,7 @@ def run_tmscore(fpath, pdb, num_seqs, path_to_tmscore='TMscore', amlt=False, rer
         else:
             #if reres:
             print("NOT USING RERES") # Manually switching between reference and re-res for multi-chain PDB TMscores - add more efficient approach
-            ref_path = os.path.join(out_fpath, pdb + '_reference.pdb')
+            ref_path = os.path.join(out_fpath, pdb + '_reres.pdb')
             #else:
             #    ref_path = os.path.join(out_fpath, pdb + '_reference.pdb')
             print(ref_path)
@@ -521,7 +526,20 @@ def eval_disopred_output(out_fpath, ref_df, prefix='', num_seqs=100):
     return mean_gen_score #, mean_og_score
 
 
-
+import Bio
+from Bio.PDB import PDBParser
+import numpy as np
+def get_bfactor(filename):
+    parser=PDBParser(PERMISSIVE=1)
+    protein = parser.get_structure('A', filename)#'generated/100/pdb/SEQUENCE_0.pdb')
+    b_factors = []
+    for model in protein:
+        for chain in model:
+            for residue in chain:
+                for atom in residue:
+                    b_factors.append(atom.get_bfactor())
+    b_factors = np.array(b_factors)
+    return b_factors, b_factors.mean()
 
 
 
