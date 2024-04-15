@@ -228,7 +228,7 @@ def generate_query_oadm_msa_simple(path_to_msa, model, tokenizer, n_sequences, s
 
     valid_msas = []
     query_sequences = []
-    for i in range(batch_size):
+    for i in range(batch_size): 
         #print(path_to_msa)
         valid_msa, query_sequence = evodiff.data.subsample_msa(path_to_msa, n_sequences=n_sequences,
                                                                max_seq_len=seq_length, selection_type=selection_type)
