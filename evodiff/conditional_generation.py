@@ -1,18 +1,97 @@
-import evodiff
-from evodiff.pretrained import OA_DM_640M, OA_DM_38M, CARP_640M, LR_AR_38M, LR_AR_640M
-import numpy as np
 import argparse
-import urllib.request
-import torch
 import os
-import esm.inverse_folding
-from evodiff.utils import Tokenizer, run_omegafold, clean_pdb, run_tmscore #, wrap_dr_bert, read_dr_bert_output
-import pathlib
-from sequence_models.utils import parse_fasta
-from tqdm import tqdm
-import pandas as pd
 import random
-from evodiff.plot import aa_reconstruction_parity_plot, idr_parity_plot
+
+import biotite.structure
+from biotite.structure.io import pdbx, pdb
+from biotite.structure.residues import get_residues
+from biotite.structure import filter_backbone
+from biotite.structure import get_chains
+from biotite.sequence import ProteinSequence
+import itertools
+import numpy as np
+import pathlib
+import pandas as pd
+import torch
+from tqdm import tqdm
+import urllib.request
+
+import evodiff
+from evodiff.plot import aa_reconstruction_parity_plot,
+from evodiff.pretrained import OA_DM_640M, OA_DM_38M, CARP_640M, LR_AR_38M, LR_AR_640M
+from evodiff.utils import Tokenizer, run_omegafold, clean_pdb, run_tmscore
+from sequence_models.utils import parse_fasta
+
+
+
+def load_structure(fpath, chain=None):
+    """
+    Copied directly from facebookresearch/esm on 8/9, removing archived esm dependencies
+    Args:
+        fpath: filepath to either pdb or cif file
+        chain: the chain id or list of chain ids to load
+    Returns:
+        biotite.structure.AtomArray
+    """
+    if fpath.endswith('cif'):
+        with open(fpath) as fin:
+            pdbxf = pdbx.PDBxFile.read(fin)
+        structure = pdbx.get_structure(pdbxf, model=1)
+    elif fpath.endswith('pdb'):
+        with open(fpath) as fin:
+            pdbf = pdb.PDBFile.read(fin)
+        structure = pdb.get_structure(pdbf, model=1)
+    bbmask = filter_backbone(structure)
+    structure = structure[bbmask]
+    all_chains = get_chains(structure)
+    if len(all_chains) == 0:
+        raise ValueError('No chains found in the input file.')
+    if chain is None:
+        chain_ids = all_chains
+    elif isinstance(chain, list):
+        chain_ids = chain
+    else:
+        chain_ids = [chain]
+    for chain in chain_ids:
+        if chain not in all_chains:
+            raise ValueError(f'Chain {chain} not found in input file')
+    chain_filter = [a.chain_id in chain_ids for a in structure]
+    structure = structure[chain_filter]
+    return structure
+
+
+def extract_coords_from_structure(structure: biotite.structure.AtomArray):
+    """
+    Adapted from facebookresearch/esm on 8/9, removing archived esm dependencies
+    Args:
+        structure: An instance of biotite AtomArray
+    Returns:
+        Tuple (coords, seq)
+            - coords is an L x 3 x 3 array for N, CA, C coordinates
+            - seq is the extracted sequence
+    """
+    residue_identities = get_residues(structure)[1]
+    seq = ''.join([ProteinSequence.convert_letter_3to1(r) for r in residue_identities])
+    return seq
+
+
+def extract_coords_from_complex(structure):
+    """
+    Adapted from facebookresearch/esm on 8/9, removing archived esm dependencies
+    Args:
+        structure: biotite AtomArray
+    Returns:
+        Tuple (coords_list, seq_list)
+        - coords: Dictionary mapping chain ids to L x 3 x 3 array for N, CA, C
+          coordinates representing the backbone of each chain
+        - seqs: Dictionary mapping chain ids to native sequences of each chain
+    """
+    seqs = {}
+    all_chains = biotite.structure.get_chains(structure)
+    for chain_id in all_chains:
+        chain = structure[structure.chain_id == chain_id]
+        seqs[chain_id] = extract_coords_from_structure(chain)
+    return seqs
 
 
 def main():
@@ -48,10 +127,12 @@ def main():
                         help="Max scaffold len, will randomly choose a value between min/max")
     parser.add_argument('--max-seq-length', type=int, default=1022,
                         help="Max sequence length to sample from IDR set")
-    parser.add_argument('--random-baseline', action='store_true') # either random-baseline or scrambled baseline NOT BOTH
+    parser.add_argument('--random-baseline',
+                        action='store_true')  # either random-baseline or scrambled baseline NOT BOTH
     parser.add_argument('--scrambled-baseline', action='store_true')
     parser.add_argument('--amlt', action='store_true')
-    parser.add_argument('--single-res-domain', action='store_true', help="if start-idx = end-idx make sure to use single-res-domain flag or else you will get errors")
+    parser.add_argument('--single-res-domain', action='store_true',
+                        help="if start-idx = end-idx make sure to use single-res-domain flag or else you will get errors")
     args = parser.parse_args()
 
     if args.cond_task == 'scaffold':
@@ -59,7 +140,7 @@ def main():
         args.end_idxs.sort()
 
     if args.random_baseline:
-        args.model_type = 'oa_dm_640M' # placeholder
+        args.model_type = 'oa_dm_640M'  # placeholder
 
     print("USING MODEL", args.model_type)
     if args.model_type == 'oa_dm_38M':
@@ -73,7 +154,10 @@ def main():
     elif args.model_type == 'lr_ar_640M':
         checkpoint = LR_AR_640M()
     else:
-        raise Exception("Please select either oa_dm_38M, oa_dm_640M, carp_640M, lr_ar_38M, or lr_ar_640M. You selected: ", args.model_type, ". If you want to generate a random baseline, add the --random-baseline flag to any model.")
+        raise Exception(
+            "Please select either oa_dm_38M, oa_dm_640M, carp_640M, lr_ar_38M, or lr_ar_640M. You selected: ",
+            args.model_type,
+            ". If you want to generate a random baseline, add the --random-baseline flag to any model.")
 
     model, collater, tokenizer, scheme = checkpoint
     model.eval().cuda()
@@ -86,7 +170,7 @@ def main():
         top_dir = ''
         out_fpath = home
     else:
-        home = str(pathlib.Path.home()) + '/Desktop/DMs/'
+        home = str(pathlib.Path.home()) + '/Desktop/evodiff/'
         top_dir = home
         if not args.random_baseline:
             out_fpath = home + args.model_type + '/'
@@ -99,24 +183,32 @@ def main():
 
     if not os.path.exists(out_fpath):
         os.makedirs(out_fpath)
-    if not os.path.exists(out_fpath+'plots/'):
-        os.makedirs(out_fpath+'plots/')
-        os.makedirs(out_fpath+'plots/svg/')
-        os.makedirs(out_fpath+'fasta/')
-        os.makedirs(out_fpath+'fasta/plots/')
+    if not os.path.exists(out_fpath + 'plots/'):
+        os.makedirs(out_fpath + 'plots/')
+        os.makedirs(out_fpath + 'plots/svg/')
+        os.makedirs(out_fpath + 'fasta/')
+        os.makedirs(out_fpath + 'fasta/plots/')
 
-    data_top_dir = top_dir + 'data/'
+    data_top_dir = '/home/v-salamdari/Desktop/DMs/data/'
 
     if args.cond_task == 'idr':
-        tokenized_sequences, start_idxs, end_idxs, queries, sequences, b_tokenized, b_starts, b_ends, query_ids =\
+        tokenized_sequences, start_idxs, end_idxs, queries, sequences, b_tokenized, b_starts, b_ends, query_ids = \
             get_IDR_sequences(data_top_dir, tokenizer, num_seqs=args.num_seqs, max_seq_len=args.max_seq_length)
         if args.scrambled_baseline:
-            r_strings, r_og_strings, r_new_idrs, r_og_idrs, r_start_idxs, r_end_idxs = scramble_input(sequences, start_idxs, end_idxs)
-            r_b_strings, r_b_og_strings, r_b_new_idrs, r_b_og_idrs, r_b_start_idxs, r_b_end_idxs = scramble_input(sequences, b_starts, b_ends)
+            r_strings, r_og_strings, r_new_idrs, r_og_idrs, r_start_idxs, r_end_idxs = scramble_input(sequences,
+                                                                                                      start_idxs,
+                                                                                                      end_idxs)
+            r_b_strings, r_b_og_strings, r_b_new_idrs, r_b_og_idrs, r_b_start_idxs, r_b_end_idxs = scramble_input(
+                sequences, b_starts, b_ends)
         else:
-            r_strings, r_og_strings, r_new_idrs, r_og_idrs, r_start_idxs, r_end_idxs = inpaint(model, tokenized_sequences, start_idxs,
-                                                                               end_idxs, sequences, tokenizer=tokenizer,
-                                                                               device=device, random_baseline=True, data_top_dir=data_top_dir)
+            r_strings, r_og_strings, r_new_idrs, r_og_idrs, r_start_idxs, r_end_idxs = inpaint(model,
+                                                                                               tokenized_sequences,
+                                                                                               start_idxs,
+                                                                                               end_idxs, sequences,
+                                                                                               tokenizer=tokenizer,
+                                                                                               device=device,
+                                                                                               random_baseline=True,
+                                                                                               data_top_dir=data_top_dir)
             r_b_strings, r_b_og_strings, r_b_new_idrs, r_b_og_idrs, r_b_start_idxs, r_b_end_idxs = inpaint(model,
                                                                                                            b_tokenized,
                                                                                                            b_starts,
@@ -134,27 +226,27 @@ def main():
                                                                                device=device)
         # Run baseline generation (structured inpainting)
         b_strings, b_og_strings, b_new_idrs, b_og_idrs, b_start_idxs, b_end_idxs = inpaint(model, b_tokenized, b_starts,
-                                                                                          b_ends, sequences,
-                                                                                          tokenizer=tokenizer,
-                                                                                          device=device)
+                                                                                           b_ends, sequences,
+                                                                                           tokenizer=tokenizer,
+                                                                                           device=device)
         save_df = pd.DataFrame(list(zip(new_idrs, og_idrs, start_idxs, end_idxs)),
                                columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
         save_df.to_csv(out_fpath + 'idr_df.csv', index=True)
         print("before save", new_idrs, og_idrs, start_idxs, end_idxs)
         print("before save", r_new_idrs, r_og_idrs, r_start_idxs, r_end_idxs)
         r_save_df = pd.DataFrame(list(zip(r_new_idrs, r_og_idrs, r_start_idxs, r_end_idxs)),
-                               columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
+                                 columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
         r_save_df.to_csv(out_fpath + 'r_idr_df.csv', index=True)
         with open(out_fpath + 'original_samples_string.fasta', 'w') as f:
             for i, _s in enumerate(og_strings):
                 f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
 
         b_save_df = pd.DataFrame(list(zip(b_new_idrs, b_og_idrs, b_start_idxs, b_end_idxs)),
-                               columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
+                                 columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
         b_save_df.to_csv(out_fpath + 'baseline_df.csv', index=True)
 
         r_b_save_df = pd.DataFrame(list(zip(r_b_new_idrs, r_b_og_idrs, r_b_start_idxs, r_b_end_idxs)),
-                                 columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
+                                   columns=['gen_idrs', 'original_idrs', 'start_idxs', 'end_idxs'])
         r_b_save_df.to_csv(out_fpath + 'rand_baseline_df.csv', index=True)
         # with open(out_fpath + 'baseline_original_samples_string.fasta', 'w') as f:
         #     for i, _s in enumerate(b_og_strings):
@@ -171,14 +263,14 @@ def main():
         scaffold_lengths = []
         for i in range(args.num_seqs):
             scaffold_length = random.randint(args.scaffold_min, args.scaffold_max)
-            if args.model_type == 'oa_dm_38M' or args.model_type == 'oa_dm_640M' or args.model_type == 'carp_38M'\
+            if args.model_type == 'oa_dm_38M' or args.model_type == 'oa_dm_640M' or args.model_type == 'carp_38M' \
                     or args.model_type == 'carp_640M':
                 string, new_start_idx, new_end_idx = generate_scaffold(model, args.pdb, args.start_idxs,
-                                                                               args.end_idxs, scaffold_length,
-                                                                               data_top_dir, tokenizer, device=device,
-                                                                               random_baseline=args.random_baseline,
-                                                                               single_res_domain=args.single_res_domain,
-                                                                               chain=args.chain)
+                                                                       args.end_idxs, scaffold_length,
+                                                                       data_top_dir, tokenizer, device=device,
+                                                                       random_baseline=args.random_baseline,
+                                                                       single_res_domain=args.single_res_domain,
+                                                                       chain=args.chain)
             elif args.model_type == 'lr_ar_38M' or args.model_type == 'lr_ar_640M':
                 string, new_start_idx, new_end_idx = generate_autoreg_scaffold(model, args.pdb, args.start_idxs,
                                                                                args.end_idxs, scaffold_length,
@@ -190,13 +282,13 @@ def main():
             end_idxs.append(new_end_idx)
             scaffold_lengths.append(scaffold_length)
 
-
-        save_df = pd.DataFrame(list(zip(strings, start_idxs, end_idxs, scaffold_lengths)), columns=['seqs', 'start_idxs', 'end_idxs', 'scaffold_lengths'])
-        save_df.to_csv(out_fpath+'motif_df.csv', index=True)
+        save_df = pd.DataFrame(list(zip(strings, start_idxs, end_idxs, scaffold_lengths)),
+                               columns=['seqs', 'start_idxs', 'end_idxs', 'scaffold_lengths'])
+        save_df.to_csv(out_fpath + 'motif_df.csv', index=True)
 
     with open(out_fpath + 'generated_samples_string.csv', 'w') as f:
         for _s in strings:
-            f.write(_s[0]+"\n")
+            f.write(_s[0] + "\n")
     with open(out_fpath + 'generated_samples_string.fasta', 'w') as f:
         for i, _s in enumerate(strings):
             f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
@@ -234,36 +326,53 @@ def main():
             for i, _s in enumerate(b_strings):
                 f.write(">SEQUENCE_" + str(i) + "\n" + str(_s[0]) + "\n")
         ### Run DR-BERT ###
-        evodiff.utils.wrap_dr_bert(out_fpath, generated_fasta_file='generated_samples_string.fasta', path_to_dr_bert=top_dir+'../DR-BERT/',out_file='gen_out.pkl')
-        evodiff.utils.wrap_dr_bert(out_fpath, generated_fasta_file='random_generated_samples_string.fasta', path_to_dr_bert=top_dir+'../DR-BERT/',out_file='r_gen_out.pkl')
-        evodiff.utils.wrap_dr_bert(out_fpath, generated_fasta_file='baseline_samples_string.fasta', path_to_dr_bert=top_dir+'../DR-BERT/',out_file='b_out.pkl')
-        evodiff.utils.wrap_dr_bert(out_fpath, generated_fasta_file='random_baseline_samples_string.fasta', path_to_dr_bert=top_dir+'../DR-BERT/',out_file='r_b_out.pkl')
-        evodiff.utils.wrap_dr_bert(out_fpath, generated_fasta_file='original_samples_string.fasta', path_to_dr_bert=top_dir+'../DR-BERT/', out_file='og_out.pkl')
+        evodiff.utils.wrap_dr_bert(out_fpath, generated_fasta_file='generated_samples_string.fasta',
+                                   path_to_dr_bert=top_dir + '../DR-BERT/', out_file='gen_out.pkl')
+        evodiff.utils.wrap_dr_bert(out_fpath, generated_fasta_file='random_generated_samples_string.fasta',
+                                   path_to_dr_bert=top_dir + '../DR-BERT/', out_file='r_gen_out.pkl')
+        evodiff.utils.wrap_dr_bert(out_fpath, generated_fasta_file='baseline_samples_string.fasta',
+                                   path_to_dr_bert=top_dir + '../DR-BERT/', out_file='b_out.pkl')
+        evodiff.utils.wrap_dr_bert(out_fpath, generated_fasta_file='random_baseline_samples_string.fasta',
+                                   path_to_dr_bert=top_dir + '../DR-BERT/', out_file='r_b_out.pkl')
+        evodiff.utils.wrap_dr_bert(out_fpath, generated_fasta_file='original_samples_string.fasta',
+                                   path_to_dr_bert=top_dir + '../DR-BERT/', out_file='og_out.pkl')
 
-        true_disorder_score, true_order_score = evodiff.utils.read_dr_bert_output(out_fpath, 'true', out_fpath+'og_out.pkl', out_fpath+'og_out.pkl', save_df, b_save_df)
-        gen_disorder_score, gen_order_score = evodiff.utils.read_dr_bert_output(out_fpath, 'gen', out_fpath+'gen_out.pkl', out_fpath+'b_out.pkl', save_df, b_save_df)
-        random_disorder_score, random_order_score = evodiff.utils.read_dr_bert_output(out_fpath, 'random', out_fpath+'r_gen_out.pkl', out_fpath+'r_b_out.pkl', r_save_df, r_b_save_df)
+        true_disorder_score, true_order_score = evodiff.utils.read_dr_bert_output(out_fpath, 'true',
+                                                                                  out_fpath + 'og_out.pkl',
+                                                                                  out_fpath + 'og_out.pkl', save_df,
+                                                                                  b_save_df)
+        gen_disorder_score, gen_order_score = evodiff.utils.read_dr_bert_output(out_fpath, 'gen',
+                                                                                out_fpath + 'gen_out.pkl',
+                                                                                out_fpath + 'b_out.pkl', save_df,
+                                                                                b_save_df)
+        random_disorder_score, random_order_score = evodiff.utils.read_dr_bert_output(out_fpath, 'random',
+                                                                                      out_fpath + 'r_gen_out.pkl',
+                                                                                      out_fpath + 'r_b_out.pkl',
+                                                                                      r_save_df, r_b_save_df)
 
         plot_df = pd.DataFrame({'score': true_disorder_score, 'region': ["disorder"] * len(true_disorder_score),
                                 'type': ["true"] * len(true_disorder_score)})
-        plot_df = pd.concat([plot_df, pd.DataFrame({'score': true_order_score, 'region': ["order"] * len(true_order_score),
-                                               'type': ["true"] * len(true_order_score)})], ignore_index=True)
+        plot_df = pd.concat(
+            [plot_df, pd.DataFrame({'score': true_order_score, 'region': ["order"] * len(true_order_score),
+                                    'type': ["true"] * len(true_order_score)})], ignore_index=True)
         plot_df = pd.concat([plot_df, pd.DataFrame(
             {'score': gen_disorder_score, 'region': ["disorder"] * len(gen_disorder_score),
              'type': ["gen"] * len(gen_disorder_score)})], ignore_index=True)
-        plot_df = pd.concat([plot_df, pd.DataFrame({'score': gen_order_score, 'region': ["order"] * len(gen_order_score),
-                                               'type': ["gen"] * len(gen_order_score)})], ignore_index=True)
+        plot_df = pd.concat(
+            [plot_df, pd.DataFrame({'score': gen_order_score, 'region': ["order"] * len(gen_order_score),
+                                    'type': ["gen"] * len(gen_order_score)})], ignore_index=True)
         plot_df = pd.concat([plot_df, pd.DataFrame(
             {'score': random_disorder_score, 'region': ["disorder"] * len(random_disorder_score),
              'type': ["random"] * len(random_disorder_score)})], ignore_index=True)
-        plot_df = pd.concat([plot_df, pd.DataFrame({'score': random_order_score, 'region': ["order"] * len(random_order_score),
-                                               'type': ["random"] * len(random_order_score)})], ignore_index=True)
+        plot_df = pd.concat(
+            [plot_df, pd.DataFrame({'score': random_order_score, 'region': ["order"] * len(random_order_score),
+                                    'type': ["random"] * len(random_order_score)})], ignore_index=True)
         plot_df.to_csv(out_fpath + 'drbert_scores_df.csv', index=True)
         evodiff.plot.idr_boxplot_all(plot_df, out_fpath + 'plots/', save_name='combined_')
 
-        evodiff.plot.idr_boxplot(true_disorder_score, true_order_score, out_fpath+'plots/', save_name='true_')
-        evodiff.plot.idr_boxplot(gen_disorder_score, gen_order_score, out_fpath+'plots/', save_name='gen_')
-        evodiff.plot.idr_boxplot(random_disorder_score, random_order_score, out_fpath+'plots/', save_name='random_')
+        evodiff.plot.idr_boxplot(true_disorder_score, true_order_score, out_fpath + 'plots/', save_name='true_')
+        evodiff.plot.idr_boxplot(gen_disorder_score, gen_order_score, out_fpath + 'plots/', save_name='gen_')
+        evodiff.plot.idr_boxplot(random_disorder_score, random_order_score, out_fpath + 'plots/', save_name='random_')
 
         ### Run DISOPRED ###
         # for i in range(len(strings)):
@@ -293,20 +402,22 @@ def main():
 
         print("Getting TM scores")
         # Get TMscores
-        run_tmscore(out_fpath, args.pdb, args.num_seqs, path_to_tmscore=top_dir+'TMscore', amlt=args.amlt, reres=True)
+        run_tmscore(out_fpath, args.pdb, args.num_seqs, path_to_tmscore=top_dir + 'TMscore', amlt=args.amlt, reres=True)
+
 
 def download_pdb(PDB_ID, outfile):
     "return PDB file from database online"
     if os.path.exists(outfile):
         print("ALREADY DOWNLOADED")
     else:
-        url = 'https://files.rcsb.org/download/'+str(PDB_ID)+'.pdb'
+        url = 'https://files.rcsb.org/download/' + str(PDB_ID) + '.pdb'
         print("DOWNLOADING PDB FILE FROM", url)
         urllib.request.urlretrieve(url, outfile)
 
+
 def get_motif(PDB_ID, start_idxs, end_idxs, data_top_dir='../data', chain='A'):
     "Get motif of sequence from PDB code"
-    pdb_path = os.path.join(data_top_dir, 'scaffolding-pdbs/'+str(PDB_ID)+'.pdb')
+    pdb_path = os.path.join(data_top_dir, 'scaffolding-pdbs/' + str(PDB_ID) + '.pdb')
     download_pdb(PDB_ID, pdb_path)
     print("CLEANING PDB")
     clean_pdb(os.path.join(data_top_dir, 'scaffolding-pdbs/'), data_top_dir, PDB_ID)
@@ -314,16 +425,16 @@ def get_motif(PDB_ID, start_idxs, end_idxs, data_top_dir='../data', chain='A'):
 
     chain_ids = [chain]
     print("WARNING: USING CHAIN", chain, "FROM PDB FILE")
-    structure = esm.inverse_folding.util.load_structure(pdb_clean_path, chain_ids)
-    coords, native_seqs = esm.inverse_folding.multichain_util.extract_coords_from_complex(structure)
+    structure = load_structure(pdb_clean_path, chain_ids)
+    native_seqs = extract_coords_from_complex(structure)
     sequence = native_seqs[chain_ids[0]]
     print("sequence extracted from pdb", sequence)
-    with open(data_top_dir + 'scaffolding-pdbs/'+ PDB_ID +'.fasta', 'a') as f:
-        f.write('>' + PDB_ID+'\n'+sequence)
+    with open(data_top_dir + 'scaffolding-pdbs/' + PDB_ID + '.fasta', 'a') as f:
+        f.write('>' + PDB_ID + '\n' + sequence)
     print("sequence length", len(sequence))
     assert len(start_idxs) == len(end_idxs)
 
-    end_idxs = [i+1 for i in end_idxs] # inclusive of final residue
+    end_idxs = [i + 1 for i in end_idxs]  # inclusive of final residue
     if len(start_idxs) > 1:
         motif = ''
         spacers = []
@@ -331,13 +442,13 @@ def get_motif(PDB_ID, start_idxs, end_idxs, data_top_dir='../data', chain='A'):
         # print("end idxs", end_idxs)
         for i in range(len(start_idxs)):
             motif += sequence[start_idxs[i]:end_idxs[i]]
-            if i < (len(start_idxs)-1):
-                spacer = start_idxs[i+1] - end_idxs[i]
+            if i < (len(start_idxs) - 1):
+                spacer = start_idxs[i + 1] - end_idxs[i]
                 motif += '#' * spacer
                 spacers.append(spacer)
     else:
         motif = sequence[start_idxs[0]: end_idxs[0]]
-        spacers=[0]
+        spacers = [0]
     print("motif extracted from indexes supplied:", motif)
     return motif
 
@@ -353,18 +464,19 @@ def get_intervals(list, single_res_domain=False):
         for i, item in enumerate(list):
             if i == 0:
                 start.append(item.item())
-            elif i == (len(list)-1):
+            elif i == (len(list) - 1):
                 stop.append(item.item())
-            elif i != len(list) and (item+1) != list[i+1]:
+            elif i != len(list) and (item + 1) != list[i + 1]:
                 stop.append(item.item())
-                start.append(list[i+1].item())
+                start.append(list[i + 1].item())
     return start, stop
 
 
 def generate_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_length, data_top_dir, tokenizer,
                       batch_size=1, device='gpu', random_baseline=False, single_res_domain=False, chain='A'):
     if random_baseline:
-        train_prob_dist = aa_reconstruction_parity_plot(data_top_dir+'../', 'reference/', 'placeholder.csv', gen_file=False)
+        train_prob_dist = aa_reconstruction_parity_plot(data_top_dir + '../', 'reference/', 'placeholder.csv',
+                                                        gen_file=False)
     mask = tokenizer.mask_id
 
     motif_seq = get_motif(PDB_ID, motif_start_idxs, motif_end_idxs, data_top_dir=data_top_dir, chain=chain)
@@ -372,13 +484,13 @@ def generate_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_
 
     # Create input motif + scaffold
     seq_len = scaffold_length + len(motif_seq)
-    sample = torch.zeros((batch_size, seq_len)) + mask # start from all mask
-    new_start = np.random.choice(scaffold_length) # randomly place motif in scaffold
-    sample[:, new_start:new_start+len(motif_seq)] = torch.tensor(motif_tokenized)
+    sample = torch.zeros((batch_size, seq_len)) + mask  # start from all mask
+    new_start = np.random.choice(scaffold_length)  # randomly place motif in scaffold
+    sample[:, new_start:new_start + len(motif_seq)] = torch.tensor(motif_tokenized)
     nonmask_locations = (sample[0] != mask).nonzero().flatten()
     new_start_idxs, new_end_idxs = get_intervals(nonmask_locations, single_res_domain=single_res_domain)
-    #print(new_start_idxs, new_end_idxs)
-    value, loc = (sample == mask).long().nonzero(as_tuple=True) # locations that need to be unmasked
+    # print(new_start_idxs, new_end_idxs)
+    value, loc = (sample == mask).long().nonzero(as_tuple=True)  # locations that need to be unmasked
     loc = np.array(loc)
     np.random.shuffle(loc)
     sample = sample.long().to(device)
@@ -399,9 +511,10 @@ def generate_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_
 
     return untokenized, new_start_idxs, new_end_idxs
 
+
 def generate_autoreg_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, scaffold_length, data_top_dir, tokenizer,
-                      batch_size=1, device='gpu', single_res_domain=False, chain='A'):
-    mask = tokenizer.mask_id # placeholder to calculate indices here
+                              batch_size=1, device='gpu', single_res_domain=False, chain='A'):
+    mask = tokenizer.mask_id  # placeholder to calculate indices here
     start = tokenizer.start_id
     stop = tokenizer.stop_id
 
@@ -411,13 +524,13 @@ def generate_autoreg_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, s
     # Create input motif + scaffold (as reference for gen task)
     seq_len = scaffold_length + len(motif_seq)
     max_seq_len = seq_len
-    sample_ref = torch.zeros((batch_size, seq_len)) + mask # start from all mask
-    new_start = np.random.choice(scaffold_length) # randomly place motif in scaffold
-    sample_ref[:, new_start:new_start+len(motif_seq)] = torch.tensor(motif_tokenized)
+    sample_ref = torch.zeros((batch_size, seq_len)) + mask  # start from all mask
+    new_start = np.random.choice(scaffold_length)  # randomly place motif in scaffold
+    sample_ref[:, new_start:new_start + len(motif_seq)] = torch.tensor(motif_tokenized)
     nonmask_locations = (sample_ref[0] != mask).nonzero().flatten()
     new_start_idxs, new_end_idxs = get_intervals(nonmask_locations, single_res_domain=single_res_domain)
     print(new_start_idxs, new_end_idxs)
-    value, loc = (sample_ref == mask).long().nonzero(as_tuple=True) # locations that need to be unmasked
+    value, loc = (sample_ref == mask).long().nonzero(as_tuple=True)  # locations that need to be unmasked
     loc = np.array(loc)
     sample_ref = sample_ref.to(torch.long).to(device)
 
@@ -432,34 +545,36 @@ def generate_autoreg_scaffold(model, PDB_ID, motif_start_idxs, motif_end_idxs, s
     with torch.no_grad():
         i = 0
         while i < max_seq_len:
-            #print(i)
-            if i > new_end_idxs[-1]: # Force it to continue predicting until you reach the end of motif
+            # print(i)
+            if i > new_end_idxs[-1]:  # Force it to continue predicting until you reach the end of motif
                 max_token = len(tokenizer.alphabet)
             if reach_stop == False:
-                if i in new_start_idxs: # if index is a new start idx
+                if i in new_start_idxs:  # if index is a new start idx
                     i_index = new_start_idxs.index(i)
                     # Take sample and slice in motif (preserving correct index)
-                    sliced_motif = sample_ref[:, new_start_idxs[i_index]:new_end_idxs[i_index]+1]
+                    sliced_motif = sample_ref[:, new_start_idxs[i_index]:new_end_idxs[i_index] + 1]
                     i += (len(sliced_motif[0]))
                     sample = torch.cat((sample, sliced_motif), dim=1)
                     print(tokenizer.untokenize(sample[0]))
                 else:  # Add residues until it predicts STOP token or hits max seq len
-                    prediction = model(sample, timestep)  # , input_mask=input_mask.unsqueeze(-1)) #sample prediction given input
+                    prediction = model(sample,
+                                       timestep)  # , input_mask=input_mask.unsqueeze(-1)) #sample prediction given input
                     p = prediction[:, -1, :max_token]  # predict next token
                     p = torch.nn.functional.softmax(p, dim=1)  # softmax over categorical probs
                     p_sample = torch.multinomial(p, num_samples=1)
                     sample = torch.cat((sample, p_sample), dim=1)
-                    #print(tokenizer.untokenize(sample[0]))
+                    # print(tokenizer.untokenize(sample[0]))
                     # print(p_sample, stop)
                     if p_sample == stop:
                         reach_stop = True
                     i += 1
             else:
                 break
-    print("new sequence", [tokenizer.untokenize(s) for s in sample[:,1:-1]]) # dont need start/stop tokens
-    untokenized = [tokenizer.untokenize(s) for s in sample[:,1:-1]]
+    print("new sequence", [tokenizer.untokenize(s) for s in sample[:, 1:-1]])  # dont need start/stop tokens
+    untokenized = [tokenizer.untokenize(s) for s in sample[:, 1:-1]]
 
     return untokenized, new_start_idxs, new_end_idxs
+
 
 def scramble_input(sequences, start_idxs, end_idxs):
     scrambled_idrs = []
@@ -477,12 +592,13 @@ def scramble_input(sequences, start_idxs, end_idxs):
         scrambled_idrs.append(scrambled_idr)
 
         scrambled_sequence = sequence[:start_idxs[s]] + scrambled_idr + sequence[end_idxs[s]:]
-        #print("full sequence", scrambled_sequence)
+        # print("full sequence", scrambled_sequence)
         assert len(scrambled_sequence) == len(sequence), "SCRAMBLED seq different length"
         scrambled_seqs.append([scrambled_sequence])
 
     sequences = [[s] for s in sequences]
     return scrambled_seqs, sequences, scrambled_idrs, original_idrs, start_idxs, end_idxs
+
 
 def inpaint_simple(model, sequence, start_idx, end_idx, tokenizer=Tokenizer(), device='cuda'):
     "used in examples for simplicity"
@@ -497,10 +613,10 @@ def inpaint_simple(model, sequence, start_idx, end_idx, tokenizer=Tokenizer(), d
     np.random.shuffle(loc)
     with torch.no_grad():
         for i in tqdm(loc):
-            timestep = torch.tensor([0]) # placeholder but not called in model
+            timestep = torch.tensor([0])  # placeholder but not called in model
             timestep = timestep.to(device)
             prediction = model(sample.unsqueeze(0), timestep)
-            p = prediction[:, i, :len(all_aas)-6]
+            p = prediction[:, i, :len(all_aas) - 6]
             p = torch.nn.functional.softmax(p, dim=1)
             p_sample = torch.multinomial(p, num_samples=1)
             sample[i] = p_sample.squeeze()
@@ -508,9 +624,12 @@ def inpaint_simple(model, sequence, start_idx, end_idx, tokenizer=Tokenizer(), d
     untokenized_idr = tokenizer.untokenize(sample[start_idx:end_idx])
     return sample, untokenized_seq, untokenized_idr
 
-def inpaint(model, tokenized_sequences, start_idxs, end_idxs, sequences, tokenizer=Tokenizer(), device='cuda', random_baseline=False, data_top_dir='/'):
+
+def inpaint(model, tokenized_sequences, start_idxs, end_idxs, sequences, tokenizer=Tokenizer(), device='cuda',
+            random_baseline=False, data_top_dir='/'):
     if random_baseline:
-        train_prob_dist = aa_reconstruction_parity_plot(data_top_dir+'../', 'reference/', 'placeholder.csv', gen_file=False)
+        train_prob_dist = aa_reconstruction_parity_plot(data_top_dir + '../', 'reference/', 'placeholder.csv',
+                                                        gen_file=False)
     all_aas = tokenizer.all_aas
 
     samples = []
@@ -522,24 +641,24 @@ def inpaint(model, tokenized_sequences, start_idxs, end_idxs, sequences, tokeniz
     for s, sample in enumerate(tokenized_sequences):
         loc = np.arange(start_idxs[s], end_idxs[s])
         print(s, "ORIGINAL INPAINT SEQ", sequences[s][start_idxs[s]:end_idxs[s]])
-        print("Seq len", len(sequences[s]), "length", end_idxs[s]-start_idxs[s])
+        print("Seq len", len(sequences[s]), "length", end_idxs[s] - start_idxs[s])
         sample = sample.to(torch.long)
         sample = sample.to(device)
         np.random.shuffle(loc)
         with torch.no_grad():
             for i in tqdm(loc):
-                timestep = torch.tensor([0]) # placeholder but not called in model
+                timestep = torch.tensor([0])  # placeholder but not called in model
                 timestep = timestep.to(device)
                 if random_baseline:
                     p_sample = torch.multinomial(torch.tensor(train_prob_dist), num_samples=1)
                 else:
                     prediction = model(sample.unsqueeze(0), timestep)
-                    p = prediction[:, i, :len(all_aas)-6]
+                    p = prediction[:, i, :len(all_aas) - 6]
                     p = torch.nn.functional.softmax(p, dim=1)
                     p_sample = torch.multinomial(p, num_samples=1)
                 sample[i] = p_sample.squeeze()
         print(s, "GENERATED REGION", tokenizer.untokenize(sample[start_idxs[s]:end_idxs[s]]))
-        #print("GENERATED SEQ", tokenizer.untokenize(sample))
+        # print("GENERATED SEQ", tokenizer.untokenize(sample))
         samples.append(sample)
         samples_idr.append(sample[start_idxs[s]:end_idxs[s]])
         originals.append(sequences[s])
@@ -551,11 +670,11 @@ def inpaint(model, tokenized_sequences, start_idxs, end_idxs, sequences, tokeniz
         #     pass
     untokenized_seqs = [[tokenizer.untokenize(s)] for s in samples]
     untokenized_idrs = [tokenizer.untokenize(s) for s in samples_idr]
-    sequences_idrs = originals_idr # [s for s in enumerate(originals_idr)]
+    sequences_idrs = originals_idr  # [s for s in enumerate(originals_idr)]
     sequences = [[s] for s in originals]
-    return untokenized_seqs, sequences, untokenized_idrs, sequences_idrs, save_starts, save_ends # strings, og_strings, new_idrs, og_idrs
+    return untokenized_seqs, sequences, untokenized_idrs, sequences_idrs, save_starts, save_ends  # strings, og_strings, new_idrs, og_idrs
 
-import itertools
+
 def intervals_extract(iterable):
     iterable = sorted(set(iterable))
     for key, group in itertools.groupby(enumerate(iterable),
@@ -563,18 +682,19 @@ def intervals_extract(iterable):
         group = list(group)
         yield [group[0][1], group[-1][1]]
 
+
 def get_IDR_sequences(data_top_dir, tokenizer, num_seqs=100, max_seq_len=1022):
     sequences = []
     masked_sequences = []
     start_idxs = []
     end_idxs = []
     queries = []
-    #b_sequences = []
+    # b_sequences = []
     b_masked_sequences = []
     b_start_idxs = []
     b_end_idxs = []
     selected_queries = []
-    appended_seqs=0
+    appended_seqs = 0
     # GET IDRS
     data_dir = data_top_dir + 'human_idr_alignments/'
     all_files = os.listdir(data_dir + 'human_protein_alignments')
@@ -583,18 +703,16 @@ def get_IDR_sequences(data_top_dir, tokenizer, num_seqs=100, max_seq_len=1022):
     index_file['IDR_LEN'] = index_file['END'] - index_file['START']
     while appended_seqs < num_seqs:
         for _ in range(len(index_file)):
-            #print(appended_seqs)
-            rand_idx = random.randint(0, len(index_file)-1) # Iterate over all or randomly select
+            rand_idx = random.randint(0, len(index_file) - 1)  # Iterate over all or randomly select
             row = index_file.loc[rand_idx]
             selected_query = row['OMA_ID']
             msa_file = [file for i, file in enumerate(all_files) if row['OMA_ID'] in file][0]
             msa_data, msa_names = parse_fasta(data_dir + 'human_protein_alignments/' + msa_file, return_names=True)
             query_idx = [i for i, name in enumerate(msa_names) if name == row['OMA_ID']][0]  # get query index
             # JUST FOR SEQUENCES
-            #print("IDR:\n", row['IDR_SEQ'])
-            #print("MSA IDR NO GAPS:\n", msa_data[query_idx].replace("-", ""))
+            # print("IDR:\n", row['IDR_SEQ'])
+            # print("MSA IDR NO GAPS:\n", msa_data[query_idx].replace("-", ""))
             seq_only = msa_data[query_idx].replace("-", "")
-            #print(seq_only)
 
             seq_length = len(seq_only)
             start_idx = row['START'] - 1
@@ -603,23 +721,16 @@ def get_IDR_sequences(data_top_dir, tokenizer, num_seqs=100, max_seq_len=1022):
 
             # Now create a baseline for the same query (Select a structured region)
             query_rows = index_file[index_file["OMA_ID"] == selected_query]
-            #print(query_rows)
             idr_ranges = []
             for i in range(len(query_rows)):
                 idr_range = np.arange(query_rows.iloc[i]['START'], query_rows.iloc[i]['END'])
                 idr_ranges.extend(idr_range)
-            #print(idr_ranges)
             seq_indices = np.arange(0, seq_length)
             non_idr_indices = [s for s in seq_indices if s not in idr_ranges]
             non_idr_ranges = list(intervals_extract(non_idr_indices))
-            #print(non_idr_ranges)
-            non_idr_ranges = [r for r in non_idr_ranges if r[1]-r[0]>idr_length]
-            #print(non_idr_ranges)
+            non_idr_ranges = [r for r in non_idr_ranges if r[1] - r[0] > idr_length]
 
-            # import pdb;
-            # pdb.set_trace()
-
-            if seq_length < max_seq_len and idr_length < seq_length/2 and len(non_idr_ranges)>0:
+            if seq_length < max_seq_len and idr_length < seq_length / 2 and len(non_idr_ranges) > 0:
                 # we want to filter long IDRs (without gaps),
                 # and idr regions that takeup the entire sequence,
                 # and we need to have enough structured region for a baseline analysis
@@ -643,15 +754,14 @@ def get_IDR_sequences(data_top_dir, tokenizer, num_seqs=100, max_seq_len=1022):
                 b_end_idxs.append(b_end)
                 b_masked_sequence = seq_only[0:b_start] + '#' * idr_length + seq_only[b_end:]
                 b_masked_sequences.append(b_masked_sequence)
-                #import pdb; pdb.set_trace()
             else:
                 pass
-            if appended_seqs > num_seqs-1:
+            if appended_seqs > num_seqs - 1:
                 break
-    #print("SAMPLING INDEX", rand_idx)
     tokenized = [torch.tensor(tokenizer.tokenizeMSA(s)) for s in masked_sequences]
     b_tokenized = [torch.tensor(tokenizer.tokenizeMSA(s)) for s in b_masked_sequences]
     return tokenized, start_idxs, end_idxs, queries, sequences, b_tokenized, b_start_idxs, b_end_idxs, selected_queries
+
 
 if __name__ == '__main__':
     main()
