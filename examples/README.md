@@ -15,7 +15,7 @@ python evodiff/conditional_generation.py --model-type oa_dm_640M --cond-task sca
 ```
 Equivalent code for generating from MSA:
 ```
-python evodiff/conditional_generation_msa.py --model-type msa_oa_ar_maxsub --cond-task scaffold --pdb 1prw --start-idxs 15 --end-idxs 34 --start-idxs 51 --end-idxs 70 --num-seqs 1 --query-only
+python evodiff/conditional_generation_msa.py --model-type msa_oa_dm_maxsub --cond-task scaffold --pdb 1prw --start-idxs 15 --end-idxs 34 --start-idxs 51 --end-idxs 70 --num-seqs 1 --query-only
 ```
 ### PDB CODE: 1BCF 
 
