@@ -14,7 +14,6 @@ to demonstrate their power for controllable protein design. Below, we provide do
 
 EvoDiff is described in this [preprint](https://www.biorxiv.org/content/10.1101/2023.09.11.556673v1); if you use the code from this repository or the results, please cite the preprint.
 
-
 <p align="center">
 <img src="img/combined-0.gif" />
 </p>
@@ -55,6 +54,8 @@ pip install git+https://github.com/microsoft/evodiff.git # bleeding edge, curren
 You will also need to install PyTorch (we tested our models on ` v2.0.1 `), PyTorch Geometric, and PyTorch Scatter.
 
 We provide a notebook with installation guidance that can be found in [examples/evodiff.ipynb](https://github.com/microsoft/evodiff/tree/main/examples/evodiff.ipynb). It also includes examples on how to generate a smaller number of sequences and MSAs using our models. We recommend following this notebook if you would like to use our models to generate proteins.
+
+Thanks to Colby Ford EvoDiff is available as a space on [huggingface](https://huggingface.co/spaces/colbyford/evodiff)
 
 Our downstream analysis scripts make use of a variety of tools we do not include in our package installation. To run the
 scripts, please download the following packages in addition to EvoDiff:
