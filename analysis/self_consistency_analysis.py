@@ -204,7 +204,7 @@ perp_index_groups = []
 for run in runs:
     print("Reading run", run)
     if run == 'hyper12/cnn-650M/' or run=='esm-1b/' or run=='random-ref/' or run=='pretrain21/cnn-38M/':
-    seq_lengths = [100] # placeholder for generated_seq file name
+        seq_lengths = [100] # placeholder for generated_seq file name
     if sequences == True:
         if mpnn:
             perp_group, scores_group, lengths_group, mpnn_scores_group, pdb_index_group, perp_index_group = iterate_dirs(run, seq_lengths, mpnn=mpnn)
