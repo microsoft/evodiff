@@ -20,7 +20,6 @@ setuptools.setup(
         "lmdb",
         "numpy",
         "sequence-models",
-        "mlflow",
         "scikit-learn",
         "blosum",
         "seaborn",
