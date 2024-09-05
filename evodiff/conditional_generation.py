@@ -17,7 +17,7 @@ from tqdm import tqdm
 import urllib.request
 
 import evodiff
-from evodiff.plot import aa_reconstruction_parity_plot,
+from evodiff.plot import aa_reconstruction_parity_plot
 from evodiff.pretrained import OA_DM_640M, OA_DM_38M, CARP_640M, LR_AR_38M, LR_AR_640M
 from evodiff.utils import Tokenizer, run_omegafold, clean_pdb, run_tmscore
 from sequence_models.utils import parse_fasta
