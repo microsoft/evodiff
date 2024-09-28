@@ -166,7 +166,7 @@ either by randomly sampling the sequences (“Random”) or by greedily maximizi
 
 It is possible to unconditionally generate an entire MSA, using the following script:
 ``` 
-python evodiff/generate-msa.py --model-type msa_oa_dm_maxsub --batch-size 1 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming
+python evodiff/generate_msa.py --model-type msa_oa_dm_maxsub --batch-size 1 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming
 ```
 
 The default model type is `msa_oa_dm_maxsub`, which is EvoDiff-MSA-OADM trained on Max subsampled sequences, and the other available 
@@ -193,14 +193,14 @@ thus generating new members of a protein family without needing to train family-
 To generate a new query sequence, given an alignment, use the following with the `--start-msa` flag. This starts conditional 
 generation by sampling from a validation MSA. To run this script you must have the Openfold dataset and splits downloaded.   
 ``` 
-python evodiff/generate-msa.py --model-type msa_oa_dm_maxsub --batch-size 1 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming --start-msa
+python evodiff/generate_msa.py --model-type msa_oa_dm_maxsub --batch-size 1 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming --start-msa
 ```
 If you want to generate on a custom MSA, it is possible to retrofit existing code. 
 
 Additionally, the code is capable of generating an alignment given a query sequence, use the following `--start-query` flag. 
 This starts with the query and generates the alignment. 
 ```
-python evodiff/generate-msa.py --model-type msa_oa_dm_maxsub --batch-size 1 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming --start-query
+python evodiff/generate_msa.py --model-type msa_oa_dm_maxsub --batch-size 1 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming --start-query
  ```
 NOTE: you can only specify one of the above flags at a time. You cannot specify both (`--start-query` & `--start-msa`) together. 
 Please look at `generate.py` for more information.
