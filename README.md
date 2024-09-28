@@ -200,8 +200,10 @@ If you want to generate on a custom MSA, it is possible to retrofit existing cod
 Additionally, the code is capable of generating an alignment given a query sequence, use the following `--start-query` flag. 
 This starts with the query and generates the alignment. 
 ```
-python evodiff/generate_msa.py --model-type msa_oa_dm_maxsub --batch-size 1 --n-sequences 64 --n-sequences 256 --subsampling MaxHamming --start-query
+python evodiff/generate_msa.py --model-type msa_oa_dm_maxsub --batch-size 4 --n-sequences 2 --gpus 0 --subsampling MaxHamming --start-query --dataset openfold/test.a3m --out_fpath out
  ```
+This command takes a .a3m file in data/`--dataset` as input. You have to provide additional non-all-gaps lines, which are higher or equal to the amount of sequences you wan to generate. Special pre-processing behaviour for the default `openfold` dataset.
+
 NOTE: you can only specify one of the above flags at a time. You cannot specify both (`--start-query` & `--start-msa`) together. 
 Please look at `generate.py` for more information.
 
