@@ -20,8 +20,8 @@ def main():
     #parser.add_argument('config_fpath')
     #parser.add_argument('out_fpath', type=str, nargs='?',
     #                    default=os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/')
-    parser.add_argument('-g', '--gpus', default=1, type=int,
-                        help='number of gpus per node')
+    parser.add_argument('-g', '--gpus', default=0, type=int,
+                        help='Number of gpus per node')
     parser.add_argument('-off', '--offset', default=0, type=int,
                         help='Number of GPU devices to skip.')
     parser.add_argument('--model-type', type=str, default='msa_oa_dm_maxsub')
