@@ -5,7 +5,7 @@ import random
 import biotite.structure
 from biotite.structure.io import pdbx, pdb
 from biotite.structure.residues import get_residues
-from biotite.structure import filter_backbone
+from biotite.structure import filter_peptide_backbone
 from biotite.structure import get_chains
 from biotite.sequence import ProteinSequence
 import itertools
@@ -41,7 +41,7 @@ def load_structure(fpath, chain=None):
         with open(fpath) as fin:
             pdbf = pdb.PDBFile.read(fin)
         structure = pdb.get_structure(pdbf, model=1)
-    bbmask = filter_backbone(structure)
+    bbmask = filter_peptide_backbone(structure)
     structure = structure[bbmask]
     all_chains = get_chains(structure)
     if len(all_chains) == 0:
