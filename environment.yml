@@ -2,12 +2,15 @@ name: evodiff
 channels:
   - defaults
   - nvidia
+  - conda-forge
   # - pytorch
 dependencies:
   - python=3.8.5
   - pandas
   - numpy
   - python-lmdb
+  - conda-forge::pytorch_geometric
+  - conda-forge::pytorch_scatter
   # - pytorch::pytorch
   # - nvidia::cudatoolkit=11.3
   # - torchvision

@@ -1,0 +1,17 @@
+biopython
+biotite
+blosum
+fair-esm
+lmdb
+matplotlib
+mdanalysis
+numpy>=1.25<2.0
+pandas
+pdb-tools
+requests
+scikit-learn
+seaborn
+sequence-models
+torch_geometric
+torch-scatter
+tqdm
