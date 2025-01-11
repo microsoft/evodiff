@@ -18,10 +18,10 @@ home = str(pathlib.Path.home())
 def main():
     parser = argparse.ArgumentParser()
     #parser.add_argument('config_fpath')
-    #parser.add_argument('out_fpath', type=str, nargs='?',
+    parser.add_argument('--out_fpath', type=str, default=None)# nargs='?',
     #                    default=os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/')
-    parser.add_argument('-g', '--gpus', default=1, type=int,
-                        help='number of gpus per node')
+    parser.add_argument('-g', '--gpus', default=0, type=int,
+                        help='Number of gpus per node')
     parser.add_argument('-off', '--offset', default=0, type=int,
                         help='Number of GPU devices to skip.')
     parser.add_argument('--model-type', type=str, default='msa_oa_dm_maxsub')
@@ -113,11 +113,11 @@ def main():
 
     if args.amlt:
         home = os.getenv('AMLT_OUTPUT_DIR', '/tmp') + '/'
-        out_fpath = home
+        out_fpath = home if args.out_fpath is None else args.out_fpath
     else:
         home = str(pathlib.Path.home()) + '/Desktop/DMs/'
         top_dir = home
-        out_fpath = home + args.model_type + '/gen-'+str(args.run) + '/'
+        out_fpath = home + args.model_type + '/gen-'+str(args.run) + '/' if args.out_fpath is None else args.out_fpath
 
     if not os.path.exists(out_fpath):
         os.makedirs(out_fpath)
@@ -133,23 +133,21 @@ def main():
         print("Penalizing GAPS by factor of", 1+args.penalty_value)
     else:
         print("Not penalizing GAPS")
-
+    batch_size = args.batch_size if pathlib.Path(data_dir).is_dir() else 1
     if scheme == 'mask':
-        sample, _string = generate_msa(model, tokenizer, args.batch_size, args.n_sequences, args.seq_length,
+        sample, _string = generate_msa(model, tokenizer, batch_size, args.n_sequences, args.seq_length,
                                       penalty_value=args.penalty_value, device=device, start_query=args.start_query,
                                        start_msa=args.start_msa,
-                                      data_top_dir=data_top_dir, selection_type=args.subsampling, out_path=out_fpath)
+                                      data_top_dir=data_top_dir, selection_type=args.subsampling, out_path=out_fpath, openfold=args.dataset=="openfold", data_dir=args.dataset)
     elif scheme == 'd3pm':
-        sample, _string = generate_msa_d3pm(model, args.batch_size, args.n_sequences, args.seq_length,
+        sample, _string = generate_msa_d3pm(model, batch_size, args.n_sequences, args.seq_length,
                                            Q_bar=Q_bar, Q=Q, tokenizer=Tokenizer(), data_top_dir=data_top_dir,
                                            selection_type=args.subsampling, out_path=out_fpath,
                                            max_timesteps=timestep, start_query=args.start_query,
-                                           no_step=False, penalty_value=args.penalty_value, device=device)
-
-
+                                           no_step=False, penalty_value=args.penalty_value, device=device, openfold=args.dataset=="openfold", data_dir=args.dataset)
     for count, msa in enumerate(_string):
         fasta_string = ""
-        with open(out_fpath + 'generated_msas.a3m', 'a') as f:
+        with open(pathlib.Path(out_fpath)/'generated_msas.a3m', 'a') as f:
             for seq in range(args.n_sequences):
                 seq_num = seq * args.seq_length
                 next_seq_num = (seq+1) * args.seq_length
@@ -160,19 +158,19 @@ def main():
                     f.write(">tr \n" + str(seq_string) + "\n" )
             f.write(fasta_string)
             f.close()
-        np.save(out_fpath+'generated_msas', np.array(sample.cpu()))
+        np.save(pathlib.Path(out_fpath)/'generated_msas', np.array(sample.cpu()))
 
 
 def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, penalty_value=2, device='gpu',
-                 start_query=False, start_msa=False, data_top_dir='../data', selection_type='MaxHamming', out_path='../ref/'):
+                 start_query=False, start_msa=False, data_top_dir='../data', selection_type='MaxHamming', out_path='../ref/', openfold=False, data_dir="openfold/"):
     mask_id = tokenizer.mask_id
     src = torch.full((batch_size, n_sequences, seq_length), fill_value=mask_id)
     masked_loc_x = np.arange(n_sequences)
     masked_loc_y = np.arange(seq_length)
     if start_query:
-        valid_msas, query_sequences, tokenizer =get_valid_data(data_top_dir, batch_size, 'autoreg', data_dir='openfold/',
+        valid_msas, query_sequences, tokenizer =get_valid_data(data_top_dir, batch_size, 'autoreg', data_dir=data_dir,
                                        selection_type=selection_type, n_sequences=n_sequences, max_seq_len=seq_length,
-                                       out_path=out_path)
+                                       out_path=out_path, openfold=openfold)
         # First row is query sequence
         for i in range(batch_size):
             seq_len = len(query_sequences[i])
@@ -184,10 +182,11 @@ def generate_msa(model, tokenizer, batch_size, n_sequences, seq_length, penalty_
             y_indices = np.arange(seq_len)
     elif start_msa:
         valid_msas, query_sequences, tokenizer = get_valid_data(data_top_dir, batch_size, 'autoreg',
-                                                                data_dir='openfold/',
+                                                                data_dir=data_dir,
                                                                 selection_type=selection_type, n_sequences=n_sequences,
                                                                 max_seq_len=seq_length,
-                                                                out_path=out_path)
+                                                                out_path=out_path,
+                                                                openfold=openfold)
         for i in range(batch_size):
             seq_len = len(query_sequences[i])
             src[i, 1:n_sequences, :seq_len] = valid_msas[i][0, 1:n_sequences, :seq_len].squeeze()
@@ -270,14 +269,14 @@ def generate_query_oadm_msa_simple(path_to_msa, model, tokenizer, n_sequences, s
 
 def generate_msa_d3pm(model, batch_size, n_sequences, seq_length, Q_bar=None, Q=None, tokenizer=Tokenizer(),
                       start_query=False, data_top_dir='../data', selection_type='MaxHamming', out_path='../ref/',
-                      max_timesteps=500, no_step=False, penalty_value=0, device='gpu'):
+                      max_timesteps=500, no_step=False, penalty_value=0, device='gpu', openfold=False, data_dir="openfold/"):
     sample = torch.randint(0, tokenizer.K, (batch_size, n_sequences, seq_length))
     if start_query:
         x_indices = []
         y_indices = []
         valid_msas, query_sequences, tokenizer =get_valid_data(data_top_dir, batch_size, 'autoreg', data_dir='openfold/',
                                        selection_type=selection_type, n_sequences=n_sequences, max_seq_len=seq_length,
-                                       out_path=out_path)
+                                       out_path=out_path, openfold=openfold)
         # First row is query sequence
         for i in range(batch_size):
             seq_len = len(query_sequences[i])
@@ -340,7 +339,7 @@ def generate_msa_d3pm(model, batch_size, n_sequences, seq_length, Q_bar=None, Q=
 
 
 def get_valid_data(data_top_dir, num_seqs, arg_mask, data_dir='openfold/', selection_type='MaxHamming', n_sequences=64, max_seq_len=512,
-                   out_path='../DMs/ref/'):
+                   out_path='../DMs/ref/', openfold=True):
     valid_msas = []
     query_msas = []
     seq_lens = []
@@ -348,14 +347,16 @@ def get_valid_data(data_top_dir, num_seqs, arg_mask, data_dir='openfold/', selec
     _ = torch.manual_seed(1) # same seeds as training
     np.random.seed(1)
 
-    dataset = A3MMSADataset(selection_type, n_sequences, max_seq_len, data_dir=os.path.join(data_top_dir,data_dir), min_depth=64)
+    dataset = A3MMSADataset(selection_type, n_sequences, max_seq_len, data_dir=os.path.join(data_top_dir,data_dir), min_depth=64, openfold=openfold)
 
     train_size = len(dataset)
-    random_ind = np.random.choice(train_size, size=(train_size - 10000), replace=False)
-    val_ind = np.delete(np.arange(train_size), random_ind)
-
-
-    ds_valid = Subset(dataset, val_ind)
+    openfold=False
+    if openfold:
+        random_ind = np.random.choice(train_size, size=(train_size - 10000), replace=False)
+        val_ind = np.delete(np.arange(train_size), random_ind)
+        ds_valid = Subset(dataset, val_ind)
+    else:
+        ds_valid = dataset
 
     if arg_mask == 'autoreg':
         tokenizer = Tokenizer()
@@ -394,7 +395,7 @@ def get_valid_data(data_top_dir, num_seqs, arg_mask, data_dir='openfold/', selec
     print("LEN VALID MSAS", len(valid_msas))
     untokenized = [[tokenizer.untokenize(msa.flatten())] for msa in valid_msas]
     fasta_string = ""
-    with open(out_path + 'valid_msas.a3m', 'a') as f:
+    with open(pathlib.Path(out_path)/'valid_msas.a3m', 'a') as f:
         for i, msa in enumerate(untokenized):
             for seq in range(n_sequences):
                 seq_num = seq * seq_lens[i]
