@@ -159,12 +159,12 @@ def train(gpu, args):
 
     ds_train = Subset(dataset, random_ind)
 
-    if config['dataset'] == 'trrosetta':
-        dl_train = DataLoader(dataset=ds_train,
-                              batch_size=4,
-                              collate_fn=collater,
-                              num_workers=8)
-    elif  config['dataset'] == 'openfold':
+    # if config['dataset'] == 'trrosetta':
+    #     dl_train = DataLoader(dataset=ds_train,
+    #                           batch_size=4,
+    #                           collate_fn=collater,
+    #                           num_workers=8)
+    if  config['dataset'] == 'openfold':
         #metadata = np.load(data_dir + config['dataset'] + '_lengths.npz')['ells']
         metadata = np.array(dataset.lengths)
         train_idx = ds_train.indices
