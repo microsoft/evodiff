@@ -42,12 +42,12 @@ EvoDiff is described in this [preprint](https://www.biorxiv.org/content/10.1101/
 ----
 
 ## Installation
-To download our code, we recommend creating a clean conda environment with python ```v3.9.0```, and installing pytorch.
+To download our code, we recommend creating a clean conda environment with python ```v3.9.0```, and installing pytorch (we have tested up to ```v2.7.0```)
 ```
 conda create --name evodiff python=3.9
 pip3 install torch
 ```
-In that new environment, install EvoDiff: 
+In that new environment, install EvoDiff (torch-scatter may take a while): 
 ```
 pip install evodiff
 ```
@@ -55,7 +55,6 @@ For the bleeding edge version use:
 ```
 pip install git+https://github.com/microsoft/evodiff.git # bleeding edge, current repo main branch
 ```
-You will also need to install PyTorch (we tested our models on ` v2.0.1 `), PyTorch Geometric, and PyTorch Scatter.
 
 We provide a notebook with installation guidance that can be found in [examples/evodiff.ipynb](https://github.com/microsoft/evodiff/tree/main/examples/evodiff.ipynb). It also includes examples on how to generate a smaller number of sequences and MSAs using our models. We recommend following this notebook if you would like to use our models to generate proteins.
 
