@@ -4,8 +4,8 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="evodiff",
-    version="1.1.0",
+    name="evodiff-test2",
+    version="1.0.1",
     description="Python package for generation of protein sequences and evolutionary alignments via discrete diffusion models",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -17,7 +17,6 @@ setuptools.setup(
     ],
     install_requires=[
         "biopython",
-        "biotite",
         "blosum",
         "fair-esm",
         "lmdb",
@@ -34,7 +33,7 @@ setuptools.setup(
         "torch-scatter",
         "tqdm"
     ],
-    python_requires='>=3.8.5',
+    python_requires='>=3.9.0',
     include_package_data=True,
     packages=setuptools.find_packages(),
     package_data={'': ['config/*']},

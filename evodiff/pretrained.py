@@ -12,7 +12,7 @@ import esm
 
 
 def load_sequence_checkpoint(model_name, config_path, diffusion_timesteps, tokenizer=Tokenizer(), causal=False,
-                         n_tokens = len(MSA_ALPHABET)):
+                         n_tokens = len(MSA_ALPHABET), path_to_checkpoints=None):
     with open(config_path, 'r') as f:
         config = json.load(f)
     d_embed = config['d_embed']
@@ -40,8 +40,10 @@ def load_sequence_checkpoint(model_name, config_path, diffusion_timesteps, token
                           causal=causal, padding_idx=masking_idx, rank=weight_rank, dropout=dropout,
                           tie_weights=tie_weights, final_ln=final_norm, slim=slim, activation=activation,
                           timesteps=diffusion_timesteps)
-    state_dict = download_model(model_name)
-    # sd = torch.load(state_dict, map_location=torch.device('cpu'))
+    if path_to_checkpoints is not None:
+        state_dict = torch.load(path_to_checkpoints, map_location=torch.device('cpu'))
+    else:
+        state_dict = download_model(model_name)
     msd = state_dict['model_state_dict']
     if model_name == 'carp-640M' or model_name == 'carp-38M' or model_name == 'lrar-640M' or model_name=='lrar-38M':
         msd = {k.split('module.')[0]: v for k, v in msd.items()}
@@ -138,13 +140,13 @@ def D3PM_UNIFORM_38M(return_all=False):
         return model, collater, tokenizer, scheme
 
 
-def OA_DM_640M():
+def OA_DM_640M(path_to_checkpoints=None):
     tokenizer = Tokenizer()
     collater = OAMaskCollater(tokenizer=tokenizer)
     file_path = pkg_resources.resource_filename('config', 'config640M.json')
     # file_path = 'config/config640M.json'
     model, tokenizer = load_sequence_checkpoint("oaar-640M", file_path, diffusion_timesteps=None, \
-                         tokenizer=tokenizer)
+                         tokenizer=tokenizer, n_tokens=len(MSA_ALPHABET), path_to_checkpoints=path_to_checkpoints)
     scheme = 'mask'
     return model, collater, tokenizer, scheme
 
