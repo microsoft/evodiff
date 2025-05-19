@@ -56,20 +56,12 @@ For the bleeding edge version use:
 pip install git+https://github.com/microsoft/evodiff.git # bleeding edge, current repo main branch
 ```
 
+### Examples
 We provide a notebook with installation guidance that can be found in [examples/evodiff.ipynb](https://github.com/microsoft/evodiff/tree/main/examples/evodiff.ipynb). It also includes examples on how to generate a smaller number of sequences and MSAs using our models. We recommend following this notebook if you would like to use our models to generate proteins.
 
-Thanks to Colby Ford EvoDiff is available as a space on [huggingface](https://huggingface.co/spaces/colbyford/evodiff)
+EvoDiff can be deployed on [Azure AI Foundry](https://ai.azure.com/). We provide a notebook with instructions here: [examples/evodiff_Azure_AI_Foundry.ipynb](https://github.com/microsoft/evodiff/tree/main/examples/evodiff_Azure_AI_Foundry.ipynb). 
 
-Our downstream analysis scripts make use of a variety of tools we do not include in our package installation. To run the
-scripts, please download the following packages in addition to EvoDiff:
-* [TM score](https://zhanggroup.org/TM-score/)
-* [Omegafold](https://github.com/HeliXonProtein/OmegaFold)
-* [ProteinMPNN](https://github.com/dauparas/ProteinMPNN)
-* [ESM-IF1](https://github.com/facebookresearch/esm/tree/main/esm/inverse_folding); see this [Jupyter notebook](https://colab.research.google.com/github/facebookresearch/esm/blob/main/examples/inverse_folding/notebook.ipynb) for setup details.
-* [PGP](https://github.com/hefeda/PGP)
-* [DR-BERT](https://github.com/maslov-group/DR-BERT)
-
-We refer to the setup instructions outlined by the authors of those tools.
+Thanks to Colby Ford, EvoDiff is available as a space on [huggingface](https://huggingface.co/spaces/colbyford/evodiff)
 
 ### Datasets
 We obtain sequences from the [Uniref50 dataset](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4375400/), which contains 
@@ -126,7 +118,7 @@ The trained model can then generate new sequences starting from sequences of mas
 We trained all EvoDiff sequence models on 42M sequences from UniRef50 using a dilated convolutional neural network architecture introduced in the [CARP](https://doi.org/10.1101/2022.05.19.492714) protein masked language model.
 We trained 38M-parameter and 640M-parameter versions for each forward corruption scheme and for left-to-right autoregressive (LRAR) decoding. 
 
-To explicitly leverage evolutionary information, we designed and trained EvoDiff MSA models using the [MSA Transformer](https://proceedings.mlr.press/v139/rao21a.html) architecture on the [OpenFold](https://github.com/aqlaboratory/openfold) dataset}. 
+To explicitly leverage evolutionary information, we designed and trained EvoDiff MSA models using the [MSA Transformer](https://proceedings.mlr.press/v139/rao21a.html) architecture on the [OpenFold](https://github.com/aqlaboratory/openfold) dataset. 
 To do so, we subsampled MSAs to a length of 512 residues per sequence and a depth of 64 sequences, either by randomly sampling the sequences ("Random") or by greedily maximizing for sequence diversity ("Max"). Within each subsampling strategy, we then trained EvoDiff MSA models with the OADM and D3PM corruption schemes. 
 
 ## Unconditional sequence generation
@@ -279,6 +271,7 @@ We also compute the self-consistency perplexity to evaluate the foldability of g
 We refer to the setup instructions outlined by the authors of those tools.
 
 Our analysis scripts for iterating over these tools are in the [evodiff/analysis/downstream_bash_scripts](https://github.com/microsoft/evodiff/tree/main/analysis/downstream_bash_scripts) folder. Once we run the scripts in this folder, we analyze the results in [self_consistency_analysis.py](https://github.com/microsoft/evodiff/blob/main/analysis/self_consistency_analysis.py).
+
 
 ## Downloading generated sequences
 
