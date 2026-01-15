@@ -12,6 +12,4 @@ requests
 scikit-learn
 seaborn
 sequence-models
-torch_geometric
-torch-scatter
 tqdm

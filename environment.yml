@@ -8,8 +8,6 @@ dependencies:
   - pandas
   - numpy
   - python-lmdb
-  - conda-forge::pytorch_geometric
-  - conda-forge::pytorch_scatter
   - pip
   - pip:
       - git+https://github.com/microsoft/protein-sequence-models.git
