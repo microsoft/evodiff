@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="evodiff",
-    version="1.1.1",
+    version="1.1.2",
     description="Python package for generation of protein sequences and evolutionary alignments via discrete diffusion models",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -29,8 +29,6 @@ setuptools.setup(
         "scikit-learn",
         "seaborn",
         "sequence-models",
-        "torch_geometric",
-        "torch-scatter",
         "tqdm"
     ],
     python_requires='>=3.9.0',
