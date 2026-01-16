@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from tqdm import tqdm
 from scipy.spatial.distance import hamming, cdist
 
@@ -308,7 +309,7 @@ class TRRMSADataset(Dataset):
 class A3MMSADataset(Dataset):
     """Build dataset for A3M data: MSA Absorbing Diffusion model"""
 
-    def __init__(self, selection_type, n_sequences, max_seq_len, data_dir=None, min_depth=None):
+    def __init__(self, selection_type, n_sequences, max_seq_len, data_dir=None, min_depth=None, openfold=True):
         """
         Args:
             selection_type: str,
@@ -319,11 +320,16 @@ class A3MMSADataset(Dataset):
                 maximum MSA sequence length
             data_dir: str,
                 if you have a specified data directory
+            min_depth: int,
+                filter out shallower MSAs
+            openfold: bool,
+                use openfold dataset or custom dataset at data_dir
         """
         alphabet = PROTEIN_ALPHABET
         self.tokenizer = Tokenizer(alphabet)
         self.alpha = np.array(list(alphabet))
         self.gap_idx = self.tokenizer.alphabet.index(GAP)
+        self.openfold=openfold
 
         # Get npz_data dir
         if data_dir is not None:
@@ -331,40 +337,51 @@ class A3MMSADataset(Dataset):
         else:
             raise FileNotFoundError(data_dir)
 
-        [print("Excluding", x) for x in os.listdir(self.data_dir) if x.endswith('.npz')]
-        all_files = [x for x in os.listdir(self.data_dir) if not x.endswith('.npz')]
-        all_files = sorted(all_files)
+        [print(f"Excluding {x}") for x in Path(self.data_dir).glob("*.npz")]
+        if Path(self.data_dir).is_dir():    
+            all_files = [x for x in Path(self.data_dir).glob("*[!.npz]")]
+            all_files = sorted(all_files)
+        else:
+            all_files = [self.data_dir]
         print("unfiltered length", len(all_files))
+        if openfold:
+            ## Filter based on depth (keep > 64 seqs/MSA)
+            if not os.path.exists(data_dir + 'openfold_lengths.npz'):
+                raise Exception("Missing openfold_lengths.npz in openfold/")
+            if not os.path.exists(data_dir + 'openfold_depths.npz'):
+                #get_msa_depth_openfold(data_dir, sorted(all_files), 'openfold_depths.npz')
+                raise Exception("Missing openfold_depths.npz in openfold/")
+            if min_depth is not None: # reindex, filtering out MSAs < min_depth
+                _depths = np.load(data_dir+'openfold_depths.npz')['arr_0']
+                depths = pd.DataFrame(_depths, columns=['depth'])
+                print(depths)
+                depths = depths[depths['depth'] >= min_depth]
+                keep_idx = depths.index
 
-        ## Filter based on depth (keep > 64 seqs/MSA)
-        if not os.path.exists(data_dir + 'openfold_lengths.npz'):
-            raise Exception("Missing openfold_lengths.npz in openfold/")
-        if not os.path.exists(data_dir + 'openfold_depths.npz'):
-            #get_msa_depth_openfold(data_dir, sorted(all_files), 'openfold_depths.npz')
-            raise Exception("Missing openfold_depths.npz in openfold/")
-        if min_depth is not None: # reindex, filtering out MSAs < min_depth
-            _depths = np.load(data_dir+'openfold_depths.npz')['arr_0']
-            depths = pd.DataFrame(_depths, columns=['depth'])
-            depths = depths[depths['depth'] >= min_depth]
-            keep_idx = depths.index
+                _lengths = np.load(data_dir+'openfold_lengths.npz')['ells']
+                print(np.array(_lengths))
+                lengths = np.array(_lengths)[keep_idx]
+                all_files = np.array(all_files)[keep_idx]
+                print("filter MSA depth > 64", len(all_files))
 
-            _lengths = np.load(data_dir+'openfold_lengths.npz')['ells']
-            lengths = np.array(_lengths)[keep_idx]
-            all_files = np.array(all_files)[keep_idx]
-            print("filter MSA depth > 64", len(all_files))
-
-        # Re-filter based on high gap-contining rows
-        if not os.path.exists(data_dir + 'openfold_gap_depths.npz'):
-            #get_sliced_gap_depth_openfold(data_dir, all_files, 'openfold_gap_depths.npz', max_seq_len=max_seq_len)
-            raise Exception("Missing openfold_gap_depths.npz in openfold/")
-        _gap_depths = np.load(data_dir + 'openfold_gap_depths.npz')['arr_0']
-        gap_depths = pd.DataFrame(_gap_depths, columns=['gapdepth'])
-        gap_depths = gap_depths[gap_depths['gapdepth'] >= min_depth]
-        filter_gaps_idx = gap_depths.index
-        lengths = np.array(lengths)[filter_gaps_idx]
-        all_files = np.array(all_files)[filter_gaps_idx]
-        print("filter rows with GAPs > 512", len(all_files))
-
+            # Re-filter based on high gap-contining rows
+            if not os.path.exists(data_dir + 'openfold_gap_depths.npz'):
+                #get_sliced_gap_depth_openfold(data_dir, all_files, 'openfold_gap_depths.npz', max_seq_len=max_seq_len)
+                raise Exception("Missing openfold_gap_depths.npz in openfold/")
+            _gap_depths = np.load(data_dir + 'openfold_gap_depths.npz')['arr_0']
+            gap_depths = pd.DataFrame(_gap_depths, columns=['gapdepth'])
+            gap_depths = gap_depths[gap_depths['gapdepth'] >= min_depth]
+            filter_gaps_idx = gap_depths.index
+            lengths = np.array(lengths)[filter_gaps_idx]
+            all_files = np.array(all_files)[filter_gaps_idx]
+            print("filter rows with GAPs > 512", len(all_files))
+        else:
+            all_files = np.array(all_files) #maybe expand to whole path 
+            lengths = []
+            for file in all_files:
+                parsed_msa = parse_fasta(file)
+                lengths.append(max([len(line) for line in parsed_msa]))
+        lengths = np.array(lengths)
         self.filenames = all_files  # IDs of samples to include
         self.lengths = lengths # pass to batch sampler
         self.n_sequences = n_sequences
@@ -376,7 +393,10 @@ class A3MMSADataset(Dataset):
 
     def __getitem__(self, idx):
         filename = self.filenames[idx]
-        path = read_openfold_files(self.data_dir, filename)
+        if self.openfold:
+            path = read_openfold_files(self.data_dir, filename)
+        else:
+            path = filename
         parsed_msa = parse_fasta(path)
 
         aligned_msa = [[char for char in seq if (char.isupper() or char == '-') and not char == '.'] for seq in parsed_msa]
@@ -522,7 +542,6 @@ class IDRDataset(Dataset):
 
     def __getitem__(self, idx):
         filename = self.filenames[idx]
-        print(filename)
         path = read_idr_files(self.data_dir, filename)
         parsed_msa = parse_fasta(path)
         aligned_msa = [[char for char in seq if (char.isupper() or char == '-') and not char == '.'] for seq in parsed_msa]
